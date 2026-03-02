@@ -1,0 +1,10 @@
+name = "lean4-smrd"
+version = "0.1.0"
+defaultTargets = ["lean4-smrd"]
+
+[[lean_lib]]
+name = "Smrd"
+
+[[lean_exe]]
+name = "lean4-smrd"
+root = "Main"
