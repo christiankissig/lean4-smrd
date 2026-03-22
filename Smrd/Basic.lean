@@ -2,5 +2,6 @@ import Smrd.Types
 import Smrd.Forwardingcontext
 import Smrd.Ppo
 import Smrd.Justifications
+import Smrd.Futures
 
 def hello := "world"
