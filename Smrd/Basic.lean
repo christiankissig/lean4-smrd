@@ -1,4 +1,5 @@
 import Smrd.Types
+import Smrd.EventStructureSemantics
 import Smrd.Forwardingcontext
 import Smrd.Ppo
 import Smrd.Justifications
