@@ -43,6 +43,7 @@ semantic (`Pred := Valuation → Prop`), and syntactic predicates are `Expr`s de
 ```
 Smrd.Types                        expressions, values, events, event structures, relations
 ├── Smrd.EventStructureSemantics  program syntax, CPS semantics ⟨P⟩_{n ρ κ φ}, per-loop step-counters
+│     └── Smrd.Fresh            `denote_ids_nodup`: the events of ⟨P⟩_n have distinct ids
 └── Smrd.Forwardingcontext        δ = (F, WE), ψ_δ, remap_δ
       └── Smrd.Ppo                ≼_sync, ≼_rmw, ≼_alias, ≼^P_δ, pred, dependence on P
             └── Smrd.Justifications  pre-justifications, elaborations, `Generated` (𝕁)
