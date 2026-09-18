@@ -311,12 +311,12 @@ def denote (n : Bounds) (P : Stmt) : EventStructure :=
 /-!
 ## Monotonicity in the step-counter (Lemma `l:es-mono`)
 
-Not mechanised. The paper identifies the events of `⟨P⟩_n` and
-`⟨P⟩_{n+1}` by control label; here they are identified by fresh ids,
-allocated in generation order, so the statement needs a label-based
-embedding first. Note also that under per-loop step-counters the base case of
-the paper's proof, "`𝔼₀` is empty", does not hold: `⟨P⟩_0` contains every
-event before the first loop, as only `while` is cut off at a zero bound.
+Proved in `Smrd.Monotonicity` (`denote_mono`), up to a renaming of event ids
+and threads, as the events of `⟨P⟩_n` and `⟨P⟩_{n+1}` are identified here by
+ids allocated in generation order rather than by control label. Note that under
+per-loop step-counters the base case of the paper's proof, "`𝔼₀` is empty",
+does not hold: `⟨P⟩_0` contains every event before the first loop, as only
+`while` is cut off at a zero bound.
 -/
 
 /-! ## Examples -/
