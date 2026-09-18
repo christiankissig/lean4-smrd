@@ -1,42 +1,50 @@
 import Smrd.Types
 
-/-! ## Forwarding context -/
-
-/-- A forwarding context δ = (f, we).
-    - f  ⊆ E × E : forwarding relation
-    - we ⊆ E × E : write elision relation -/
-structure ForwardingContext : Type where
-  f  : Rel   -- forwarding relation
-  we : Rel   -- write elision relation
-  deriving Repr
-
 /-!
-  remap_δ(e): follow forwarding/elision edges back to the canonical source.
+# Forwarding Contexts (Definition `def:fwd-ctx`)
 
-  We compute this as: repeatedly follow the *inverse* of (f ∪ we) until
-  there is no predecessor. To guarantee termination we bound the search
-  by the total number of edges (which strictly decreases each step if the
-  graph is acyclic, as required by the model).
+A forwarding context `δ = (F, WE)` pairs a forwarding relation, whose edges are
+introduced by Forwarding (Definition `def:elab-fwd`), with a write elision
+relation, whose edges are introduced by Write Elision (`def:elab-we`). It
+induces the predicate `ψ_δ`, equating the values of forwarded pairs, and the
+remapping `remap_δ` of events to their canonical sources.
 -/
 
-/-- One step of remapping: find any predecessor of `id` in `edges`. -/
-private def remapStep (edges : Rel) (id : Nat) : Option Nat :=
-  edges.findSome? (fun (src, tgt) => if tgt == id then some src else none)
+/-- `δ = (F, WE)`, both finite. -/
+structure FwdCtx where
+  f  : List (EventId × EventId) := []
+  we : List (EventId × EventId) := []
+  deriving Repr, DecidableEq
 
-/-- Remap `id` by following predecessor edges up to `fuel` times. -/
-private def remapAux (edges : Rel) : Nat → Nat → Nat
-  | 0,        id => id   -- fuel exhausted; return current id
-  | fuel + 1, id =>
-      match remapStep edges id with
-      | none     => id             -- no predecessor: id is canonical
-      | some src => remapAux edges fuel src  -- recurse toward source
+namespace FwdCtx
 
-/-- remap_δ(e): follow (f ∪ we)⁻¹ back to the canonical source event.
-    Terminates in at most |f ∪ we| steps (assuming acyclicity). -/
-def ForwardingContext.remap (δ : ForwardingContext) (id : Nat) : Nat :=
-  let edges := δ.f ++ δ.we
-  remapAux edges edges.length id
+/-- `(∅, ∅)` -/
+def empty : FwdCtx := {}
 
-/-- Lift remap_δ to a relation: remap both endpoints of every pair. -/
-def ForwardingContext.remapRel (δ : ForwardingContext) (r : Rel) : Rel :=
-  r.map (fun (a, b) => (δ.remap a, δ.remap b))
+/-- The pointwise union of two contexts, as in `δ_J = ⋃_{j ∈ J} δ_j`. -/
+def union (δ₁ δ₂ : FwdCtx) : FwdCtx := ⟨δ₁.f ++ δ₂.f, δ₁.we ++ δ₂.we⟩
+
+/-- An edge of `F ∪ WE`. -/
+def edge (δ : FwdCtx) : Rel := fun a b => (a, b) ∈ δ.f ∨ (a, b) ∈ δ.we
+
+/-- `remap_δ(e) = e'`, as a relation:
+
+    `remap_δ(e) ≜ remap_δ(e₁)` where `(e₁, e) ∈ F ∪ WE`, and `e` otherwise.
+
+    The paper's recursive function presupposes that `F ∪ WE` is acyclic and
+    that every event has at most one `F ∪ WE`-predecessor; the relational
+    reading needs neither to be stated. -/
+inductive Remap (δ : FwdCtx) : EventId → EventId → Prop
+  | canon {e : EventId} : (∀ a, ¬ δ.edge a e) → Remap δ e e
+  | step {a e e' : EventId} : δ.edge a e → Remap δ a e' → Remap δ e e'
+
+/-- `remap_δ(R) = {(remap_δ(a), remap_δ(b)) | (a, b) ∈ R}` -/
+def remapRel (δ : FwdCtx) (R : Rel) : Rel :=
+  fun a' b' => ∃ a b, R a b ∧ δ.Remap a a' ∧ δ.Remap b b'
+
+/-- `ψ_δ ≜ ⋀_{(e₁, e₂) ∈ F} val(e₁) = val(e₂)`, over the events of `es`. -/
+def psi (es : EventStructure) (δ : FwdCtx) : Pred := fun g =>
+  ∀ p ∈ δ.f, ∀ e₁ e₂ v₁ v₂, es.ev p.1 = some e₁ → es.ev p.2 = some e₂ →
+    e₁.val = some v₁ → e₂.val = some v₂ → (Expr.eq v₁ v₂).holds g
+
+end FwdCtx
