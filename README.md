@@ -4,3 +4,6 @@
 
 Lean4 Formalisation of Symbolic Modular Relaxed Dependencies per 
 ["Symbolic MRD: Dynamic Memory, Undefined Behaviour, and Extrinsic Choice" by Jay Richards, Daniel Wright, Simon Cooksey, Mark Batty](https://2025.splashcon.org/details/OOPSLA/104/Symbolic-MRD-Dynamic-Memory-Undefined-Behaviour-and-Extrinsic-Choice).
+
+The definitions follow the restatement of SMRD in Appendix A of *Episodic Loops*, and
+[lean4-episodic-loops](../lean4-episodic-loops) builds that paper's results on this library.

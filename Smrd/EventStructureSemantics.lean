@@ -1,482 +1,350 @@
 import Smrd.Types
 
 /-!
-# Event Structure Semantics of Program Statements
+# Event Structure Semantics of Programs
 
-This file defines the denotational semantics of program statements as event
-structures, following the OCaml interpreter in `interpret.ml`.
+Appendix A.2 of the paper: program syntax (Definition `def:prog-syntax`,
+Figure `fig:grammar`), the interpretation of program expressions against a
+register state (Definition `def:prog-expr-sem`), and the event structure
+semantics `⟨P⟩_{n ρ κ φ}` (Definition `def:gen-es`) with per-loop
+step-counters (Paragraph "The step-counter per loop").
 
-## Design
+The semantics is in continuation-passing style, as in the paper:
 
-Statements are interpreted as **continuations**: each statement form takes a
-*continuation* event structure (the semantics of the remaining statements) and
-produces a new event structure by prefixing or combining events.
+* `ρ` is the register state, mapping registers to expressions over symbols;
+* `κ` is the continuation, mapping a register state and a value restriction
+  to the event structure interpreting the tail of the program;
+* `φ` accumulates the branching outcomes on the path, and becomes the value
+  restriction `valres` of each event generated.
 
-The three core combinators mirror `SymbolicEventStructure` in OCaml:
+The branches of an `if`, and the two outcomes of a `cas`, each invoke the
+continuation, so events after a join are generated once per path, with
+distinct ids and value restrictions, as the paper requires for conflict to be
+carried by `valres` alone.
 
-- `dot e k φ`    — sequential prefix: add event `e` before continuation `k`
-                   under path condition `φ` (OCaml: `dot event' cont phi`)
-- `plus s1 s2`   — non-deterministic choice (OCaml: `plus s1 s2`)
-- `cross s1 s2`  — parallel composition, disjoint-union then combine PO/RMW
-                   (OCaml: `cross s1 s2`)
+## Deviations from the paper
 
-## Step-Counter Semantics
-
-A single global step counter `n : ℕ` is threaded through interpretation.
-When `n = 0` the semantics of any loop is the empty event structure (no
-events, no edges).  For `n > 0`, each loop body unrolling decrements `n` by
-one and recurses.  This gives a **global** step counter shared across all
-sequential and nested loops, matching the `per_loop = false` branch of
-`interpret_statements_step_counter` in OCaml.
-
-## Statements
-
-```
-stmt ::= skip
-       | store(loc, val, ord)          -- global/deref store
-       | load(reg, loc, ord)           -- global/deref load
-       | regStore(reg, expr)           -- register assignment
-       | fence(ord)
-       | lock | unlock
-       | malloc(reg, size)
-       | free(reg)
-       | fadd(reg, loc, operand, rmode, wmode)   -- fetch-and-add RMW
-       | cas(reg, loc, expected, desired, rmode, wmode) -- CAS RMW
-       | if(cond, thenBody, elseBody)
-       | while(cond, body)
-       | do(body, cond)
-       | seq(s1, s2)                   -- sequential composition
-       | par(s1, s2)                   -- parallel composition
-```
+* **Strict program order.** The prefix `e[φ]·𝔼` of the paper adds
+  `{e} × ({e} ∪ E)` to `⊑`, making `⊑` reflexive. We add `{e} × E` only. With
+  the reflexive pairs, `⊑ ; Δ_{W_rel,sc}` would contain `(w, w)` for every
+  releasing write, so `≼_sync` would not be irreflexive as Appendix A.2 claims,
+  `≼_alias` would contain `(e, e)` for every access, and `No-Thin-Air` would
+  fail for every execution containing an access.
+* **Loop identifiers** are part of the `while` syntax, as the paper assumes
+  in Section 3.1.
+* **Dereferences** occur only as the pointer of `r := *e` and `*e₁ := e₂`.
+  The grammar of Definition `def:expressions` admits `*e` inside arithmetic
+  expressions, but Definition `def:gen-es` gives it no semantics there.
+* The branching event of an `if` carries the value restriction `φ` of its
+  context; the paper writes it without one.
+* An unassigned register reads as `0`.
 -/
 
-/-! ## Preliminary: fresh-id monad -/
+/-! ## Program expressions and syntax -/
 
-/-- State for the event-ID generator. -/
-structure GenState : Type where
-  nextId : Nat
+/-- Program expressions (Definition `def:expressions`), over registers. -/
+inductive PExpr where
+  | reg (r : Reg)
+  | num (n : Nat)
+  | bin (op : ArithOp) (a b : PExpr)
+  | eq  (a b : PExpr)
+  | le  (a b : PExpr)
+  | not (a : PExpr)
+  | and (a b : PExpr)
+  | or  (a b : PExpr)
+  deriving Repr, DecidableEq
+
+/-- Register states `ρ : Registers → Expressions`. -/
+abbrev RegState := List (Reg × Expr)
+
+def RegState.get (ρ : RegState) (r : Reg) : Expr := (ρ.lookup r).getD (Expr.num 0)
+
+/-- `ρ[r ↦ e]` -/
+def RegState.set (ρ : RegState) (r : Reg) (e : Expr) : RegState := (r, e) :: ρ
+
+/-- `⟦e⟧_ρ`: resolve the registers of a program expression
+    (Definition `def:prog-expr-sem`). -/
+def PExpr.den (ρ : RegState) : PExpr → Expr
+  | .reg r      => ρ.get r
+  | .num n      => .num n
+  | .bin op a b => .bin op (a.den ρ) (b.den ρ)
+  | .eq a b     => .eq (a.den ρ) (b.den ρ)
+  | .le a b     => .le (a.den ρ) (b.den ρ)
+  | .not a      => .not (a.den ρ)
+  | .and a b    => .and (a.den ρ) (b.den ρ)
+  | .or a b     => .or (a.den ρ) (b.den ρ)
+
+/-- Programs (Figure `fig:grammar`). -/
+inductive Stmt where
+  | skip
+  | seq      (s₁ s₂ : Stmt)
+  | par      (s₁ s₂ : Stmt)
+  | ite      (b : PExpr) (s₁ s₂ : Stmt)
+  | while    (ℓ : LoopId) (b : PExpr) (body : Stmt)
+  /-- `r := e` -/
+  | assign   (r : Reg) (e : PExpr)
+  /-- `r :=_o x` -/
+  | load     (o : MemOrd) (r : Reg) (x : Var)
+  /-- `x :=_o e` -/
+  | store    (o : MemOrd) (x : Var) (e : PExpr)
+  /-- `r := &x` -/
+  | addrOf   (r : Reg) (x : Var)
+  /-- `r :=_o *e` -/
+  | loadPtr  (o : MemOrd) (r : Reg) (e : PExpr)
+  /-- `*e₁ :=_o e₂` -/
+  | storePtr (o : MemOrd) (e₁ e₂ : PExpr)
+  | fence    (o : MemOrd)
+  /-- `r := FADD^{o_r,o_w}(x, e)` -/
+  | fadd     (or ow : MemOrd) (r : Reg) (x : Var) (e : PExpr)
+  /-- `r := CAS^{o_r,o_w}(x, e₁, e₂)` -/
+  | cas      (or ow : MemOrd) (r : Reg) (x : Var) (e₁ e₂ : PExpr)
+  /-- `r := malloc(e)` -/
+  | malloc   (r : Reg) (e : PExpr)
+  /-- `free(r)` -/
+  | free     (r : Reg)
   deriving Repr
 
-/-- A simple state monad carrying `GenState`. -/
-def Gen (α : Type) : Type := GenState → α × GenState
-
-instance : Monad Gen where
-  pure a := fun s => (a, s)
-  bind m f := fun s =>
-    let (a, s') := m s
-    f a s'
-
-/-- Allocate a fresh event id. -/
-def freshId : Gen Nat := fun s => (s.nextId, { nextId := s.nextId + 1 })
-
-/-- Run a `Gen` computation starting from id 0. -/
-def Gen.run (m : Gen α) : α := (m { nextId := 0 }).1
-
-/-! ## Statement syntax -/
-
-/-- A program statement (shallow embedding). -/
-inductive Stmt : Type where
-  /-- No-op. -/
-  | skip : Stmt
-  /-- Store `val` to memory location `loc` with ordering `ord`. -/
-  | store  (loc val : Expr) (ord : MemOrd) : Stmt
-  /-- Load from memory location `loc` into result symbol `result` with ordering
-      `ord`. -/
-  | load   (loc : Expr) (result : Symbol) (ord : MemOrd) : Stmt
-  /-- Register assignment: bind `sym` to the evaluated `expr` in the
-      environment.  Produces no event. -/
-  | regStore (sym : Symbol) (expr : Expr) : Stmt
-  /-- Memory fence. -/
-  | fence  (ord : MemOrd) : Stmt
-  /-- Acquire a lock (optional variable name). -/
-  | lock   (global : Option Symbol) : Stmt
-  /-- Release a lock (optional variable name). -/
-  | unlock (global : Option Symbol) : Stmt
-  /-- Heap allocation: result symbol receives the fresh address. -/
-  | malloc (result : Symbol) (size : Expr) : Stmt
-  /-- Heap deallocation of the address held in `ptr`. -/
-  | free   (ptr : Expr) : Stmt
-  /-- Fetch-and-add RMW: atomically read, add `operand`, and write back. -/
-  | fadd   (result : Symbol) (loc operand : Expr)
-           (rmode wmode : MemOrd) : Stmt
-  /-- Compare-and-swap RMW: atomically compare, conditionally swap. -/
-  | cas    (result : Symbol) (loc expected desired : Expr)
-           (rmode wmode : MemOrd) : Stmt
-  /-- Conditional: `if cond then thenBody else elseBody`. -/
-  | ite    (cond : BoolExpr) (thenBody elseBody : Stmt) : Stmt
-  /-- While loop: `while cond do body`. -/
-  | whileLoop  (cond : BoolExpr) (body : Stmt) : Stmt
-  /-- Do-while loop: `do body while cond`. -/
-  | doLoop     (body : Stmt) (cond : BoolExpr) : Stmt
-  /-- Sequential composition. -/
-  | seq    (s1 s2 : Stmt) : Stmt
-  /-- Parallel composition (concurrently running threads). -/
-  | par    (s1 s2 : Stmt) : Stmt
-  deriving Repr
+/-- The loop identifiers occurring in a program, with multiplicity. -/
+def Stmt.loops : Stmt → List LoopId
+  | .seq s₁ s₂ | .par s₁ s₂ | .ite _ s₁ s₂ => s₁.loops ++ s₂.loops
+  | .while ℓ _ body => ℓ :: body.loops
+  | _ => []
 
 /-! ## Event structure combinators -/
 
-/-- The empty event structure (unit for `plus`; used when step counter = 0). -/
-def EventStructure.empty : EventStructure :=
-  { events := [], po := [], rmw := [] }
+namespace EventStructure
 
-/-- Collect all event ids in an event structure. -/
-def EventStructure.ids (es : EventStructure) : List Nat :=
-  es.events.map (·.id)
-
-/-- Sequential prefix: prepend event `e` before `k`.
-
-    Concretely:
-    - Add `e` to the event set.
-    - Add a PO edge `(e.id, init)` for every *minimal* event of `k` (those with
-      no incoming PO edge from within `k`).
-    - Inherit all other events, PO edges, and RMW triples from `k`.
-
-    This mirrors `SymbolicEventStructure.dot event' cont phi defacto` in OCaml.
-    The path condition `phi` and de-facto constraints influence validity
-    conditions in the full model; here we attach them via `valRest` on the
-    event.  We assume the caller has already set `e.valRest` appropriately.
--/
-def EventStructure.dot (e : Event) (k : EventStructure) : EventStructure :=
-  -- Minimal events of k: those not the target of any PO edge in k.
-  let kTargets := k.po.map (·.2)
-  let kMinimal := k.ids.filter (fun id => !kTargets.contains id)
-  -- New PO edges from e to every minimal event of k.
-  let newPO    := kMinimal.map (fun id => (e.id, id))
+/-- The prefix `e[φ_e] · (E, ⊑, ⊑ʳᵐʷ, valres)`; the value restriction is
+    carried by `e`. Program order is strict, see the module header. -/
+def «prefix» (e : Event) (k : EventStructure) : EventStructure :=
   { events := e :: k.events
-    po     := newPO ++ k.po
+    po     := k.events.map (fun e' => (e.id, e'.id)) ++ k.po
     rmw    := k.rmw }
 
-/-- Non-deterministic choice: disjoint union of two event structures.
+/-- The coproduct `𝔼₁ + 𝔼₂`. Disjointness of the events is ensured by the
+    fresh-id generator. -/
+def plus (s₁ s₂ : EventStructure) : EventStructure :=
+  ⟨s₁.events ++ s₂.events, s₁.po ++ s₂.po, s₁.rmw ++ s₂.rmw⟩
 
-    Both `s1` and `s2` are possible executions; their event ids must be disjoint
-    (ensured by the fresh-id monad).  Mirrors `SymbolicEventStructure.plus`.
+/-- `rmw(𝔼, e_r, e_w, b)` -/
+def addRMW (es : EventStructure) (r : EventId) (b : Expr) (w : EventId) : EventStructure :=
+  { es with rmw := ⟨r, b, w⟩ :: es.rmw }
+
+end EventStructure
+
+/-! ## Generation state, contexts and step-counters -/
+
+structure GenState where
+  nextId     : EventId := 0
+  nextThread : ThreadId := 1
+  deriving Repr
+
+/-- Fresh event ids, and so fresh symbols, and fresh thread ids. -/
+abbrev Gen := StateM GenState
+
+def freshId : Gen EventId :=
+  modifyGet fun s => (s.nextId, { s with nextId := s.nextId + 1 })
+
+def freshThread : Gen ThreadId :=
+  modifyGet fun s => (s.nextThread, { s with nextThread := s.nextThread + 1 })
+
+/-- The part of a control label fixed by the context: the thread, and the
+    iterations of the enclosing loops, outermost first. -/
+structure Ctx where
+  thread : ThreadId
+  iter   : List (LoopId × Nat)
+  deriving Repr
+
+/-- Enter iteration `k` of loop `ℓ`. -/
+def Ctx.enter (ctx : Ctx) (ℓ : LoopId) (k : Nat) : Ctx :=
+  if ctx.iter.any (·.1 == ℓ) then
+    { ctx with iter := ctx.iter.map fun p => if p.1 = ℓ then (ℓ, k) else p }
+  else
+    { ctx with iter := ctx.iter ++ [(ℓ, k)] }
+
+/-- Per-loop step-counters, a map from loop indices to bounds. -/
+abbrev Bounds := LoopId → Nat
+
+/-- The uniform choice `⟨P⟩_n`, assigning the bound `n` to every loop. -/
+def Bounds.uniform (k : Nat) : Bounds := fun _ => k
+
+/-- Decrement the component of loop `ℓ` only. -/
+def Bounds.dec (n : Bounds) (ℓ : LoopId) : Bounds :=
+  fun m => if m = ℓ then n m - 1 else n m
+
+/-- Sum of the bounds of a list of loops: the termination measure. -/
+def sumB (ls : List LoopId) (n : Bounds) : Nat := (ls.map n).sum
+
+theorem sumB_append (a b : List LoopId) (n : Bounds) :
+    sumB (a ++ b) n = sumB a n + sumB b n := by
+  induction a with
+  | nil => simp [sumB]
+  | cons m a ih => simp only [sumB, List.map_cons, List.cons_append, List.sum_cons] at *; omega
+
+theorem sumB_cons (ℓ : LoopId) (ls : List LoopId) (n : Bounds) :
+    sumB (ℓ :: ls) n = n ℓ + sumB ls n := by
+  simp [sumB]
+
+theorem Bounds.dec_le (n : Bounds) (ℓ m : LoopId) : n.dec ℓ m ≤ n m := by
+  unfold Bounds.dec; split <;> omega
+
+theorem Bounds.dec_self (n : Bounds) (ℓ : LoopId) : n.dec ℓ ℓ = n ℓ - 1 := by
+  simp [Bounds.dec]
+
+theorem sumB_dec_le (ls : List LoopId) (n : Bounds) (ℓ : LoopId) :
+    sumB ls (n.dec ℓ) ≤ sumB ls n := by
+  induction ls with
+  | nil => simp [sumB]
+  | cons m ls ih =>
+      rw [sumB_cons, sumB_cons]
+      have := Bounds.dec_le n ℓ m
+      omega
+
+/-- Continuations `κ`. -/
+abbrev Cont := RegState → List Guard → Gen EventStructure
+
+/-- Generate an event with a fresh id at program counter `pc` under the value
+    restriction `φ`. The action may mention the event's own id, which is the
+    symbol a read or allocation introduces. -/
+def mkEvent (ctx : Ctx) (pc : List Nat) (φ : List Guard)
+    (kind : EventId → EventKind) : Gen Event := do
+  let id ← freshId
+  pure { id, kind := kind id, label := ⟨ctx.thread, pc, ctx.iter⟩, guards := φ }
+
+/-! ## The semantics `⟨P⟩_{n ρ κ φ}` (Definition `def:gen-es`) -/
+
+open EventStructure in
+/-- `⟨s⟩_{n ρ κ φ}` in context `ctx` at program counter `pc`. -/
+def interp (n : Bounds) (ctx : Ctx) (pc : List Nat) (s : Stmt) (ρ : RegState)
+    (κ : Cont) (φ : List Guard) : Gen EventStructure :=
+  match s with
+  | .skip => κ ρ φ
+  | .assign r e => κ (ρ.set r (e.den ρ)) φ
+  | .addrOf r x => κ (ρ.set r (Expr.glob x)) φ
+  | .load o r x => do
+      let e ← mkEvent ctx pc φ (fun α => .read o (Expr.glob x) α)
+      let k ← κ (ρ.set r (.sym e.id)) φ
+      pure («prefix» e k)
+  | .loadPtr o r p => do
+      let e ← mkEvent ctx pc φ (fun α => .read o (p.den ρ) α)
+      let k ← κ (ρ.set r (.sym e.id)) φ
+      pure («prefix» e k)
+  | .store o x v => do
+      let e ← mkEvent ctx pc φ (fun _ => .write o (Expr.glob x) (v.den ρ))
+      let k ← κ ρ φ
+      pure («prefix» e k)
+  | .storePtr o p v => do
+      let e ← mkEvent ctx pc φ (fun _ => .write o (p.den ρ) (v.den ρ))
+      let k ← κ ρ φ
+      pure («prefix» e k)
+  | .fence o => do
+      let e ← mkEvent ctx pc φ (fun _ => .fence o)
+      let k ← κ ρ φ
+      pure («prefix» e k)
+  | .malloc r sz => do
+      let e ← mkEvent ctx pc φ (fun α => .alloc α (sz.den ρ))
+      let k ← κ (ρ.set r (.sym e.id)) φ
+      pure («prefix» e k)
+  | .free r => do
+      let e ← mkEvent ctx pc φ (fun _ => .dealloc (ρ.get r))
+      let k ← κ ρ φ
+      pure («prefix» e k)
+  | .fadd or ow r x v => do
+      let er ← mkEvent ctx (pc ++ [0]) φ (fun α => .read or (Expr.glob x) α)
+      let ew ← mkEvent ctx (pc ++ [1]) φ
+        (fun _ => .write ow (Expr.glob x) (.bin .add (.sym er.id) (v.den ρ)))
+      let k ← κ (ρ.set r (.sym er.id)) φ
+      pure ((«prefix» er («prefix» ew k)).addRMW er.id Expr.tt ew.id)
+  | .cas or ow r x e₁ e₂ => do
+      let er ← mkEvent ctx (pc ++ [0]) φ (fun α => .read or (Expr.glob x) α)
+      let c : Expr := .eq (.sym er.id) (e₁.den ρ)
+      let ec ← mkEvent ctx (pc ++ [1]) φ (fun _ => .branch c)
+      let φT := φ ++ [⟨ec.id, c, true⟩]
+      let φF := φ ++ [⟨ec.id, c, false⟩]
+      let ew ← mkEvent ctx (pc ++ [2]) φT (fun _ => .write ow (Expr.glob x) (e₂.den ρ))
+      let kT ← κ (ρ.set r Expr.tt) φT
+      let kF ← κ (ρ.set r Expr.ff) φF
+      pure ((«prefix» er («prefix» ec ((«prefix» ew kT).plus kF))).addRMW er.id c ew.id)
+  | .seq s₁ s₂ =>
+      interp n ctx (pc ++ [0]) s₁ ρ (fun ρ' φ' => interp n ctx (pc ++ [1]) s₂ ρ' κ φ') φ
+  | .par s₁ s₂ => do
+      let t ← freshThread
+      let k₁ ← interp n ctx (pc ++ [0]) s₁ ρ κ φ
+      let k₂ ← interp n { ctx with thread := t } (pc ++ [1]) s₂ ρ κ φ
+      pure (k₁.plus k₂)
+  | .ite b s₁ s₂ => do
+      let c := b.den ρ
+      let eb ← mkEvent ctx pc φ (fun _ => .branch c)
+      let k₁ ← interp n ctx (pc ++ [0]) s₁ ρ κ (φ ++ [⟨eb.id, c, true⟩])
+      let k₂ ← interp n ctx (pc ++ [1]) s₂ ρ κ (φ ++ [⟨eb.id, c, false⟩])
+      pure («prefix» eb (k₁.plus k₂))
+  | .while ℓ b body =>
+      -- `⟨while b P⟩ ≜ ∅` once the component of `ℓ` is exhausted, and otherwise
+      -- `⟨if b then (P; while b P) else skip⟩` with that component decremented.
+      if h : n ℓ = 0 then pure .empty else do
+        let k := match ctx.iter.lookup ℓ with
+          | some j => j + 1
+          | none   => 0
+        let ctx' := ctx.enter ℓ k
+        let c := b.den ρ
+        let eb ← mkEvent ctx' pc φ (fun _ => .branch c)
+        let kT ← interp (n.dec ℓ) ctx' (pc ++ [0]) body ρ
+          (fun ρ' φ' => interp (n.dec ℓ) ctx' pc (.while ℓ b body) ρ' κ φ')
+          (φ ++ [⟨eb.id, c, true⟩])
+        let kF ← κ ρ (φ ++ [⟨eb.id, c, false⟩])
+        pure («prefix» eb (kT.plus kF))
+termination_by sumB s.loops n + sizeOf s
+decreasing_by
+  all_goals simp only [Stmt.loops, sumB_append, sumB_cons, Stmt.seq.sizeOf_spec,
+    Stmt.par.sizeOf_spec, Stmt.ite.sizeOf_spec, Stmt.while.sizeOf_spec]
+  all_goals first
+    | omega
+    | (have := sumB_dec_le body.loops n ℓ
+       have := Bounds.dec_self n ℓ
+       omega)
+
+/-- `⟨P⟩_{n ∅ (λρ φ. ∅) ⊤}`: the event structure of a program under the
+    per-loop step-counters `n`. -/
+def denote (n : Bounds) (P : Stmt) : EventStructure :=
+  (interp n ⟨0, []⟩ [] P [] (fun _ _ => pure .empty) []).run' {}
+
+/-!
+## Monotonicity in the step-counter (Lemma `l:es-mono`)
+
+Not mechanised. The paper identifies the events of `⟨P⟩_n` and
+`⟨P⟩_{n+1}` by control label; here they are identified by fresh ids,
+allocated in generation order, so the statement needs a label-based
+embedding first. Note also that under per-loop step-counters the base case of
+the paper's proof, "`𝔼₀` is empty", does not hold: `⟨P⟩_0` contains every
+event before the first loop, as only `while` is cut off at a zero bound.
 -/
-def EventStructure.plus (s1 s2 : EventStructure) : EventStructure :=
-  { events := s1.events ++ s2.events
-    po     := s1.po     ++ s2.po
-    rmw    := s1.rmw    ++ s2.rmw }
 
-/-- Parallel composition: disjoint union with no additional PO between threads.
-
-    Threads run concurrently so we simply take the union of events, PO
-    (per-thread), and RMW.  Mirrors `SymbolicEventStructure.cross`.
--/
-def EventStructure.cross (s1 s2 : EventStructure) : EventStructure :=
-  { events := s1.events ++ s2.events
-    po     := s1.po     ++ s2.po
-    rmw    := s1.rmw    ++ s2.rmw }
-
-/-- Add an RMW triple to an event structure. -/
-def EventStructure.addRMW (es : EventStructure) (r : RMWEntry) : EventStructure :=
-  { es with rmw := r :: es.rmw }
-
-/-! ## Step-counter semantics -/
-
-/-- Evaluate a `BoolExpr` as a validity restriction `BoolExpr`.
-    For the semantics we simply propagate it unchanged; in a full model this
-    would be conjoined with the existing `valRest`. -/
-def mkEvent (id : Nat) (kind : EventKind) (valRest : BoolExpr) : Event :=
-  { id, kind, valRest }
-
-/-- Evaluate an `Expr` under an `Env`, returning `Expr.lit 0` on failure. -/
-def evalExpr (env : Env) (e : Expr) : Expr :=
-  match e.eval env with
-  | some v => .lit v
-  | none   => e   -- keep symbolic if unevaluable
-
-/-- Evaluate a `BoolExpr` under an `Env`, returning `BoolExpr.top` on failure. -/
-def evalBool (env : Env) (b : BoolExpr) : BoolExpr :=
-  match b.eval env with
-  | some true  => .top
-  | some false => .bot
-  | none       => b
-
-/-- Extend the `Env` with a new binding. -/
-def envBind (env : Env) (s : Symbol) (v : Int) : Env :=
-  (s, v) :: env.filter (·.1 != s)
-
-/-! ## Sequential append of two event structures
-
-`appendES es1 es2` sequences `es1` before `es2`: every maximal event of
-`es1` gets a PO edge to every minimal event of `es2`.  This is the
-multi-event generalisation of `dot`.
--/
-
-/-- Returns the set of *maximal* event ids: those with no outgoing PO edge
-    within `es`. -/
-private def maximalIds (es : EventStructure) : List Nat :=
-  let sources := es.po.map (·.1)
-  es.ids.filter (fun id => !sources.contains id)
-
-/-- Returns the set of *minimal* event ids: those with no incoming PO edge
-    within `es`. -/
-private def minimalIds (es : EventStructure) : List Nat :=
-  let targets := es.po.map (·.2)
-  es.ids.filter (fun id => !targets.contains id)
-
-/-- Sequentially append `es2` after `es1`. -/
-private def appendES (es1 es2 : EventStructure) : EventStructure :=
-  let newPO := (maximalIds es1).flatMap
-                 (fun src => (minimalIds es2).map (fun tgt => (src, tgt)))
-  { events := es1.events ++ es2.events
-    po     := es1.po ++ newPO ++ es2.po
-    rmw    := es1.rmw ++ es2.rmw }
-
-/-- Interpret a statement as an event structure with global step counter `n`.
-
-    Parameters:
-    - `n`   : global step counter (shared across all loops).
-    - `env` : current register / symbol environment.
-    - `phi` : current path condition (conjunction of `BoolExpr`s).
-    - `stmt`: the statement to interpret.
-
-    Returns a `Gen EventStructure` so that every event allocation gets a fresh
-    unique id.
-
-    **Step-counter rule for loops** (global, matching `per_loop = false` in OCaml):
-    - If `n = 0`: return `EventStructure.empty` (no iterations).
-    - Otherwise: unroll the loop one step (consume one unit from `n`),
-      recursively interpret the continuation with `n - 1`.
--/
-def interpStmt (n : Nat) (env : Env) (phi : List BoolExpr) :
-    Stmt → Gen EventStructure
-  -- ------------------------------------------------------------------ skip
-  | .skip =>
-      pure EventStructure.empty
-
-  -- -------------------------------------------------------- register store
-  -- No event emitted; bind the evaluated expression in the environment and
-  -- return the empty structure (the caller must supply the continuation via
-  -- `seq`).
-  | .regStore _sym _expr =>
-      -- Register stores are pure environment updates; they produce no events.
-      pure EventStructure.empty
-
-  -- ----------------------------------------------------------------- store
-  | .store loc val ord => do
-      let id ← freshId
-      let evt := mkEvent id (.write (evalExpr env loc) (evalExpr env val) ord)
-                          (phi.foldl (fun acc b => .and acc b) .top)
-      pure (EventStructure.dot evt EventStructure.empty)
-
-  -- ------------------------------------------------------------------ load
-  | .load loc result ord => do
-      let id ← freshId
-      let evt := mkEvent id (.read (evalExpr env loc) result ord)
-                          (phi.foldl (fun acc b => .and acc b) .top)
-      pure (EventStructure.dot evt EventStructure.empty)
-
-  -- ----------------------------------------------------------------- fence
-  | .fence ord => do
-      let id ← freshId
-      let evt := mkEvent id (.fence ord)
-                          (phi.foldl (fun acc b => .and acc b) .top)
-      pure (EventStructure.dot evt EventStructure.empty)
-
-  -- ------------------------------------------------------------------ lock
-  | .lock _global => do
-      let id ← freshId
-      let evt := mkEvent id .lock
-                          (phi.foldl (fun acc b => .and acc b) .top)
-      pure (EventStructure.dot evt EventStructure.empty)
-
-  -- ---------------------------------------------------------------- unlock
-  | .unlock _global => do
-      let id ← freshId
-      let evt := mkEvent id .unlock
-                          (phi.foldl (fun acc b => .and acc b) .top)
-      pure (EventStructure.dot evt EventStructure.empty)
-
-  -- ---------------------------------------------------------------- malloc
-  | .malloc result size => do
-      let id ← freshId
-      let evt := mkEvent id (.allocate result (evalExpr env size))
-                          (phi.foldl (fun acc b => .and acc b) .top)
-      pure (EventStructure.dot evt EventStructure.empty)
-
-  -- ------------------------------------------------------------------ free
-  | .free ptr => do
-      let id ← freshId
-      let evt := mkEvent id (.deallocate (evalExpr env ptr))
-                          (phi.foldl (fun acc b => .and acc b) .top)
-      pure (EventStructure.dot evt EventStructure.empty)
-
-  -- -------------------------------------------------------------- fadd RMW
-  -- Fetch-and-add: emit a Read followed by a Write, linked by an RMW triple.
-  | .fadd result loc operand rmode wmode => do
-      let rId ← freshId
-      let wId ← freshId
-      let locE    := evalExpr env loc
-      let opE     := evalExpr env operand
-      -- The written value is (loaded_symbol + operand); kept symbolic here.
-      let wvalE   : Expr := .add (.var result) opE
-      let valCond := phi.foldl (fun acc b => .and acc b) .top
-      let rEvt    := mkEvent rId (.read  locE result rmode) valCond
-      let wEvt    := mkEvent wId (.write locE wvalE  wmode) valCond
-      -- Build: rEvt → wEvt (sequential)
-      let inner   := EventStructure.dot rEvt
-                       (EventStructure.dot wEvt EventStructure.empty)
-      -- Add RMW triple (unconditional CAS condition = top)
-      let rmwEntry : RMWEntry := { readId := rId, cond := .top, writeId := wId }
-      pure (inner.addRMW rmwEntry)
-
-  -- --------------------------------------------------------------- CAS RMW
-  -- Compare-and-swap: emit a Read; on success (cond) emit a Write linked by RMW,
-  -- on failure skip.  The two branches are joined with `plus`.
-  | .cas result loc expected desired rmode wmode => do
-      let rId ← freshId
-      let wId ← freshId
-      let locE  := evalExpr env loc
-      let expE  := evalExpr env expected
-      let desE  := evalExpr env desired
-      let valCond := phi.foldl (fun acc b => .and acc b) .top
-      -- Read event
-      let rEvt  := mkEvent rId (.read locE result rmode) valCond
-      -- Condition: loaded value = expected  (expressed as a BoolExpr)
-      let cond  : BoolExpr := .eq (.var result) expE
-      -- Success branch: write + RMW
-      let wEvt  := mkEvent wId (.write locE desE wmode) (.and valCond cond)
-      let succStr := (EventStructure.dot wEvt EventStructure.empty).addRMW
-                       { readId := rId, cond := cond, writeId := wId }
-      -- Failure branch: no write, path-conditioned on ¬cond
-      let failStr := EventStructure.empty
-      -- Combine: Read → (succ ⊕ fail)
-      let inner   := EventStructure.plus succStr failStr
-      pure (EventStructure.dot rEvt inner)
-
-  -- --------------------------------------------------------------- if-then-else
-  | .ite cond thenBody elseBody => do
-      let condE   := evalBool env cond
-      let ncondE  : BoolExpr := .neg condE
-      -- Branch event
-      let brId ← freshId
-      let valCond := phi.foldl (fun acc b => .and acc b) .top
-      let brEvt   := mkEvent brId (.branch condE) valCond
-      -- Then / else branches with extended path conditions
-      let thenStr ← interpStmt n env (condE  :: phi) thenBody
-      let elseStr ← interpStmt n env (ncondE :: phi) elseBody
-      let branches := EventStructure.plus thenStr elseStr
-      pure (EventStructure.dot brEvt branches)
-
-  -- ------------------------------------------------------------ while loop
-  -- Global step-counter rule:
-  --   n = 0  →  empty (no iterations)
-  --   n > 0  →  if cond then (body; while cond body) else skip,
-  --             with step counter n - 1 for the recursive while.
-  | .whileLoop cond body =>
-      match n with
-      | 0     => pure EventStructure.empty
-      | n' + 1 => do
-          let condE  := evalBool env cond
-          let ncondE : BoolExpr := .neg condE
-          let brId ← freshId
-          let valCond := phi.foldl (fun acc b => .and acc b) .top
-          let brEvt   := mkEvent brId (.branch condE) valCond
-          -- Loop body followed by the recursive while (step counter n')
-          let bodyStr  ← interpStmt n' env (condE  :: phi) body
-          let recStr   ← interpStmt n' env (condE  :: phi) (.whileLoop cond body)
-          -- Exit branch
-          let exitStr  := EventStructure.empty
-          -- then-arm: body ; while  (sequential: body dots into recStr)
-          let thenArm  := appendES bodyStr recStr
-          let branches := EventStructure.plus thenArm exitStr
-          pure (EventStructure.dot brEvt branches)
-
-  -- ------------------------------------------------------------- do-while loop
-  -- Global step-counter rule:
-  --   n = 0  →  empty
-  --   n > 0  →  body ; if cond then (do body while cond) else skip,
-  --             with step counter n - 1 for the recursive do.
-  | .doLoop body cond =>
-      match n with
-      | 0     => pure EventStructure.empty
-      | n' + 1 => do
-          -- Execute the body unconditionally first.
-          let bodyStr ← interpStmt n' env phi body
-          -- Then check the condition.
-          let condE  := evalBool env cond
-          let ncondE : BoolExpr := .neg condE
-          let brId ← freshId
-          let valCond := phi.foldl (fun acc b => .and acc b) .top
-          let brEvt   := mkEvent brId (.branch condE) valCond
-          -- Continue branch: recursive do-while
-          let recStr  ← interpStmt n' env (condE :: phi) (.doLoop body cond)
-          -- Exit branch: empty
-          let exitStr := EventStructure.empty
-          let branches := EventStructure.plus recStr exitStr
-          let contStr  := EventStructure.dot brEvt branches
-          pure (appendES bodyStr contStr)
-
-  -- ------------------------------------------------------- sequential composition
-  | .seq s1 s2 => do
-      let es1 ← interpStmt n env phi s1
-      let es2 ← interpStmt n env phi s2
-      pure (appendES es1 es2)
-
-  -- ---------------------------------------------------- parallel composition
-  | .par s1 s2 => do
-      let es1 ← interpStmt n env phi s1
-      let es2 ← interpStmt n env phi s2
-      pure (EventStructure.cross es1 es2)
-
-/-! ## Top-level interpretation entry point -/
-
-/-- Interpret a statement with a given global step counter.
-
-    Equivalent to `StepCounterSemantics.interpret ~step_counter` in OCaml
-    (with `per_loop = false`).
-
-    @param n     Global step counter: maximum number of loop-body unrollings
-                 across the entire program.
-    @param stmt  The program statement to interpret.
-    @return      The event structure denoting the program.
--/
-def interpProgram (n : Nat) (stmt : Stmt) : EventStructure :=
-  Gen.run (interpStmt n [] [] stmt)
-
-/-! ## Convenience: interpret with explicit environment and path condition -/
-
-/-- Like `interpProgram` but with an initial environment and path condition. -/
-def interpProgramWith (n : Nat) (env : Env) (phi : List BoolExpr) (stmt : Stmt) :
-    EventStructure :=
-  Gen.run (interpStmt n env phi stmt)
-
-/-! ## Small examples (sanity checks) -/
+/-! ## Examples -/
 
 section Examples
 
-/-- A single store to a global variable `x`. -/
-private def exStore : Stmt :=
-  .store (.var "x") (.lit 42) .seqcst
+/-- `x :=_sc 42` -/
+private def exStore : Stmt := .store .sc "x" (.num 42)
 
-#eval interpProgram 1 exStore
+#eval (denote (.uniform 1) exStore).events.length
 
-/-- A load followed by a store (a simple read-then-write). -/
+/-- `r :=_acq x; x :=_rel r` -/
 private def exLoadStore : Stmt :=
-  .seq (.load (.var "x") "α" .acquire) (.store (.var "x") (.var "α") .release)
+  .seq (.load .acq "r" "x") (.store .rel "x" (.reg "r"))
 
-#eval interpProgram 1 exLoadStore
+#eval denote (.uniform 1) exLoadStore
 
-/-- A while loop bounded by step counter 3. -/
+/-- `while₁ (r < 10) { r :=_rlx x }`, unravelled twice. -/
 private def exWhile : Stmt :=
-  .whileLoop (.lt (.var "i") (.lit 10))
-    (.store (.var "i") (.add (.var "i") (.lit 1)) .none)
+  .while 1 (.not (.le (.num 10) (.reg "r"))) (.load .rlx "r" "x")
 
-#eval interpProgram 3 exWhile
+#eval (denote (.uniform 2) exWhile).events.map (fun e => (e.id, e.label.iter))
 
-/-- A do-while loop bounded by step counter 2. -/
-private def exDo : Stmt :=
-  .doLoop
-    (.store (.var "i") (.add (.var "i") (.lit 1)) .none)
-    (.lt (.var "i") (.lit 5))
-
-#eval interpProgram 2 exDo
-
-/-- A simple CAS: attempt to swap x from 0 to 1. -/
+/-- `r := CAS^{acq,rel}(x, 0, 1); y :=_rlx 1`: the store after the `cas` is
+    generated once per outcome. -/
 private def exCAS : Stmt :=
-  .cas "r" (.var "x") (.lit 0) (.lit 1) .acquire .release
+  .seq (.cas .acq .rel "r" "x" (.num 0) (.num 1)) (.store .rlx "y" (.num 1))
 
-#eval interpProgram 1 exCAS
+#eval (denote (.uniform 1) exCAS).events.map (fun e => (e.id, e.label.pc, e.guards.length))
 
 end Examples
