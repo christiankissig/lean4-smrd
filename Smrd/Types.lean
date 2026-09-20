@@ -101,32 +101,34 @@ def syms : Expr → List Sym
   | .and a b    => a.syms ++ b.syms
   | .or a b     => a.syms ++ b.syms
 
-/-- Substitute the expression `v` for the symbol `α`: `e[α := v]`. -/
-def subst (α : Sym) (v : Expr) : Expr → Expr
-  | .val w      => .val w
-  | .sym β      => if β = α then v else .sym β
-  | .bin op a b => .bin op (subst α v a) (subst α v b)
-  | .eq a b     => .eq (subst α v a) (subst α v b)
-  | .le a b     => .le (subst α v a) (subst α v b)
-  | .not a      => .not (subst α v a)
-  | .and a b    => .and (subst α v a) (subst α v b)
-  | .or a b     => .or (subst α v a) (subst α v b)
+/-- Substitute the expression `v` for the symbol `α`: `e[α := v]`. The
+    expression substituted into comes first, so that `e.subst α v` reads as
+    it means. -/
+def subst : Expr → Sym → Expr → Expr
+  | .val w,      _, _ => .val w
+  | .sym β,      α, v => if β = α then v else .sym β
+  | .bin op a b, α, v => .bin op (subst a α v) (subst b α v)
+  | .eq a b,     α, v => .eq (subst a α v) (subst b α v)
+  | .le a b,     α, v => .le (subst a α v) (subst b α v)
+  | .not a,      α, v => .not (subst a α v)
+  | .and a b,    α, v => .and (subst a α v) (subst b α v)
+  | .or a b,     α, v => .or (subst a α v) (subst b α v)
 
-/-- Replace every occurrence of the subexpression `p` by `q`. This is the
-    environment `g = [val(e₂) ↦ val(e₁)]` of Forwarding (Definition
+/-- Replace every occurrence of the subexpression `p` by `q`, `e.replace p q`.
+    This is the environment `g = [val(e₂) ↦ val(e₁)]` of Forwarding (Definition
     `def:elab-fwd`), which for store-store forwarding maps an expression rather
     than a symbol. -/
-def replace (p q : Expr) (e : Expr) : Expr :=
+def replace (e : Expr) (p q : Expr) : Expr :=
   if e = p then q else
     match e with
     | .val w      => .val w
     | .sym β      => .sym β
-    | .bin op a b => .bin op (replace p q a) (replace p q b)
-    | .eq a b     => .eq (replace p q a) (replace p q b)
-    | .le a b     => .le (replace p q a) (replace p q b)
-    | .not a      => .not (replace p q a)
-    | .and a b    => .and (replace p q a) (replace p q b)
-    | .or a b     => .or (replace p q a) (replace p q b)
+    | .bin op a b => .bin op (a.replace p q) (b.replace p q)
+    | .eq a b     => .eq (a.replace p q) (b.replace p q)
+    | .le a b     => .le (a.replace p q) (b.replace p q)
+    | .not a      => .not (a.replace p q)
+    | .and a b    => .and (a.replace p q) (b.replace p q)
+    | .or a b     => .or (a.replace p q) (b.replace p q)
 termination_by e
 
 /-- Rename symbols along a relabelling, `⟦e⟧_Λ`; symbols outside the domain of
