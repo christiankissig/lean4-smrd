@@ -52,8 +52,17 @@ variable (es : EventStructure) (x : Execution)
 /-- `δ_J = ⋃_{j ∈ J} δ_j` -/
 def δ : FwdCtx := x.J.foldr (fun j δ => j.δ.union δ) .empty
 
-/-- `† = π₁ WE`: the events elided by the shared forwarding context. -/
-def elided : EvSet := fun e => ∃ p ∈ x.δ.we, p.1 = e
+/-- `† = π₂(F ∪ WE)`: the events `remap_δ` moves, the forwarded event of each
+    forwarding and the earlier, shadowed write of each write elision (stored
+    as `(e₂, e₁)`, see `Generated.we`). -/
+def elided : EvSet := fun e => ∃ p, (p ∈ x.δ.f ∨ p ∈ x.δ.we) ∧ p.2 = e
+
+/-- `†` is the set of events with an `F ∪ WE`-predecessor, those that
+    `remap_δ` does not fix by its second case. -/
+theorem elided_iff (e : EventId) : x.elided e ↔ ∃ a, x.δ.edge a e := by
+  constructor
+  · rintro ⟨⟨a, b⟩, h, rfl⟩; exact ⟨a, h⟩
+  · rintro ⟨a, h⟩; exact ⟨(a, e), h, rfl⟩
 
 /-- `⋀_{e ∈ X} valres(e)` -/
 def valresX : Pred := fun f => ∀ a e, x.X a → es.ev a = some e → e.valres.holds f
@@ -70,7 +79,9 @@ structure IsExecution (Ω : Pred) : Prop where
   rf_wr     : ∀ w r, x.rf w r → es.cls Event.isWrite w ∧ es.cls Event.isRead r ∧ x.X w ∧ x.X r
   /-- each read reads from at most one write -/
   rf_func   : ∀ w w' r, x.rf w r → x.rf w' r → w = w'
-  /-- every effectful event of `X` not elided is uniquely justified -/
+  /-- every effectful event of `X` not elided is uniquely justified; of the
+      elided events only writes are effectful, so the exemption reaches
+      writes only, and forwarded reads still need an `rf` (`phi`) -/
   justified : ∀ w, x.X w → es.cls Event.isEffect w → ¬ x.elided w →
     ∃ j ∈ x.J, j.w.id = w ∧ ∀ j' ∈ x.J, j'.w.id = w → j' = j
 
