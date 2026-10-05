@@ -153,7 +153,8 @@ inductive Generated (Ω : Pred) : Justification → Prop
       Sat (Pred.and P'.holds Ω) →
       Generated Ω { j₁ with P := P' }
   /-- Forwarding (Definition `def:elab-fwd`) along `e₁ -F_{j₁}→ e₂`, applying
-      `g = [val(e₂) ↦ val(e₁)]` to the predicate and to the justified write. -/
+      `g = [val(e₂) ↦ val(e₁)]` to the predicate and to the justified write.
+      The extended forwarding context must be well-formed (`def:fwd-ctx`). -/
   | fwd {j₁ : Justification} {o : MemOrd} {x e : Expr} {e₁ e₂ : EventId}
       {ev₁ ev₂ : Event} {v₁ v₂ : Expr} :
       Generated Ω j₁ →
@@ -161,16 +162,19 @@ inductive Generated (Ω : Pred) : Justification → Prop
       es.fwdRel j₁ e₁ e₂ →
       es.ev e₁ = some ev₁ → es.ev e₂ = some ev₂ →
       ev₁.val = some v₁ → ev₂.val = some v₂ →
+      FwdCtx.WF { j₁.δ with f := j₁.δ.f ++ [(e₁, e₂)] } →
       Sat (Pred.and (j₁.P.replace v₂ v₁).holds Ω) →
       Generated Ω
         { P := j₁.P.replace v₂ v₁
           D := (e.replace v₂ v₁).syms ++ (x.replace v₂ v₁).syms
           δ := { j₁.δ with f := j₁.δ.f ++ [(e₁, e₂)] }
           w := { j₁.w with kind := .write o (x.replace v₂ v₁) (e.replace v₂ v₁) } }
-  /-- Write Elision (Definition `def:elab-we`), adding `(e₂, e₁)` to `WE`. -/
+  /-- Write Elision (Definition `def:elab-we`), adding `(e₂, e₁)` to `WE`; the
+      extended forwarding context must be well-formed (`def:fwd-ctx`). -/
   | we {j₁ : Justification} {e₁ e₂ : EventId} :
       Generated Ω j₁ →
       es.weRel j₁ e₁ e₂ →
+      FwdCtx.WF { j₁.δ with we := j₁.δ.we ++ [(e₂, e₁)] } →
       Sat (Pred.and j₁.P.holds Ω) →
       Generated Ω { j₁ with δ := { j₁.δ with we := j₁.δ.we ++ [(e₂, e₁)] } }
   /-- Lifting (Definition `def:elab-lift`): `(⟦P₁⟧_Λ ∨ P₂, D₂) ⊢^δ w₂`. -/
@@ -199,7 +203,7 @@ theorem Generated.sat {Ω : Pred} {j : Justification} (h : es.Generated Ω j) :
     Sat j.P.holds ∨ ∃ w ∈ es.events, preJust w = some j := by
   cases h with
   | pre hw hj _ => exact Or.inr ⟨_, hw, hj⟩
-  | va _ _ _ hs | fwd _ _ _ _ _ _ _ hs | we _ _ hs =>
+  | va _ _ _ hs | fwd _ _ _ _ _ _ _ _ hs | we _ _ _ hs =>
       obtain ⟨f, hP, _⟩ := hs; exact Or.inl ⟨f, hP⟩
   | str _ _ _ _ _ _ hs | weak _ _ _ hs =>
       obtain ⟨f, hP, _⟩ := hs; exact Or.inl ⟨f, hP⟩

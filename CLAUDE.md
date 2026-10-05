@@ -52,7 +52,7 @@ Smrd.Types                        expressions, values, events, event structures,
 ```
 
 `Smrd.Basic` re-exports all of the above and is the library root (`Smrd.lean` imports it).
-Each module header lists its deviations from the paper (strict `⊑`, …).
+Each module header lists its deviations from the paper (the relational `remap_δ`, …).
 
 Renaming or changing the signature of a definition here can break `lean4-episodic-loops`. It
 sees a change only once pushed to `main`, after `lake update lean4-smrd` there; run that and

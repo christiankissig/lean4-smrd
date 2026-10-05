@@ -24,19 +24,8 @@ carried by `valres` alone.
 
 ## Deviations from the paper
 
-* **Strict program order.** The prefix `e[φ]·𝔼` of the paper adds
-  `{e} × ({e} ∪ E)` to `⊑`, making `⊑` reflexive. We add `{e} × E` only. With
-  the reflexive pairs, `⊑ ; Δ_{W_rel,sc}` would contain `(w, w)` for every
-  releasing write, so `≼_sync` would not be irreflexive as Appendix A.2 claims,
-  `≼_alias` would contain `(e, e)` for every access, and `No-Thin-Air` would
-  fail for every execution containing an access.
 * **Loop identifiers** are part of the `while` syntax, as the paper assumes
   in Section 3.1.
-* **Dereferences** occur only as the pointer of `r := *e` and `*e₁ := e₂`.
-  The grammar of Definition `def:expressions` admits `*e` inside arithmetic
-  expressions, but Definition `def:gen-es` gives it no semantics there.
-* The branching event of an `if` carries the value restriction `φ` of its
-  context; the paper writes it without one.
 * An unassigned register reads as `0`.
 -/
 
@@ -115,7 +104,8 @@ def Stmt.loops : Stmt → List LoopId
 namespace EventStructure
 
 /-- The prefix `e[φ_e] · (E, ⊑, ⊑ʳᵐʷ, valres)`; the value restriction is
-    carried by `e`. Program order is strict, see the module header. -/
+    carried by `e`. Program order is strict: `e` is ordered before the events
+    of `E` only, `{e} × E`. -/
 def «prefix» (e : Event) (k : EventStructure) : EventStructure :=
   { events := e :: k.events
     po     := k.events.map (fun e' => (e.id, e'.id)) ++ k.po

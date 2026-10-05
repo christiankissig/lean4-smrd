@@ -76,6 +76,8 @@ structure IsExecution (Ω : Pred) : Prop where
   generated : ∀ j ∈ x.J, es.Generated Ω j
   inX       : ∀ j ∈ x.J, x.X j.w.id
   consistent : Sat (Pred.and (x.predJ) (x.valresX es))
+  /-- the shared forwarding context is well-formed (`def:fwd-ctx`) -/
+  fwdWF     : x.δ.WF
   rf_wr     : ∀ w r, x.rf w r → es.cls Event.isWrite w ∧ es.cls Event.isRead r ∧ x.X w ∧ x.X r
   /-- each read reads from at most one write -/
   rf_func   : ∀ w w' r, x.rf w r → x.rf w' r → w = w'
