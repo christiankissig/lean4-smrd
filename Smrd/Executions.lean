@@ -107,18 +107,39 @@ def ppo : Rel := fun a b =>
     x.X a ∧ x.X b ∧
     (a = j.w.id ∨ es.poR a j.w.id) ∧ (b = j.w.id ∨ es.poR b j.w.id)
 
+/-- The intra-thread dependency order `≼ ∪ DP`. -/
+def dep : Rel := (x.ppo es).union (x.DP)
+
+/-- `nta ≜ (DP ∪ ≼ ∪ rf)⁺` -/
+def nta : Rel := Rel.plus ((x.dep es).union x.rf)
+
+/-- A deallocation `d ∈ X` frees the location `f α` of an allocation. -/
+def Frees (f : Valuation) (d : EventId) (α : Sym) : Prop :=
+  ∃ ed l, x.X d ∧ es.ev d = some ed ∧ ed.kind = .dealloc l ∧ l.eval f = some (f α)
+
+/-- A deallocation `d` of the location of an allocation (symbol `α`) is
+    *intermediate* for it and a second allocation `a'` if it is not ordered
+    after `a'`, `(a', d) ∉ (DP ∪ ≼ ∪ rf)⁺`. The condition is negative: an
+    allocator may hand a released region back to another thread without the
+    program ordering the deallocation before the allocation (C11 7.22.3p2). -/
+def Intermediate (f : Valuation) (d : EventId) (α : Sym) (a' : EventId) : Prop :=
+  x.Frees es f d α ∧ ¬ x.nta es a' d
+
 /-- Disjointness of memory locations: the location an allocation introduces is
-    not a global, and differs from that of any other allocation unless a
-    deallocation of `X` frees one of the two. The paper leaves the order of the
-    "intermediate" deallocation unspecified; we ask for none at all. -/
+    not a global, and differs from that of any other allocation unless `X`
+    contains a deallocation of one of the two locations that is intermediate
+    for it and the other.
+
+    Not yet in the paper, nor here: the synchronisation edge `(d, a')` of the
+    allocator, which would enter `SW`, and so `HB`, where `a'` reuses the
+    location `d` frees. -/
 def allocDisjoint : Pred := fun f =>
   (∀ a e α sz, x.X a → es.ev a = some e → e.kind = .alloc α sz →
       ∀ y o, f α ≠ .loc ⟨.global y, o⟩) ∧
   (∀ a₁ a₂ e₁ e₂ α₁ α₂ s₁ s₂, x.X a₁ → x.X a₂ → a₁ ≠ a₂ →
     es.ev a₁ = some e₁ → es.ev a₂ = some e₂ →
     e₁.kind = .alloc α₁ s₁ → e₂.kind = .alloc α₂ s₂ →
-    (¬ ∃ d ed l, x.X d ∧ es.ev d = some ed ∧ ed.kind = .dealloc l ∧
-        (l.eval f = some (f α₁) ∨ l.eval f = some (f α₂))) →
+    (¬ ∃ d, x.Intermediate es f d α₁ a₂ ∨ x.Intermediate es f d α₂ a₁) →
     f α₁ ≠ f α₂)
 
 /-- `φ_rf`: equal locations and values along `rf`, and disjoint allocations. -/
@@ -135,12 +156,6 @@ def phi : Prop :=
   Sat (Pred.and (x.P es) (x.phiRf es))
 
 /-! ## Axiomatic memory consistency model -/
-
-/-- The intra-thread dependency order `≼ ∪ DP`. -/
-def dep : Rel := (x.ppo es).union (x.DP)
-
-/-- `nta ≜ (DP ∪ ≼ ∪ rf)⁺` -/
-def nta : Rel := Rel.plus ((x.dep es).union x.rf)
 
 /-- `No-Thin-Air`: `DP ∪ ≼ ∪ rf` is acyclic. -/
 def NoThinAir : Prop := Rel.Acyclic ((x.dep es).union x.rf)
