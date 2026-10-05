@@ -42,12 +42,13 @@ semantic (`Pred := Valuation → Prop`), and syntactic predicates are `Expr`s de
 
 ```
 Smrd.Types                        expressions, values, events, event structures, relations
+├── Smrd.Conjuncts                `conj(P)`, predicates read up to their conjuncts (par:conj)
 ├── Smrd.EventStructureSemantics  program syntax, CPS semantics ⟨P⟩_{n ρ κ φ}, per-loop step-counters
 │     ├── Smrd.Fresh            `denote_ids_nodup`: the events of ⟨P⟩_n have distinct ids
 │     └── Smrd.Monotonicity     `denote_mono`: ⟨P⟩_n embeds into ⟨P⟩_{n'} for n ≤ n' (l:es-mono)
 └── Smrd.Forwardingcontext        δ = (F, WE), ψ_δ, remap_δ
       └── Smrd.Ppo                ≼_sync, ≼_rmw, ≼_alias, ≼^P_δ, pred, dependence on P
-            └── Smrd.Justifications  pre-justifications, elaborations, `Generated` (𝕁)
+            └── Smrd.Justifications  (+ Smrd.Conjuncts) pre-justifications, elaborations, `Generated` (𝕁)
                   └── Smrd.Executions  executions, freeze (DP, ≼, φ), NTA, coherence, UAF, `Frozen`
 ```
 

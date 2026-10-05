@@ -1,6 +1,7 @@
 import Smrd.Types
 import Smrd.Forwardingcontext
 import Smrd.Ppo
+import Smrd.Conjuncts
 
 /-!
 # Justifications (Appendix A.3–A.5)
@@ -189,10 +190,12 @@ inductive Generated (Ω : Pred) : Justification → Prop
       Sat (Pred.and (Expr.or (j₁.P.rename Λ) j₂.P).holds Ω) →
       Generated Ω { j₂ with P := .or (j₁.P.rename Λ) j₂.P }
   /-- Weakening (Definition `def:elab-weak`): drop a conjunct the global
-      guarantees imply. -/
+      guarantees imply. Predicates are read up to their conjuncts
+      (Paragraph `par:conj`), so `j₁.P` is `P' ∧ Pw` up to `ConjEq`, and any
+      one conjunct can be dropped. -/
   | weak {j₁ : Justification} {P' Pw : Expr} :
       Generated Ω j₁ →
-      j₁.P = .and P' Pw →
+      j₁.P.ConjEq (.and P' Pw) →
       Entails Ω Pw.holds →
       Sat (Pred.and P'.holds Ω) →
       Generated Ω { j₁ with P := P' }
