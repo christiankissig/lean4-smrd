@@ -261,19 +261,26 @@ def MapsInj (θ : Nat → Nat) (a₁ b₁ a₂ b₂ : Nat) : Prop :=
   (∀ i, a₁ ≤ i → i < b₁ → a₂ ≤ θ i ∧ θ i < b₂) ∧
   (∀ i i', a₁ ≤ i → i < b₁ → a₁ ≤ i' → i' < b₁ → θ i = θ i' → i = i')
 
-/-- The run of `m₁` simulates into the run of `m₂`: from any states above the
-    bounds `bI` (ids) and `bT` (threads), there are renamings extending `θ₀` and
-    `τ₀` below the bounds that map the ids `m₁` allocates injectively onto ids
-    `m₂` allocates, under which -- and under any further extension -- the
-    structure `m₁` generates embeds into the one `m₂` generates. -/
-def Sim (θ₀ τ₀ : Nat → Nat) (bI bT : Nat) (m₁ m₂ : Gen EventStructure) : Prop :=
+/-- The run of `m₁` simulates into the run of `m₂`, for an embedding relation
+    `Emb`: from any states above the bounds `bI` (ids) and `bT` (threads), there
+    are renamings extending `θ₀` and `τ₀` below the bounds that map the ids `m₁`
+    allocates injectively onto ids `m₂` allocates, under which -- and under any
+    further extension -- the structure `m₁` generates embeds into the one `m₂`
+    generates. The combinators below are generic in `Emb`; `Sim` takes
+    `Embeds`, and `lean4-episodic-loops` instantiates `Emb` with the
+    correspondence of `γ`. -/
+def SimBy (Emb : (Nat → Nat) → (Nat → Nat) → EventStructure → EventStructure → Prop)
+    (θ₀ τ₀ : Nat → Nat) (bI bT : Nat) (m₁ m₂ : Gen EventStructure) : Prop :=
   ∀ σ₁ σ₂ : GenState, bI ≤ σ₁.nextId → bT ≤ σ₁.nextThread →
     σ₁.nextId ≤ (m₁.run σ₁).2.nextId ∧ σ₁.nextThread ≤ (m₁.run σ₁).2.nextThread ∧
     σ₂.nextId ≤ (m₂.run σ₂).2.nextId ∧
     ∃ θ τ, Agree θ θ₀ bI ∧ Agree τ τ₀ bT ∧
       MapsInj θ σ₁.nextId (m₁.run σ₁).2.nextId σ₂.nextId (m₂.run σ₂).2.nextId ∧
       ∀ θ' τ', Agree θ' θ (m₁.run σ₁).2.nextId → Agree τ' τ (m₁.run σ₁).2.nextThread →
-        Embeds θ' τ' (m₁.run σ₁).1 (m₂.run σ₂).1
+        Emb θ' τ' (m₁.run σ₁).1 (m₂.run σ₂).1
+
+/-- `SimBy` for the embedding `Embeds`. -/
+abbrev Sim := SimBy Embeds
 
 /-- Continuations simulate: related arguments give simulating runs. -/
 def KSim (θ₀ τ₀ : Nat → Nat) (bI bT : Nat) (κ₁ κ₂ : Cont) : Prop :=
@@ -299,25 +306,26 @@ theorem MapsInj.congr {θ θ' : Nat → Nat} {a₁ b₁ a₂ b₂ : Nat} (h : Ma
   · rw [ha i h₂]; exact h.1 i h₁ h₂
   · rw [ha i h₂, ha i' h₄] at he; exact h.2 i i' h₁ h₂ h₃ h₄ he
 
-namespace Sim
+namespace SimBy
 
-variable {θ₀ τ₀ : Nat → Nat} {bI bT : Nat}
+variable {Emb : (Nat → Nat) → (Nat → Nat) → EventStructure → EventStructure → Prop}
+  {θ₀ τ₀ : Nat → Nat} {bI bT : Nat}
 
 /-- The empty structure simulates into anything. -/
-theorem empty {m₂ : Gen EventStructure} (h₂ : Gen.Fresh m₂) :
-    Sim θ₀ τ₀ bI bT (pure EventStructure.empty) m₂ := by
+theorem empty (hE : ∀ θ τ E, Emb θ τ EventStructure.empty E) {m₂ : Gen EventStructure}
+    (h₂ : Gen.Fresh m₂) : SimBy Emb θ₀ τ₀ bI bT (pure EventStructure.empty) m₂ := by
   intro σ₁ σ₂ _ _
   refine ⟨Nat.le_refl _, Nat.le_refl _, (h₂ σ₂).1, θ₀, τ₀, Agree.refl _ _, Agree.refl _ _,
     ⟨fun i h₁ h₂ => absurd (Nat.lt_of_le_of_lt h₁ h₂) (Nat.lt_irrefl _),
      fun i _ h₁ h₂ => absurd (Nat.lt_of_le_of_lt h₁ h₂) (Nat.lt_irrefl _)⟩,
-    fun _ _ _ _ => Embeds.empty _⟩
+    fun _ _ _ _ => hE _ _ _⟩
 
 /-- Map the structures on both sides. -/
 theorem map {A₁ A₂ : Gen EventStructure} {f₁ f₂ : EventStructure → EventStructure}
-    (h : Sim θ₀ τ₀ bI bT A₁ A₂)
-    (hf : ∀ θ τ k₁ k₂, Agree θ θ₀ bI → Agree τ τ₀ bT → Embeds θ τ k₁ k₂ →
-      Embeds θ τ (f₁ k₁) (f₂ k₂)) :
-    Sim θ₀ τ₀ bI bT (do let k ← A₁; pure (f₁ k)) (do let k ← A₂; pure (f₂ k)) := by
+    (h : SimBy Emb θ₀ τ₀ bI bT A₁ A₂)
+    (hf : ∀ θ τ k₁ k₂, Agree θ θ₀ bI → Agree τ τ₀ bT → Emb θ τ k₁ k₂ →
+      Emb θ τ (f₁ k₁) (f₂ k₂)) :
+    SimBy Emb θ₀ τ₀ bI bT (do let k ← A₁; pure (f₁ k)) (do let k ← A₂; pure (f₂ k)) := by
   intro σ₁ σ₂ hI hT
   have hr₁ : StateT.run (do let k ← A₁; pure (f₁ k) : Gen EventStructure) σ₁
       = (f₁ (A₁.run σ₁).1, (A₁.run σ₁).2) := rfl
@@ -332,9 +340,9 @@ theorem map {A₁ A₂ : Gen EventStructure} {f₁ f₂ : EventStructure → Eve
 /-- Generate one event on each side: the first id maps to the second. -/
 theorem mk {ctx₁ ctx₂ : Ctx} {pc₁ pc₂ : List Nat} {φ₁ φ₂ : List Guard}
     {kind₁ kind₂ : EventId → EventKind} {M₁ M₂ : Event → Gen EventStructure}
-    (hM : ∀ i j, bI ≤ i → Sim (upd θ₀ i j) τ₀ (i + 1) bT
+    (hM : ∀ i j, bI ≤ i → SimBy Emb (upd θ₀ i j) τ₀ (i + 1) bT
       (M₁ (mkE ctx₁ pc₁ φ₁ kind₁ i)) (M₂ (mkE ctx₂ pc₂ φ₂ kind₂ j))) :
-    Sim θ₀ τ₀ bI bT (do let e ← mkEvent ctx₁ pc₁ φ₁ kind₁; M₁ e)
+    SimBy Emb θ₀ τ₀ bI bT (do let e ← mkEvent ctx₁ pc₁ φ₁ kind₁; M₁ e)
       (do let e ← mkEvent ctx₂ pc₂ φ₂ kind₂; M₂ e) := by
   intro σ₁ σ₂ hI hT
   have hr₁ : StateT.run (do let e ← mkEvent ctx₁ pc₁ φ₁ kind₁; M₁ e : Gen EventStructure) σ₁
@@ -368,8 +376,8 @@ theorem mk {ctx₁ ctx₂ : Ctx} {pc₁ pc₂ : List Nat} {φ₁ φ₂ : List Gu
 
 /-- Allocate a fresh thread on each side: the first maps to the second. -/
 theorem thread {M₁ M₂ : ThreadId → Gen EventStructure}
-    (hM : ∀ t₁ t₂, bT ≤ t₁ → Sim θ₀ (upd τ₀ t₁ t₂) bI (t₁ + 1) (M₁ t₁) (M₂ t₂)) :
-    Sim θ₀ τ₀ bI bT (do let t ← freshThread; M₁ t) (do let t ← freshThread; M₂ t) := by
+    (hM : ∀ t₁ t₂, bT ≤ t₁ → SimBy Emb θ₀ (upd τ₀ t₁ t₂) bI (t₁ + 1) (M₁ t₁) (M₂ t₂)) :
+    SimBy Emb θ₀ τ₀ bI bT (do let t ← freshThread; M₁ t) (do let t ← freshThread; M₂ t) := by
   intro σ₁ σ₂ hI hT
   have hr₁ : StateT.run (do let t ← freshThread; M₁ t : Gen EventStructure) σ₁
       = (M₁ σ₁.nextThread).run ⟨σ₁.nextId, σ₁.nextThread + 1⟩ := rfl
@@ -383,11 +391,12 @@ theorem thread {M₁ M₂ : ThreadId → Gen EventStructure}
 
 /-- Two generators in sequence on each side, combined. -/
 theorem seq2 {A₁ A₂ B₁ B₂ : Gen EventStructure} {f₁ f₂ : EventStructure → EventStructure → EventStructure}
-    (hA : Sim θ₀ τ₀ bI bT A₁ A₂)
-    (hB : ∀ θ τ b b', bI ≤ b → bT ≤ b' → Agree θ θ₀ bI → Agree τ τ₀ bT → Sim θ τ b b' B₁ B₂)
-    (hf : ∀ θ τ k₁ k₂ k₁' k₂', Agree θ θ₀ bI → Agree τ τ₀ bT → Embeds θ τ k₁ k₂ →
-      Embeds θ τ k₁' k₂' → Embeds θ τ (f₁ k₁ k₁') (f₂ k₂ k₂')) :
-    Sim θ₀ τ₀ bI bT (do let k ← A₁; let k' ← B₁; pure (f₁ k k'))
+    (hA : SimBy Emb θ₀ τ₀ bI bT A₁ A₂)
+    (hB : ∀ θ τ b b', bI ≤ b → bT ≤ b' → Agree θ θ₀ bI → Agree τ τ₀ bT →
+      SimBy Emb θ τ b b' B₁ B₂)
+    (hf : ∀ θ τ k₁ k₂ k₁' k₂', Agree θ θ₀ bI → Agree τ τ₀ bT → Emb θ τ k₁ k₂ →
+      Emb θ τ k₁' k₂' → Emb θ τ (f₁ k₁ k₁') (f₂ k₂ k₂')) :
+    SimBy Emb θ₀ τ₀ bI bT (do let k ← A₁; let k' ← B₁; pure (f₁ k k'))
       (do let k ← A₂; let k' ← B₂; pure (f₂ k k')) := by
   intro σ₁ σ₂ hI hT
   have hr₁ : StateT.run (do let k ← A₁; let k' ← B₁; pure (f₁ k k') : Gen EventStructure) σ₁
@@ -428,7 +437,7 @@ theorem seq2 {A₁ A₂ B₁ B₂ : Gen EventStructure} {f₁ f₂ : EventStruct
       ((hτ''.trans hτ' t₁').trans hτ (Nat.le_trans hT t₁))
       (hemb θ'' τ'' (hθ''.trans hθ' m₁') (hτ''.trans hτ' t₁')) (hemb' θ'' τ'' hθ'' hτ'')
 
-end Sim
+end SimBy
 
 /-! ## The interpreter simulates into itself under larger step-counters -/
 
@@ -490,7 +499,7 @@ macro "nomega" : tactic => `(tactic| ((try simp only [mkE_id] at *) <;> first
   | (unfold EventId ThreadId at *; omega)
   | (unfold EventId Sym ThreadId at *; omega)))
 
-open Sim in
+open SimBy in
 /-- **The simulation.** Under per-loop step-counters `n₁ ≤ n₂`, the run of
     `⟨s⟩_{n₁}` simulates into the run of `⟨s⟩_{n₂}`, given related register
     states, value restrictions, contexts and continuations. -/
@@ -709,7 +718,7 @@ theorem interp_sim : ∀ (N : Nat) (s : Stmt) (n₁ n₂ : Bounds) (ctx ctx₂ :
         · rw [interp.eq_def n₁ ctx pc]
           dsimp only
           rw [dif_pos h₁]
-          exact empty (interp_fresh _ n₂ _ _ _ ρ₂ κ₂ _ (Nat.lt_succ_self _) hfr)
+          exact empty (fun _ _ E => Embeds.empty E) (interp_fresh _ n₂ _ _ _ ρ₂ κ₂ _ (Nat.lt_succ_self _) hfr)
         · have h₂ : ¬ n₂ ℓ = 0 := by have := hn ℓ; nomega
           rw [interp.eq_def n₁ ctx pc, interp.eq_def n₂ _ pc]
           dsimp only
@@ -764,7 +773,7 @@ theorem denote_mono (P : Stmt) (n₁ n₂ : Bounds) (h : ∀ ℓ, n₁ ℓ ≤ n
     (fun _ _ => pure .empty) id id 0 1 (Nat.lt_succ_self _) h rfl rfl (fun _ => rfl)
     (fun r α hα => by simp [RegState.get, Expr.num, Expr.syms] at hα) (fun g hg => by simp at hg)
     (by decide)
-    (fun _ _ _ _ _ _ _ _ _ _ _ _ _ _ => Sim.empty Gen.Fresh.pure_empty)
+    (fun _ _ _ _ _ _ _ _ _ _ _ _ _ _ => SimBy.empty (fun _ _ E => Embeds.empty E) Gen.Fresh.pure_empty)
     (fun _ _ => Gen.Fresh.pure_empty)
   obtain ⟨_, _, _, θ, τ, _, _, hmap, hemb⟩ := hsim {} {} (Nat.le_refl _) (Nat.le_refl _)
   have hfr := interp_fresh _ n₁ ⟨0, []⟩ [] P [] (fun _ _ => pure .empty) [] (Nat.lt_succ_self _)
