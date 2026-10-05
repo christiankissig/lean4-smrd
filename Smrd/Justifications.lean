@@ -120,6 +120,25 @@ inductive ClosedRelabEq (δ : FwdCtx) (Λ : Relabelling) : Expr → Event → Ex
 
 /-! ## Generating justifications (Definition `def:gen-just`) -/
 
+/-- `valres(e)` of an event id, `⊤` for an id with no event. -/
+def valresOf (e : EventId) : Expr := ((es.ev e).map Event.valres).getD Expr.tt
+
+/-- The predicate Strengthening produces, `P ∧ Q ∧ ⋀_{e ∈ S} valres(e)`. -/
+def strPred (P Q : Expr) (S : List EventId) : Expr :=
+  .and P (.and Q (Expr.conj (S.map es.valresOf)))
+
+theorem strPred_holds {P Q : Expr} {S : List EventId} {f : Valuation}
+    (h : (es.strPred P Q S).holds f) : P.holds f :=
+  ((Expr.holds_and _ _ f).1 h).1
+
+theorem syms_strPred {P Q : Expr} {S : List EventId} :
+    ∀ α ∈ P.syms, α ∈ (es.strPred P Q S).syms :=
+  fun _ h => List.mem_append_left _ h
+
+theorem conjuncts_strPred {P Q : Expr} {S : List EventId} :
+    ∀ c ∈ P.conjuncts, c ∈ (es.strPred P Q S).conjuncts :=
+  fun _ h => List.mem_append_left _ h
+
 /-- `j ∈ 𝕁`, relative to the global guarantees `Ω`. Every elaboration asks
     that the predicate it produces be consistent with `Ω`,
     `P_j ∧ Ω ≢ ⊥`. -/
@@ -141,18 +160,20 @@ inductive Generated (Ω : Pred) : Justification → Prop
           D := (x.subst α (.val v)).syms ++ (e.subst α (.val v)).syms
           δ := j₁.δ
           w := { j₁.w with kind := .write o (x.subst α (.val v)) (e.subst α (.val v)) } }
-  /-- Strengthening (Definition `def:elab-str`), with
-      `S = origin(symbols(P')) ∖ origin(symbols(P))`. -/
-  | str {j₁ : Justification} (P' : Expr) :
+  /-- Strengthening (Definition `def:elab-str`): conjoin a predicate `Q` and
+      the value restrictions of the origins `S` it introduces,
+      `P' = P ∧ Q ∧ ⋀_{e ∈ S} valres(e)`, with
+      `S = origin(symbols(P')) ∖ origin(symbols(P))`. The equation for `S` is
+      a fixed point, as `valres(e)` may itself bring in symbols; `S` is given
+      and checked against it. `P'` is built syntactically, so
+      `symbols(P') ⊇ symbols(P)` and `P'` entails `P`. -/
+  | str {j₁ : Justification} (Q : Expr) (S : List EventId) :
       Generated Ω j₁ →
-      (∀ e, e ∈ P'.syms → e ∉ j₁.P.syms → j₁.δ.Remap e e) →
-      (∀ e, e ∈ P'.syms → e ∉ j₁.P.syms →
-        (es.poR e j₁.w.id ∨ es.poR j₁.w.id e) ∧ ¬ es.ppo j₁.P.holds j₁.δ j₁.w.id e) →
-      Entails P'.holds j₁.P.holds →
-      (∀ e ev, e ∈ P'.syms → e ∉ j₁.P.syms → es.ev e = some ev →
-        Entails P'.holds ev.valres.holds) →
-      Sat (Pred.and P'.holds Ω) →
-      Generated Ω { j₁ with P := P' }
+      (∀ e, e ∈ S ↔ e ∈ (strPred es j₁.P Q S).syms ∧ e ∉ j₁.P.syms) →
+      (∀ e ∈ S, j₁.δ.Remap e e) →
+      (∀ e ∈ S, (es.poR e j₁.w.id ∨ es.poR j₁.w.id e) ∧ ¬ es.ppo j₁.P.holds j₁.δ j₁.w.id e) →
+      Sat (Pred.and (strPred es j₁.P Q S).holds Ω) →
+      Generated Ω { j₁ with P := strPred es j₁.P Q S }
   /-- Forwarding (Definition `def:elab-fwd`) along `e₁ -F_{j₁}→ e₂`, applying
       `g = [val(e₂) ↦ val(e₁)]` to the predicate and to the justified write.
       The extended forwarding context must be well-formed (`def:fwd-ctx`). -/
