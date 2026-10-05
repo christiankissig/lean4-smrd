@@ -4,8 +4,12 @@ import Smrd.Forwardingcontext
 /-!
 # Preserved Program Order (Definition `def:ppo`)
 
-`≼^P_δ ≜ remap_δ(≼_sync ∪ ≼_rmw ∪ ≼_alias)`, relative to a predicate `P` and a
-forwarding context `δ`, and the immediate-predecessor relation `pred_δ(e, P)`.
+`≼^P_δ ≜ remap_δ(≼_sync ∪ ≼_rmw ∪ ≼_alias) ∖ Δ_E`, relative to a predicate `P`
+and a forwarding context `δ`, and the immediate-predecessor relation
+`pred_δ(e, P)`. `≼_rmw` and `≼` are irreflexive by construction (`ppoRMW_irrefl`,
+`ppo_irrefl`): the read of an RMW `≼_sync`-before its own write gives `(e_r, e_r)`
+in `≼_rmw` before `Δ_E` is removed, and a read forwarded from a write
+`≼_alias`-before it is remapped onto that write.
 
 The predicate is semantic, so that the restricted predicates `⌈P⌉ᵢ` of
 Appendix B.2 (`EpisodicLoops.Restriction`, in `lean4-episodic-loops`) can be passed for `P`. The lemmas at the end
@@ -33,9 +37,9 @@ def ppoSync : Rel :=
 def rmwPairs (P : Pred) : Rel := fun w r =>
   ∃ ent ∈ es.rmw, ent.w = w ∧ ent.r = r ∧ EquivUnder P ent.cond Expr.tt
 
-/-- `≼_rmw ≜ ≼_sync ; rmwPairs ∪ rmwPairs ; ≼_sync` -/
+/-- `≼_rmw ≜ (≼_sync ; rmwPairs ∪ rmwPairs ; ≼_sync) ∖ Δ_E` -/
 def ppoRMW (P : Pred) : Rel :=
-  (es.ppoSync.comp (es.rmwPairs P)).union ((es.rmwPairs P).comp es.ppoSync)
+  ((es.ppoSync.comp (es.rmwPairs P)).union ((es.rmwPairs P).comp es.ppoSync)).offDiag
 
 /-- The alias query `∃ f. ⟦P ∧ loc(e₁) = loc(e₂)⟧_f ≡ ⊤` for two events. -/
 def mayAlias (P : Pred) (a b : EventId) : Prop :=
@@ -49,14 +53,33 @@ def ppoAlias (P : Pred) : Rel := fun a b => es.poR a b ∧ es.mayAlias P a b
 def ppoBase (P : Pred) : Rel :=
   (es.ppoSync.union (es.ppoRMW P)).union (es.ppoAlias P)
 
-/-- `≼^P_δ ≜ remap_δ(≼_sync ∪ ≼_rmw ∪ ≼_alias)` -/
-def ppo (P : Pred) (δ : FwdCtx) : Rel := δ.remapRel (es.ppoBase P)
+/-- `≼^P_δ ≜ remap_δ(≼_sync ∪ ≼_rmw ∪ ≼_alias) ∖ Δ_E` -/
+def ppo (P : Pred) (δ : FwdCtx) : Rel := (δ.remapRel (es.ppoBase P)).offDiag
+
+theorem ppoRMW_irrefl (P : Pred) (a : EventId) : ¬ es.ppoRMW P a a :=
+  fun h => h.2 rfl
+
+theorem ppo_irrefl (P : Pred) (δ : FwdCtx) (a : EventId) : ¬ es.ppo P δ a a :=
+  fun h => h.2 rfl
 
 /-- `pred_δ(e, P)`: the immediate `≼^P_δ`-predecessors of `e`,
-    `{e' | e' ≼ e ∧ e ≠ e' ∧ ∀ e''. e' ≼ e'' ≼ e ⇒ (e' = e'' ∨ e'' = e)}`. -/
+    `{e' | e' ≼ e ∧ ¬∃ e''. e' ≼ e'' ≼ e}`. -/
 def pred (δ : FwdCtx) (e : EventId) (P : Pred) : EvSet := fun e' =>
-  es.ppo P δ e' e ∧ e ≠ e' ∧
-    ∀ e'', es.ppo P δ e' e'' → es.ppo P δ e'' e → e' = e'' ∨ e'' = e
+  es.ppo P δ e' e ∧ ¬ ∃ e'', es.ppo P δ e' e'' ∧ es.ppo P δ e'' e
+
+/-- The form of `pred` before `≼` was made irreflexive, with the endpoints
+    excluded explicitly, is equivalent to the paper's. -/
+theorem pred_iff (δ : FwdCtx) (e : EventId) (P : Pred) (e' : EventId) :
+    es.pred δ e P e' ↔ es.ppo P δ e' e ∧ e ≠ e' ∧
+      ∀ e'', es.ppo P δ e' e'' → es.ppo P δ e'' e → e' = e'' ∨ e'' = e := by
+  constructor
+  · rintro ⟨h, hn⟩
+    exact ⟨h, fun heq => h.2 heq.symm, fun e'' h₁ h₂ => absurd ⟨e'', h₁, h₂⟩ hn⟩
+  · rintro ⟨h, -, hall⟩
+    refine ⟨h, fun ⟨e'', h₁, h₂⟩ => ?_⟩
+    rcases hall e'' h₁ h₂ with rfl | rfl
+    · exact h₁.2 rfl
+    · exact h₂.2 rfl
 
 /-! ## Dependence on the predicate -/
 
@@ -77,9 +100,9 @@ theorem rmwPairs_anti {P Q : Pred} (h : Entails P Q) :
 /-- A weaker predicate entails fewer read-modify-write conditions. -/
 theorem ppoRMW_anti {P Q : Pred} (h : Entails P Q) :
     Rel.Subset (es.ppoRMW Q) (es.ppoRMW P) := by
-  rintro a c (⟨b, hs, hr⟩ | ⟨b, hr, hs⟩)
-  · exact Or.inl ⟨b, hs, es.rmwPairs_anti h _ _ hr⟩
-  · exact Or.inr ⟨b, es.rmwPairs_anti h _ _ hr, hs⟩
+  rintro a c ⟨⟨b, hs, hr⟩ | ⟨b, hr, hs⟩, hne⟩
+  · exact ⟨Or.inl ⟨b, hs, es.rmwPairs_anti h _ _ hr⟩, hne⟩
+  · exact ⟨Or.inr ⟨b, es.rmwPairs_anti h _ _ hr, hs⟩, hne⟩
 
 /-- `≼` depends on the predicate only through the alias queries and the
     entailment of read-modify-write conditions. -/
@@ -94,13 +117,13 @@ theorem ppoBase_congr {P Q : Pred}
     · rintro ⟨ent, hm, hw, hr, hc⟩; exact ⟨ent, hm, hw, hr, (hrmw ent hm).1 hc⟩
     · rintro ⟨ent, hm, hw, hr, hc⟩; exact ⟨ent, hm, hw, hr, (hrmw ent hm).2 hc⟩
   intro a b
-  simp only [ppoBase, ppoRMW, ppoAlias, Rel.union, Rel.comp, hpairs, halias]
+  simp only [ppoBase, ppoRMW, ppoAlias, Rel.union, Rel.comp, Rel.offDiag, hpairs, halias]
 
 theorem ppo_congr {P Q : Pred} (δ : FwdCtx)
     (h : ∀ a b, es.ppoBase P a b ↔ es.ppoBase Q a b) :
     ∀ a b, es.ppo P δ a b ↔ es.ppo Q δ a b := by
   intro a b
-  simp only [ppo, FwdCtx.remapRel, h]
+  simp only [ppo, Rel.offDiag, FwdCtx.remapRel, h]
 
 /-- `pred` depends on the predicate only through `≼`. -/
 theorem pred_congr {P Q : Pred} (δ : FwdCtx) (e : EventId)

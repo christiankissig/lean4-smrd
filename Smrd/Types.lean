@@ -412,6 +412,8 @@ def excl (R : Rel) (X : EvSet) : Rel := fun a b => R a b ∧ ¬ X a ∧ ¬ X b
 /-- `R ∩ X²` -/
 def restrict (R : Rel) (X : EvSet) : Rel := fun a b => R a b ∧ X a ∧ X b
 def Subset (R S : Rel) : Prop := ∀ a b, R a b → S a b
+/-- `R ∖ Δ_E` -/
+def offDiag (R : Rel) : Rel := fun a b => R a b ∧ a ≠ b
 
 /-- `R⁺` -/
 abbrev plus (R : Rel) : Rel := Relation.TransGen R
