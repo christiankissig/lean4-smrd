@@ -331,3 +331,84 @@ theorem denote_ids_nodup (n : Bounds) (P : Stmt) : (denote n P).ids.Nodup :=
 theorem denote_ev (n : Bounds) (P : Stmt) {e : Event} (he : e ∈ (denote n P).events) :
     (denote n P).ev e.id = some e :=
   EventStructure.ev_of_mem (denote_ids_nodup n P) he
+
+/-! ## Structural invariants of the generated structures -/
+
+/-- A property of event structures closed under the combinators the
+    interpreter builds them with. -/
+structure ESInv (Q : EventStructure → Prop) : Prop where
+  empty  : Q EventStructure.empty
+  «prefix» : ∀ e k, Q k → Q (EventStructure.prefix e k)
+  plus   : ∀ k k', Q k → Q k' → Q (k.plus k')
+  addRMW : ∀ k r c w, Q k → Q (k.addRMW r c w)
+
+/-- Every structure `m` generates has the property `Q`. -/
+def Gen.Holds (Q : EventStructure → Prop) (m : Gen EventStructure) : Prop :=
+  ∀ s : GenState, Q (m.run s).1
+
+open EventStructure in
+/-- The structures `⟨s⟩` generates have every property closed under the
+    combinators, provided the continuation's do. -/
+theorem interp_inv {Q : EventStructure → Prop} (hQ : ESInv Q) :
+    ∀ (N : Nat) (n : Bounds) (ctx : Ctx) (pc : List Nat) (s : Stmt)
+    (ρ : RegState) (κ : Cont) (φ : List Guard),
+    sumB s.loops n + sizeOf s < N → (∀ ρ φ, Gen.Holds Q (κ ρ φ)) →
+    Gen.Holds Q (interp n ctx pc s ρ κ φ)
+  | 0, _, _, _, _, _, _, _, hN, _ => absurd hN (Nat.not_lt_zero _)
+  | N + 1, n, ctx, pc, s, ρ, κ, φ, hN, hκ => by
+    have pre1 : ∀ (kind : EventId → EventKind) (m : Event → Gen EventStructure),
+        (∀ e, Gen.Holds Q (m e)) →
+        Gen.Holds Q (do let e ← mkEvent ctx pc φ kind; let k ← m e; pure («prefix» e k)) :=
+      fun kind m hm σ => hQ.prefix _ _ (hm _ _)
+    cases s with
+    | skip => rw [interp.eq_def]; exact hκ _ _
+    | assign r e => rw [interp.eq_def]; exact hκ _ _
+    | addrOf r x => rw [interp.eq_def]; exact hκ _ _
+    | load o r x => rw [interp.eq_def]; exact pre1 _ _ (fun _ => hκ _ _)
+    | loadPtr o r p => rw [interp.eq_def]; exact pre1 _ _ (fun _ => hκ _ _)
+    | store o x v => rw [interp.eq_def]; exact pre1 _ _ (fun _ => hκ _ _)
+    | storePtr o p v => rw [interp.eq_def]; exact pre1 _ _ (fun _ => hκ _ _)
+    | fence o => rw [interp.eq_def]; exact pre1 _ _ (fun _ => hκ _ _)
+    | malloc r sz => rw [interp.eq_def]; exact pre1 _ _ (fun _ => hκ _ _)
+    | free r => rw [interp.eq_def]; exact pre1 _ _ (fun _ => hκ _ _)
+    | fadd or ow r x v =>
+        rw [interp.eq_def]
+        intro σ
+        exact hQ.addRMW _ _ _ _ (hQ.prefix _ _ (hQ.prefix _ _ (hκ _ _ _)))
+    | cas or ow r x e₁ e₂ =>
+        rw [interp.eq_def]
+        intro σ
+        exact hQ.addRMW _ _ _ _ (hQ.prefix _ _ (hQ.prefix _ _
+          (hQ.plus _ _ (hQ.prefix _ _ (hκ _ _ _)) (hκ _ _ _))))
+    | seq s₁ s₂ =>
+        rw [interp.eq_def]
+        simp only [Stmt.loops, sumB_append, Stmt.seq.sizeOf_spec] at hN
+        exact interp_inv hQ N n ctx (pc ++ [0]) s₁ ρ _ φ (by omega)
+          (fun ρ' φ' => interp_inv hQ N n ctx (pc ++ [1]) s₂ ρ' κ φ' (by omega) hκ)
+    | par s₁ s₂ =>
+        rw [interp.eq_def]
+        simp only [Stmt.loops, sumB_append, Stmt.par.sizeOf_spec] at hN
+        intro σ
+        exact hQ.plus _ _ (interp_inv hQ N n ctx (pc ++ [0]) s₁ ρ κ φ (by omega) hκ _)
+          (interp_inv hQ N n _ (pc ++ [1]) s₂ ρ κ φ (by omega) hκ _)
+    | ite b s₁ s₂ =>
+        rw [interp.eq_def]
+        simp only [Stmt.loops, sumB_append, Stmt.ite.sizeOf_spec] at hN
+        intro σ
+        exact hQ.prefix _ _ (hQ.plus _ _ (interp_inv hQ N n ctx _ s₁ ρ κ _ (by omega) hκ _)
+          (interp_inv hQ N n ctx _ s₂ ρ κ _ (by omega) hκ _))
+    | «while» ℓ b body =>
+        rw [interp.eq_def]
+        dsimp only
+        split
+        · exact fun _ => hQ.empty
+        · simp only [Stmt.loops, sumB_cons, Stmt.while.sizeOf_spec] at hN
+          have h₁ := sumB_dec_le body.loops n ℓ
+          have h₂ := Bounds.dec_self n ℓ
+          intro σ
+          exact hQ.prefix _ _ (hQ.plus _ _
+            (interp_inv hQ N (n.dec ℓ) _ _ body ρ _ _ (by omega)
+              (fun ρ' φ' => interp_inv hQ N (n.dec ℓ) _ pc (.while ℓ b body) ρ' κ φ'
+                (by simp only [Stmt.loops, sumB_cons, Stmt.while.sizeOf_spec]; omega) hκ) _)
+            (hκ _ _ _))
+

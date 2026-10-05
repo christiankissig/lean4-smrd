@@ -787,3 +787,38 @@ theorem denote_mono_succ (P : Stmt) (n : Nat) :
         θ a = θ b → a = b) ∧
       Embeds θ τ (denote (.uniform n) P) (denote (.uniform (n + 1)) P) :=
   denote_mono P _ _ (fun _ => Nat.le_succ n)
+
+/-! ## Program order relates events -/
+
+/-- Program order relates events of the structure. -/
+def EventStructure.PoClosed (E : EventStructure) : Prop :=
+  ∀ p ∈ E.po, p.1 ∈ E.ids ∧ p.2 ∈ E.ids
+
+theorem EventStructure.poClosed_inv : ESInv EventStructure.PoClosed := by
+  refine ⟨by simp [EventStructure.PoClosed, EventStructure.empty], fun e k hk => ?_,
+    fun k k' hk hk' => ?_, fun k r c w hk => ?_⟩
+  · intro p hp
+    simp only [EventStructure.po_prefix, List.mem_append, List.mem_map] at hp
+    simp only [EventStructure.ids_prefix, List.mem_cons]
+    rcases hp with ⟨x, hx, rfl⟩ | hp
+    · exact ⟨Or.inl rfl, Or.inr (List.mem_map_of_mem hx)⟩
+    · exact ⟨Or.inr (hk p hp).1, Or.inr (hk p hp).2⟩
+  · intro p hp
+    simp only [EventStructure.po_plus, List.mem_append] at hp
+    simp only [EventStructure.ids_plus, List.mem_append]
+    rcases hp with hp | hp
+    · exact ⟨Or.inl (hk p hp).1, Or.inl (hk p hp).2⟩
+    · exact ⟨Or.inr (hk' p hp).1, Or.inr (hk' p hp).2⟩
+  · intro p hp
+    simp only [EventStructure.po_addRMW] at hp
+    simpa using hk p hp
+
+/-- In `⟨P⟩_n`, program order relates events. -/
+theorem denote_po_ev (n : Bounds) (P : Stmt) {c d : EventId} (h : (denote n P).poR c d) :
+    (∃ e, (denote n P).ev c = some e) ∧ (∃ e, (denote n P).ev d = some e) := by
+  have hcl := interp_inv EventStructure.poClosed_inv _ n ⟨0, []⟩ [] P [] (fun _ _ => pure .empty) []
+    (Nat.lt_succ_self _) (fun _ _ _ => EventStructure.poClosed_inv.empty) {}
+  obtain ⟨hc, hd⟩ := hcl (c, d) h
+  obtain ⟨e₁, he₁, rfl⟩ := List.mem_map.1 hc
+  obtain ⟨e₂, he₂, rfl⟩ := List.mem_map.1 hd
+  exact ⟨⟨e₁, denote_ev n P he₁⟩, ⟨e₂, denote_ev n P he₂⟩⟩
