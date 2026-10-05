@@ -199,7 +199,11 @@ inductive Generated (Ω : Pred) : Justification → Prop
       FwdCtx.WF { j₁.δ with we := j₁.δ.we ++ [(e₂, e₁)] } →
       Sat (Pred.and j₁.P.holds Ω) →
       Generated Ω { j₁ with δ := { j₁.δ with we := j₁.δ.we ++ [(e₂, e₁)] } }
-  /-- Lifting (Definition `def:elab-lift`): `(⟦P₁⟧_Λ ∨ P₂, D₂) ⊢^δ w₂`. -/
+  /-- Lifting (Definition `def:elab-lift`): `(C ∧ (⋀A₁ ∨ ⋀A₂), D₂) ⊢^δ w₂`,
+      factoring the conjuncts `C` shared by `⟦P₁⟧_Λ` and `P₂` out of the
+      disjunction (`Expr.liftPred`). The predicate is equivalent to SMRD's
+      `⟦P₁⟧_Λ ∨ P₂` (`Expr.liftPred_holds_iff`) and has its symbols
+      (`Expr.mem_syms_liftPred_iff`). -/
   | lift {j₁ j₂ : Justification} (Λ : Relabelling) :
       Generated Ω j₁ → Generated Ω j₂ →
       j₁.δ = j₂.δ →
@@ -208,8 +212,8 @@ inductive Generated (Ω : Pred) : Justification → Prop
       (∀ e, e ∈ j₂.D ↔ ∃ α ∈ j₁.D, Λ.app α = e) →
       (∀ α ∈ j₁.D, ∃ ev₁ ev₂, es.ev α = some ev₁ ∧ es.ev (Λ.app α) = some ev₂ ∧
         es.ClosedRelabEq j₁.δ Λ j₁.P ev₁ j₂.P ev₂) →
-      Sat (Pred.and (Expr.or (j₁.P.rename Λ) j₂.P).holds Ω) →
-      Generated Ω { j₂ with P := .or (j₁.P.rename Λ) j₂.P }
+      Sat (Pred.and (Expr.liftPred (j₁.P.rename Λ) j₂.P).holds Ω) →
+      Generated Ω { j₂ with P := Expr.liftPred (j₁.P.rename Λ) j₂.P }
   /-- Weakening (Definition `def:elab-weak`): drop a conjunct the global
       guarantees imply. Predicates are read up to their conjuncts
       (Paragraph `par:conj`), so `j₁.P` is `P' ∧ Pw` up to `ConjEq`, and any
