@@ -72,16 +72,16 @@ inductive Stmt where
   | while    (ℓ : LoopId) (b : PExpr) (body : Stmt)
   /-- `r := e` -/
   | assign   (r : Reg) (e : PExpr)
-  /-- `r :=_o x` -/
-  | load     (o : MemOrd) (r : Reg) (x : Var)
-  /-- `x :=_o e` -/
-  | store    (o : MemOrd) (x : Var) (e : PExpr)
+  /-- `r :=_o x`, `volatile` when `v` is set -/
+  | load     (o : MemOrd) (r : Reg) (x : Var) (v : Bool)
+  /-- `x :=_o e`, `volatile` when `v` is set -/
+  | store    (o : MemOrd) (x : Var) (e : PExpr) (v : Bool)
   /-- `r := &x` -/
   | addrOf   (r : Reg) (x : Var)
-  /-- `r :=_o *e` -/
-  | loadPtr  (o : MemOrd) (r : Reg) (e : PExpr)
-  /-- `*e₁ :=_o e₂` -/
-  | storePtr (o : MemOrd) (e₁ e₂ : PExpr)
+  /-- `r :=_o *e`, `volatile` when `v` is set -/
+  | loadPtr  (o : MemOrd) (r : Reg) (e : PExpr) (v : Bool)
+  /-- `*e₁ :=_o e₂`, `volatile` when `v` is set -/
+  | storePtr (o : MemOrd) (e₁ e₂ : PExpr) (v : Bool)
   | fence    (o : MemOrd)
   /-- `r := FADD^{o_r,o_w}(x, e)` -/
   | fadd     (or ow : MemOrd) (r : Reg) (x : Var) (e : PExpr)
@@ -211,20 +211,20 @@ def interp (n : Bounds) (ctx : Ctx) (pc : List Nat) (s : Stmt) (ρ : RegState)
   | .skip => κ ρ φ
   | .assign r e => κ (ρ.set r (e.den ρ)) φ
   | .addrOf r x => κ (ρ.set r (Expr.glob x)) φ
-  | .load o r x => do
-      let e ← mkEvent ctx pc φ (fun α => .read o (Expr.glob x) α)
+  | .load o r x vl => do
+      let e ← mkEvent ctx pc φ (fun α => .read o (Expr.glob x) α vl)
       let k ← κ (ρ.set r (.sym e.id)) φ
       pure («prefix» e k)
-  | .loadPtr o r p => do
-      let e ← mkEvent ctx pc φ (fun α => .read o (p.den ρ) α)
+  | .loadPtr o r p vl => do
+      let e ← mkEvent ctx pc φ (fun α => .read o (p.den ρ) α vl)
       let k ← κ (ρ.set r (.sym e.id)) φ
       pure («prefix» e k)
-  | .store o x v => do
-      let e ← mkEvent ctx pc φ (fun _ => .write o (Expr.glob x) (v.den ρ))
+  | .store o x v vl => do
+      let e ← mkEvent ctx pc φ (fun _ => .write o (Expr.glob x) (v.den ρ) vl)
       let k ← κ ρ φ
       pure («prefix» e k)
-  | .storePtr o p v => do
-      let e ← mkEvent ctx pc φ (fun _ => .write o (p.den ρ) (v.den ρ))
+  | .storePtr o p v vl => do
+      let e ← mkEvent ctx pc φ (fun _ => .write o (p.den ρ) (v.den ρ) vl)
       let k ← κ ρ φ
       pure («prefix» e k)
   | .fence o => do
@@ -240,18 +240,18 @@ def interp (n : Bounds) (ctx : Ctx) (pc : List Nat) (s : Stmt) (ρ : RegState)
       let k ← κ ρ φ
       pure («prefix» e k)
   | .fadd or ow r x v => do
-      let er ← mkEvent ctx (pc ++ [0]) φ (fun α => .read or (Expr.glob x) α)
+      let er ← mkEvent ctx (pc ++ [0]) φ (fun α => .read or (Expr.glob x) α false)
       let ew ← mkEvent ctx (pc ++ [1]) φ
-        (fun _ => .write ow (Expr.glob x) (.bin .add (.sym er.id) (v.den ρ)))
+        (fun _ => .write ow (Expr.glob x) (.bin .add (.sym er.id) (v.den ρ)) false)
       let k ← κ (ρ.set r (.sym er.id)) φ
       pure ((«prefix» er («prefix» ew k)).addRMW er.id Expr.tt ew.id)
   | .cas or ow r x e₁ e₂ => do
-      let er ← mkEvent ctx (pc ++ [0]) φ (fun α => .read or (Expr.glob x) α)
+      let er ← mkEvent ctx (pc ++ [0]) φ (fun α => .read or (Expr.glob x) α false)
       let c : Expr := .eq (.sym er.id) (e₁.den ρ)
       let ec ← mkEvent ctx (pc ++ [1]) φ (fun _ => .branch c)
       let φT := φ ++ [⟨ec.id, c, true⟩]
       let φF := φ ++ [⟨ec.id, c, false⟩]
-      let ew ← mkEvent ctx (pc ++ [2]) φT (fun _ => .write ow (Expr.glob x) (e₂.den ρ))
+      let ew ← mkEvent ctx (pc ++ [2]) φT (fun _ => .write ow (Expr.glob x) (e₂.den ρ) false)
       let kT ← κ (ρ.set r Expr.tt) φT
       let kF ← κ (ρ.set r Expr.ff) φF
       pure ((«prefix» er («prefix» ec ((«prefix» ew kT).plus kF))).addRMW er.id c ew.id)
@@ -314,26 +314,26 @@ does not hold: `⟨P⟩_0` contains every event before the first loop, as only
 section Examples
 
 /-- `x :=_sc 42` -/
-private def exStore : Stmt := .store .sc "x" (.num 42)
+private def exStore : Stmt := .store .sc "x" (.num 42) false
 
 #eval (denote (.uniform 1) exStore).events.length
 
 /-- `r :=_acq x; x :=_rel r` -/
 private def exLoadStore : Stmt :=
-  .seq (.load .acq "r" "x") (.store .rel "x" (.reg "r"))
+  .seq (.load .acq "r" "x" false) (.store .rel "x" (.reg "r") false)
 
 #eval denote (.uniform 1) exLoadStore
 
 /-- `while₁ (r < 10) { r :=_rlx x }`, unravelled twice. -/
 private def exWhile : Stmt :=
-  .while 1 (.not (.le (.num 10) (.reg "r"))) (.load .rlx "r" "x")
+  .while 1 (.not (.le (.num 10) (.reg "r"))) (.load .rlx "r" "x" false)
 
 #eval (denote (.uniform 2) exWhile).events.map (fun e => (e.id, e.label.iter))
 
 /-- `r := CAS^{acq,rel}(x, 0, 1); y :=_rlx 1`: the store after the `cas` is
     generated once per outcome. -/
 private def exCAS : Stmt :=
-  .seq (.cas .acq .rel "r" "x" (.num 0) (.num 1)) (.store .rlx "y" (.num 1))
+  .seq (.cas .acq .rel "r" "x" (.num 0) (.num 1)) (.store .rlx "y" (.num 1) false)
 
 #eval (denote (.uniform 1) exCAS).events.map (fun e => (e.id, e.label.pc, e.guards.length))
 

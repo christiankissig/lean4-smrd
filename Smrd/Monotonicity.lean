@@ -66,8 +66,8 @@ theorem Expr.ren_congr (e : Expr) {θ θ' : Nat → Nat} (h : ∀ α ∈ e.syms,
       rw [iha h]
 
 def EventKind.ren (θ : Nat → Nat) : EventKind → EventKind
-  | .read o l α   => .read o (l.ren θ) (θ α)
-  | .write o l v  => .write o (l.ren θ) (v.ren θ)
+  | .read o l α b => .read o (l.ren θ) (θ α) b
+  | .write o l v b => .write o (l.ren θ) (v.ren θ) b
   | .fence o      => .fence o
   | .branch c     => .branch (c.ren θ)
   | .alloc α s    => .alloc (θ α) (s.ren θ)
@@ -796,7 +796,7 @@ def EventStructure.PoClosed (E : EventStructure) : Prop :=
 
 theorem EventStructure.poClosed_inv : ESInv EventStructure.PoClosed := by
   refine ⟨by simp [EventStructure.PoClosed, EventStructure.empty], fun e k hk => ?_,
-    fun k k' hk hk' => ?_, fun k r c w hk => ?_⟩
+    fun k k' hk hk' => ?_, fun k r c w hk _ => ?_⟩
   · intro p hp
     simp only [EventStructure.po_prefix, List.mem_append, List.mem_map] at hp
     simp only [EventStructure.ids_prefix, List.mem_cons]
@@ -822,3 +822,40 @@ theorem denote_po_ev (n : Bounds) (P : Stmt) {c d : EventId} (h : (denote n P).p
   obtain ⟨e₁, he₁, rfl⟩ := List.mem_map.1 hc
   obtain ⟨e₂, he₂, rfl⟩ := List.mem_map.1 hd
   exact ⟨⟨e₁, denote_ev n P he₁⟩, ⟨e₂, denote_ev n P he₂⟩⟩
+
+/-! ## The read and write of an RMW share their iterations (Condition `iter:rmw`) -/
+
+/-- Every read-modify-write entry has the shape `RMWShape`. -/
+def EventStructure.RMWClosed (E : EventStructure) : Prop :=
+  ∀ ent ∈ E.rmw, RMWShape E ent.r ent.w
+
+theorem RMWShape.mono {k k' : EventStructure} (hsub : ∀ e ∈ k.events, e ∈ k'.events)
+    {r w : EventId} (h : RMWShape k r w) : RMWShape k' r w := by
+  obtain ⟨er, her, ew, hew, h⟩ := h
+  exact ⟨er, hsub er her, ew, hsub ew hew, h⟩
+
+theorem EventStructure.rmwClosed_inv : ESInv EventStructure.RMWClosed := by
+  refine ⟨by simp [EventStructure.RMWClosed, EventStructure.empty], fun e k hk => ?_,
+    fun k k' hk hk' => ?_, fun k r c w hk hs => ?_⟩
+  · intro ent hent
+    exact (hk ent hent).mono (fun _ h => List.mem_cons_of_mem _ h)
+  · intro ent hent
+    simp only [EventStructure.rmw_plus, List.mem_append] at hent
+    rcases hent with h | h
+    · exact (hk ent h).mono (fun _ h => List.mem_append_left _ h)
+    · exact (hk' ent h).mono (fun _ h => List.mem_append_right _ h)
+  · intro ent hent
+    simp only [EventStructure.rmw_addRMW, List.mem_cons] at hent
+    rcases hent with rfl | h
+    · exact hs
+    · exact hk ent h
+
+/-- **Condition `iter:rmw`** holds of `⟨P⟩_n`: the read and the write of every
+    read-modify-write operation belong to one thread and agree on `iter`. -/
+theorem denote_rmw_iter (n : Bounds) (P : Stmt) {ent : RMWEntry} (h : ent ∈ (denote n P).rmw) :
+    ∃ er ew, (denote n P).ev ent.r = some er ∧ (denote n P).ev ent.w = some ew ∧
+      er.label.thread = ew.label.thread ∧ er.label.iter = ew.label.iter := by
+  have hcl := interp_inv EventStructure.rmwClosed_inv _ n ⟨0, []⟩ [] P [] (fun _ _ => pure .empty)
+    [] (Nat.lt_succ_self _) (fun _ _ _ => EventStructure.rmwClosed_inv.empty) {}
+  obtain ⟨er, her, ew, hew, hr, hw, ht, hi⟩ := hcl ent h
+  exact ⟨er, ew, hr ▸ denote_ev n P her, hw ▸ denote_ev n P hew, ht, hi⟩

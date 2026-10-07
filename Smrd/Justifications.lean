@@ -56,7 +56,7 @@ def Relabelling.Injective (Λ : Relabelling) : Prop :=
     introduces is not among its dependencies. -/
 def preJust (w : Event) : Option Justification :=
   match w.kind with
-  | .write _ x e => some ⟨w.valres, x.syms ++ e.syms, .empty, w⟩
+  | .write _ x e _ => some ⟨w.valres, x.syms ++ e.syms, .empty, w⟩
   | .alloc _ e   => some ⟨w.valres, e.syms, .empty, w⟩
   | .dealloc e   => some ⟨w.valres, e.syms, .empty, w⟩
   | _            => none
@@ -75,16 +75,21 @@ def fwdBase (j : Justification) (e₁ e₂ : EventId) : Prop :=
       EquivUnder (Pred.and j.P.holds (j.δ.psi es)) l₁ l₂
 
 /-- `e₁ -F_j→ e₂`: store forwarding `W × R_rlx`, store-store forwarding
-    `W × W_rlx`, and load forwarding `R × R`. -/
+    `W × W_rlx`, and load forwarding `R × R`, where the forwarded event `e₂`
+    is not a volatile access, `e₂ ∉ 𝒱`. -/
 def fwdRel (j : Justification) (e₁ e₂ : EventId) : Prop :=
   es.fwdBase j e₁ e₂ ∧
     ((es.cls Event.isWrite e₁ ∧ es.cls Event.isRlxR e₂) ∨
      (es.cls Event.isWrite e₁ ∧ es.cls Event.isRlxW e₂) ∨
-     (es.cls Event.isRead e₁ ∧ es.cls Event.isRead e₂))
+     (es.cls Event.isRead e₁ ∧ es.cls Event.isRead e₂)) ∧
+    ¬ es.cls Event.isVol e₂
 
-/-- `e₁ -WE_j→ e₂`, on pairs of writes. -/
+/-- `e₁ -WE_j→ e₂`, on pairs of writes, where the overwritten write `e₁` is
+    not a volatile access, `e₁ ∉ 𝒱`. Write elision is otherwise blind to the
+    memory order: a release write may be elided. -/
 def weRel (j : Justification) (e₁ e₂ : EventId) : Prop :=
-  es.fwdBase j e₁ e₂ ∧ es.cls Event.isWrite e₁ ∧ es.cls Event.isWrite e₂
+  es.fwdBase j e₁ e₂ ∧ es.cls Event.isWrite e₁ ∧ es.cls Event.isWrite e₂ ∧
+    ¬ es.cls Event.isVol e₁
 
 /-! ## Closed relabel-equivalence (Definition `def:rel-eq`) -/
 
@@ -150,16 +155,16 @@ inductive Generated (Ω : Pred) : Justification → Prop
   /-- Value Assignment (Definition `def:elab-va`): substitute a value `v` with
       `α ≡_P v` in the location and value of a justified write, recomputing
       `D` and leaving `P` unchanged. -/
-  | va {j₁ : Justification} {o : MemOrd} {x e : Expr} {α : Sym} {v : Val} :
+  | va {j₁ : Justification} {o : MemOrd} {x e : Expr} {b : Bool} {α : Sym} {v : Val} :
       Generated Ω j₁ →
-      j₁.w.kind = .write o x e →
+      j₁.w.kind = .write o x e b →
       EquivUnder j₁.P.holds (.sym α) (.val v) →
       Sat (Pred.and j₁.P.holds Ω) →
       Generated Ω
         { P := j₁.P
           D := (x.subst α (.val v)).syms ++ (e.subst α (.val v)).syms
           δ := j₁.δ
-          w := { j₁.w with kind := .write o (x.subst α (.val v)) (e.subst α (.val v)) } }
+          w := { j₁.w with kind := .write o (x.subst α (.val v)) (e.subst α (.val v)) b } }
   /-- Strengthening (Definition `def:elab-str`): conjoin a predicate `Q` and
       the value restrictions of the origins `S` it introduces,
       `P' = P ∧ Q ∧ ⋀_{e ∈ S} valres(e)`, with
@@ -177,10 +182,10 @@ inductive Generated (Ω : Pred) : Justification → Prop
   /-- Forwarding (Definition `def:elab-fwd`) along `e₁ -F_{j₁}→ e₂`, applying
       `g = [val(e₂) ↦ val(e₁)]` to the predicate and to the justified write.
       The extended forwarding context must be well-formed (`def:fwd-ctx`). -/
-  | fwd {j₁ : Justification} {o : MemOrd} {x e : Expr} {e₁ e₂ : EventId}
+  | fwd {j₁ : Justification} {o : MemOrd} {x e : Expr} {b : Bool} {e₁ e₂ : EventId}
       {ev₁ ev₂ : Event} {v₁ v₂ : Expr} :
       Generated Ω j₁ →
-      j₁.w.kind = .write o x e →
+      j₁.w.kind = .write o x e b →
       es.fwdRel j₁ e₁ e₂ →
       es.ev e₁ = some ev₁ → es.ev e₂ = some ev₂ →
       ev₁.val = some v₁ → ev₂.val = some v₂ →
@@ -190,7 +195,7 @@ inductive Generated (Ω : Pred) : Justification → Prop
         { P := j₁.P.replace v₂ v₁
           D := (e.replace v₂ v₁).syms ++ (x.replace v₂ v₁).syms
           δ := { j₁.δ with f := j₁.δ.f ++ [(e₁, e₂)] }
-          w := { j₁.w with kind := .write o (x.replace v₂ v₁) (e.replace v₂ v₁) } }
+          w := { j₁.w with kind := .write o (x.replace v₂ v₁) (e.replace v₂ v₁) b } }
   /-- Write Elision (Definition `def:elab-we`), adding `(e₂, e₁)` to `WE`; the
       extended forwarding context must be well-formed (`def:fwd-ctx`). -/
   | we {j₁ : Justification} {e₁ e₂ : EventId} :
@@ -203,7 +208,8 @@ inductive Generated (Ω : Pred) : Justification → Prop
       factoring the conjuncts `C` shared by `⟦P₁⟧_Λ` and `P₂` out of the
       disjunction (`Expr.liftPred`). The predicate is equivalent to SMRD's
       `⟦P₁⟧_Λ ∨ P₂` (`Expr.liftPred_holds_iff`) and has its symbols
-      (`Expr.mem_syms_liftPred_iff`). -/
+      (`Expr.mem_syms_liftPred_iff`). Neither justified write, nor the origin
+      of a dependency of either, is a volatile access. -/
   | lift {j₁ j₂ : Justification} (Λ : Relabelling) :
       Generated Ω j₁ → Generated Ω j₂ →
       j₁.δ = j₂.δ →
@@ -212,6 +218,8 @@ inductive Generated (Ω : Pred) : Justification → Prop
       (∀ e, e ∈ j₂.D ↔ ∃ α ∈ j₁.D, Λ.app α = e) →
       (∀ α ∈ j₁.D, ∃ ev₁ ev₂, es.ev α = some ev₁ ∧ es.ev (Λ.app α) = some ev₂ ∧
         es.ClosedRelabEq j₁.δ Λ j₁.P ev₁ j₂.P ev₂) →
+      ¬ es.cls Event.isVol j₁.w.id → ¬ es.cls Event.isVol j₂.w.id →
+      (∀ α ∈ j₁.D ++ j₂.D, ¬ es.cls Event.isVol α) →
       Sat (Pred.and (Expr.liftPred (j₁.P.rename Λ) j₂.P).holds Ω) →
       Generated Ω { j₂ with P := Expr.liftPred (j₁.P.rename Λ) j₂.P }
   /-- Weakening (Definition `def:elab-weak`): drop a conjunct the global
@@ -235,7 +243,7 @@ theorem Generated.sat {Ω : Pred} {j : Justification} (h : es.Generated Ω j) :
       obtain ⟨f, hP, _⟩ := hs; exact Or.inl ⟨f, hP⟩
   | str _ _ _ _ _ _ hs | weak _ _ _ hs =>
       obtain ⟨f, hP, _⟩ := hs; exact Or.inl ⟨f, hP⟩
-  | lift _ _ _ _ _ _ _ _ hs =>
+  | lift _ _ _ _ _ _ _ _ _ _ _ hs =>
       obtain ⟨f, hP, _⟩ := hs; exact Or.inl ⟨f, hP⟩
 
 end EventStructure
