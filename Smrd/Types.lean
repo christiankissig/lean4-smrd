@@ -266,10 +266,12 @@ def MemOrd.isAcqSc : MemOrd → Bool
 
 /-- The action of an event: reads `R_o loc α`, writes `W_o loc val`,
     fences `F_o`, branchings on a condition, allocations `A α size` and
-    deallocations `D loc`. -/
+    deallocations `D loc`. A read or write is a *volatile access*, in the set
+    `𝒱` (Definition `def:prog-syntax`), when `vol` is set: the qualifier
+    carries over from the access that generates it. -/
 inductive EventKind where
-  | read    (ord : MemOrd) (loc : Expr) (α : Sym)
-  | write   (ord : MemOrd) (loc val : Expr)
+  | read    (ord : MemOrd) (loc : Expr) (α : Sym) (vol : Bool)
+  | write   (ord : MemOrd) (loc val : Expr) (vol : Bool)
   | fence   (ord : MemOrd)
   | branch  (cond : Expr)
   | alloc   (α : Sym) (size : Expr)
@@ -338,12 +340,16 @@ def isRlxR (e : Event) : Bool := match e.kind with | .read .rlx .. => true | _ =
 /-- `W_rlx` -/
 def isRlxW (e : Event) : Bool := match e.kind with | .write .rlx .. => true | _ => false
 
+/-- `e ∈ 𝒱`: a volatile read or write. -/
+def isVol (e : Event) : Bool :=
+  match e.kind with | .read _ _ _ v => v | .write _ _ _ v => v | _ => false
+
 /-- `loc(e)`: the location of a read, write or deallocation, and the symbol an
     allocation introduces. -/
 def loc (e : Event) : Option Expr :=
   match e.kind with
-  | .read _ l _   => some l
-  | .write _ l _  => some l
+  | .read _ l _ _  => some l
+  | .write _ l _ _ => some l
   | .alloc α _    => some (.sym α)
   | .dealloc l    => some l
   | _             => none
@@ -353,8 +359,8 @@ def loc (e : Event) : Option Expr :=
     branchings. -/
 def val (e : Event) : Option Expr :=
   match e.kind with
-  | .read _ _ α   => some (.sym α)
-  | .write _ _ v  => some v
+  | .read _ _ α _  => some (.sym α)
+  | .write _ _ v _ => some v
   | .alloc _ s    => some s
   | _             => none
 

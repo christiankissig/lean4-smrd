@@ -284,13 +284,13 @@ theorem interp_fresh : ∀ (N : Nat) (n : Bounds) (ctx : Ctx) (pc : List Nat) (s
         exact mk_prefix ctx pc φ _ (fun e => κ (ρ.set r (.sym e.id)) φ) (fun _ => hκ _ _)
     | free r => exact mk_prefix ctx pc φ _ (fun _ => κ ρ φ) (fun _ => hκ _ _)
     | fadd or ow r x v =>
-        exact mk_fadd ctx (pc ++ [0]) (pc ++ [1]) φ (fun α => .read or (Expr.glob x) α)
-          (fun er _ => .write ow (Expr.glob x) (.bin .add (.sym er.id) (v.den ρ))) Expr.tt
+        exact mk_fadd ctx (pc ++ [0]) (pc ++ [1]) φ (fun α => .read or (Expr.glob x) α false)
+          (fun er _ => .write ow (Expr.glob x) (.bin .add (.sym er.id) (v.den ρ)) false) Expr.tt
           (fun er => κ (ρ.set r (.sym er.id)) φ) (fun _ => hκ _ _)
     | cas or ow r x e₁ e₂ =>
-        exact mk_cas ctx (pc ++ [0]) (pc ++ [1]) (pc ++ [2]) φ (fun α => .read or (Expr.glob x) α)
+        exact mk_cas ctx (pc ++ [0]) (pc ++ [1]) (pc ++ [2]) φ (fun α => .read or (Expr.glob x) α false)
           (fun er => .eq (.sym er.id) (e₁.den ρ)) (fun c _ => .branch c)
-          (fun _ => .write ow (Expr.glob x) (e₂.den ρ))
+          (fun _ => .write ow (Expr.glob x) (e₂.den ρ) false)
           (fun g => κ (ρ.set r Expr.tt) g) (fun g => κ (ρ.set r Expr.ff) g)
           (fun _ => hκ _ _) (fun _ => hκ _ _)
     | seq s₁ s₂ =>
@@ -334,13 +334,21 @@ theorem denote_ev (n : Bounds) (P : Stmt) {e : Event} (he : e ∈ (denote n P).e
 
 /-! ## Structural invariants of the generated structures -/
 
+/-- The read `r` and the write `w` of a read-modify-write entry are events of
+    `k` of one thread and one iteration of every loop (Condition `iter:rmw`):
+    the interpreter generates them in one step, under one context. -/
+def RMWShape (k : EventStructure) (r w : EventId) : Prop :=
+  ∃ er ∈ k.events, ∃ ew ∈ k.events, er.id = r ∧ ew.id = w ∧
+    er.label.thread = ew.label.thread ∧ er.label.iter = ew.label.iter
+
 /-- A property of event structures closed under the combinators the
-    interpreter builds them with. -/
+    interpreter builds them with. A read-modify-write entry is only ever added
+    with the shape `RMWShape`. -/
 structure ESInv (Q : EventStructure → Prop) : Prop where
   empty  : Q EventStructure.empty
   «prefix» : ∀ e k, Q k → Q (EventStructure.prefix e k)
   plus   : ∀ k k', Q k → Q k' → Q (k.plus k')
-  addRMW : ∀ k r c w, Q k → Q (k.addRMW r c w)
+  addRMW : ∀ k r c w, Q k → RMWShape k r w → Q (k.addRMW r c w)
 
 /-- Every structure `m` generates has the property `Q`. -/
 def Gen.Holds (Q : EventStructure → Prop) (m : Gen EventStructure) : Prop :=
@@ -375,11 +383,14 @@ theorem interp_inv {Q : EventStructure → Prop} (hQ : ESInv Q) :
         rw [interp.eq_def]
         intro σ
         exact hQ.addRMW _ _ _ _ (hQ.prefix _ _ (hQ.prefix _ _ (hκ _ _ _)))
+          ⟨_, List.mem_cons_self, _, List.mem_cons_of_mem _ List.mem_cons_self, rfl, rfl, rfl, rfl⟩
     | cas or ow r x e₁ e₂ =>
         rw [interp.eq_def]
         intro σ
         exact hQ.addRMW _ _ _ _ (hQ.prefix _ _ (hQ.prefix _ _
           (hQ.plus _ _ (hQ.prefix _ _ (hκ _ _ _)) (hκ _ _ _))))
+          ⟨_, List.mem_cons_self, _, List.mem_cons_of_mem _ (List.mem_cons_of_mem _
+            (List.mem_append_left _ List.mem_cons_self)), rfl, rfl, rfl, rfl⟩
     | seq s₁ s₂ =>
         rw [interp.eq_def]
         simp only [Stmt.loops, sumB_append, Stmt.seq.sizeOf_spec] at hN
@@ -591,13 +602,13 @@ theorem interp_covers : ∀ (N : Nat) (n : Bounds) (ctx : Ctx) (pc : List Nat) (
         exact mk_prefix ctx pc φ _ (fun e => κ (ρ.set r (.sym e.id)) φ) (fun _ => hκ _ _)
     | free r => exact mk_prefix ctx pc φ _ (fun _ => κ ρ φ) (fun _ => hκ _ _)
     | fadd or ow r x v =>
-        exact mk_fadd ctx (pc ++ [0]) (pc ++ [1]) φ (fun α => .read or (Expr.glob x) α)
-          (fun er _ => .write ow (Expr.glob x) (.bin .add (.sym er.id) (v.den ρ))) Expr.tt
+        exact mk_fadd ctx (pc ++ [0]) (pc ++ [1]) φ (fun α => .read or (Expr.glob x) α false)
+          (fun er _ => .write ow (Expr.glob x) (.bin .add (.sym er.id) (v.den ρ)) false) Expr.tt
           (fun er => κ (ρ.set r (.sym er.id)) φ) (fun _ => hκ _ _)
     | cas or ow r x e₁ e₂ =>
-        exact mk_cas ctx (pc ++ [0]) (pc ++ [1]) (pc ++ [2]) φ (fun α => .read or (Expr.glob x) α)
+        exact mk_cas ctx (pc ++ [0]) (pc ++ [1]) (pc ++ [2]) φ (fun α => .read or (Expr.glob x) α false)
           (fun er => .eq (.sym er.id) (e₁.den ρ)) (fun c _ => .branch c)
-          (fun _ => .write ow (Expr.glob x) (e₂.den ρ))
+          (fun _ => .write ow (Expr.glob x) (e₂.den ρ) false)
           (fun g => κ (ρ.set r Expr.tt) g) (fun g => κ (ρ.set r Expr.ff) g)
           (fun _ => hκ _ _) (fun _ => hκ _ _)
     | seq s₁ s₂ =>

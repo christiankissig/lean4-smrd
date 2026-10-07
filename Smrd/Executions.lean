@@ -8,8 +8,11 @@ import Smrd.Justifications
 
 Executions `𝕏 = (X, J, rf)` (Definition `def:executions`), freezing
 `freeze(X, J, rf) = (DP, ≼, φ)` (Definition `def:freeze`), the axioms
-`No-Thin-Air` and `Coherence` of MRD+C11 (Paragraph `def:mem-model-axiom`), and
-use-after-free (Definition `def:uaf`).
+`No-Thin-Air`, `Coherence` and `Atomicity` of MRD+C11 (Paragraph
+`def:mem-model-axiom`), and use-after-free (Definition `def:uaf`).
+
+`Coherent` asks for one coherence order under which both `Coherence` and
+`Atomicity` hold, as the paper's axioms share `CO`.
 
 `Frozen` abstracts an execution to the events and dependency relations the
 futures of Appendix A.7 are built from (`EpisodicLoops.Futures`, in
@@ -186,9 +189,30 @@ def eco (co : Rel) : Rel := Rel.plus ((x.rf.union co).union (x.fr co))
 /-- `HB ≜ (DP ∪ ≼ ∪ SW)⁺` -/
 def hb : Rel := Rel.plus ((x.dep es).union (x.sw es))
 
-/-- `Coherence`: `ECO ∪ HB` is acyclic for some coherence order. -/
+/-- The `Coherence` axiom for a coherence order: `HB ; ECO?` is irreflexive.
+    This is RC11's coherence axiom with `SMRD`'s weaker `HB`, built from the
+    preserved program order `DP ∪ ≼` rather than all of `⊑`. It asks for
+    coherence per location relative to `HB`, and not that `ECO ∪ HB` be
+    acyclic, which would make the model multi-copy atomic. -/
+def Coherence (co : Rel) : Prop :=
+  ∀ a, ¬ ∃ b, x.hb es a b ∧ (b = a ∨ x.eco co b a)
+
+/-- `rmw ≜ {(e_r, e_w) ∈ X × X | (e_r, c, e_w) ∈ ⊑ʳᵐʷ ∧ c ≡_P ⊤}`: the read
+    and the write of each read-modify-write operation that writes in the
+    execution, every `FADD` and a `CAS` on its succeeding branch, with `P` the
+    frozen predicate. -/
+def rmwRel : Rel := fun r w =>
+  x.X r ∧ x.X w ∧ ∃ ent ∈ es.rmw, ent.r = r ∧ ent.w = w ∧ EquivUnder (x.P es) ent.cond Expr.tt
+
+/-- The `Atomicity` axiom for a coherence order: `rmw ∩ (FR ; CO) = ∅`. No
+    write to the location falls `CO`-between the write the read of an RMW
+    takes and the write of the same RMW. -/
+def Atomicity (co : Rel) : Prop :=
+  ∀ r w, x.rmwRel es r w → ¬ ∃ w', x.fr co r w' ∧ co w' w
+
+/-- `Coherence` and `Atomicity` under one coherence order. -/
 def Coherent : Prop :=
-  ∃ co, x.CoherenceOrder es co ∧ Rel.Acyclic ((x.eco co).union (x.hb es))
+  ∃ co, x.CoherenceOrder es co ∧ x.Coherence es co ∧ x.Atomicity es co
 
 /-- A consistent execution of MRD+C11. -/
 def Consistent (Ω : Pred) : Prop :=
