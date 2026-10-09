@@ -197,6 +197,34 @@ def hb : Rel := Rel.plus ((x.dep es).union (x.sw es))
 def Coherence (co : Rel) : Prop :=
   ∀ a, ¬ ∃ b, x.hb es a b ∧ (b = a ∨ x.eco co b a)
 
+/-- `HB|loc ≜ HB ∩ L`: `HB` restricted to pairs at the same location, where `L`
+    relates events at the same location. -/
+def hbLoc (L : Rel) : Rel := fun a b => x.hb es a b ∧ L a b
+
+/-- If `L` is symmetric and transitive and contains `rf` and `CO`, then each
+    `rf ∪ CO ∪ FR` edge `(a, b)` is matched by `L b a`. -/
+theorem eco1_loc {co L : Rel} (symm : ∀ a b, L a b → L b a)
+    (trans : ∀ a b c, L a b → L b c → L a c)
+    (hrf : ∀ a b, x.rf a b → L a b) (hco : ∀ a b, co a b → L a b) :
+    ∀ a b, ((x.rf.union co).union (x.fr co)) a b → L b a := by
+  rintro a b ((h | h) | ⟨w, hw, hc⟩)
+  · exact symm _ _ (hrf _ _ h)
+  · exact symm _ _ (hco _ _ h)
+  · exact trans _ _ _ (symm _ _ (hco _ _ hc)) (hrf _ _ hw)
+
+/-- `HB ; (rf ∪ CO ∪ FR)` is irreflexive iff `HB|loc ; (rf ∪ CO ∪ FR)` is, as
+    long as `rf ∪ CO ∪ FR` relates only events at the same location (for
+    example, by `eco1_loc`). -/
+theorem hb_eco1_irrefl_iff_hbLoc {co L : Rel}
+    (hL : ∀ a b, ((x.rf.union co).union (x.fr co)) a b → L b a) :
+    (∀ a, ¬ ∃ b, x.hb es a b ∧ ((x.rf.union co).union (x.fr co)) b a) ↔
+    (∀ a, ¬ ∃ b, x.hbLoc es L a b ∧ ((x.rf.union co).union (x.fr co)) b a) := by
+  constructor
+  · rintro h a ⟨b, ⟨hab, _⟩, hba⟩
+    exact h a ⟨b, hab, hba⟩
+  · rintro h a ⟨b, hab, hba⟩
+    exact h a ⟨b, ⟨hab, hL b a hba⟩, hba⟩
+
 /-- `rmw ≜ {(e_r, e_w) ∈ X × X | (e_r, c, e_w) ∈ ⊑ʳᵐʷ ∧ c ≡_P ⊤}`: the read
     and the write of each read-modify-write operation that writes in the
     execution, every `FADD` and a `CAS` on its succeeding branch, with `P` the
