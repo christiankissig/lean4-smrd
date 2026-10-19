@@ -50,6 +50,7 @@ Smrd.Types                        expressions, values, events, event structures,
       └── Smrd.Ppo                ≼_sync, ≼_rmw, ≼_alias, ≼^P_δ, pred, dependence on P
             └── Smrd.Justifications  (+ Smrd.Conjuncts) pre-justifications, elaborations, `Generated` (𝕁)
                   └── Smrd.Executions  executions, freeze (DP, ≼, φ), NTA, coherence, atomicity, UAF, `Frozen`
+                        └── Smrd.CoherenceRC11  RC11's HB and coherence axiom; reduction to preserved coherence
 ```
 
 `Smrd.Basic` re-exports all of the above and is the library root (`Smrd.lean` imports it).

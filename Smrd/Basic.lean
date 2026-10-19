@@ -7,5 +7,6 @@ import Smrd.Forwardingcontext
 import Smrd.Ppo
 import Smrd.Justifications
 import Smrd.Executions
+import Smrd.CoherenceRC11
 
 def hello := "world"
