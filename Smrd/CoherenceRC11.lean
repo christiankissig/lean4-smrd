@@ -32,11 +32,16 @@ The proof composes with `ECO` and probes irreflexivity, as in
 path made of `⊑` alone is one `⊑` edge, and `ECO` closes it into a cycle only
 between events at one location, where `po|loc` applies.
 
+`coherenceV_iff_coherenceRC` states the same for `HB_v ≜ (DP ∪ ≼ ∪ SW)⁺`,
+built from RC11's `SW`, which is the happens-before the operational semantics'
+viewfronts realise (`app-opsem.tex`). It needs only the `po|loc`, release and
+acquire conditions.
+
 The conditions are where the operational semantics falls short of RC11
-(`TODO(rc11-co)` in `app-defs.tex`). `≼_sync` contains `⊑;[W_rel]` and
+(`TODO(rc11-co)` in `app-opsem.tex`). `≼_sync` contains `⊑;[W_rel]` and
 `[R_acq];⊑`, but `≼` truncates them at the last justified event of a thread
 and remaps them under forwarding. Release sequences beyond the releasing write
-are not in `SW_ra`. `DP ∪ ≼ ⊆ ⊑` is open under `remap_δ`.
+are not in `SW_ra`, but are in `HB_v`. `DP ∪ ≼ ⊆ ⊑` is open under `remap_δ`.
 
 Deviation from the paper: executions hold no fences (`Candidate`), so `SW`
 here has no fence clauses. It is RC11's `SW` on fence-free programs.
@@ -267,5 +272,102 @@ theorem coherence_iff_coherenceRC {co : Rel}
   ⟨coherenceRC_of_coherence hpo_trans hpo_irrefl hLtrans hrfL hcoL hpoloc hrel hacq
       hRSpo hRSrmw hrmw,
    x.coherence_of_coherenceRC es hdep⟩
+
+/-! ## The viewfront happens-before over RC11's `SW`
+
+The operational semantics realises release sequences in its viewfronts, so its
+happens-before is `HB_v ≜ (DP ∪ ≼ ∪ SW)⁺` with RC11's `SW`. The
+release-sequence conditions are then not needed. -/
+
+/-- `HB_v ≜ (DP ∪ ≼ ∪ SW)⁺`, with RC11's `SW`. -/
+def hbV : Rel := Rel.plus ((x.dep es).union (x.swRC es))
+
+/-- `HB_v ; ECO?` is irreflexive. -/
+def CoherenceV (co : Rel) : Prop :=
+  ∀ a, ¬ ∃ b, x.hbV es a b ∧ (b = a ∨ x.eco co b a)
+
+section ForwardV
+
+variable {es x}
+
+/-- An RC11 `HB` path is an `HB_v` path or a single `⊑` edge. -/
+theorem hbRC_cases_v
+    (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
+    (hrel : ∀ a w, x.poX es a w → es.cls Event.isRelW w → x.dep es a w)
+    (hacq : ∀ r b, es.cls Event.isAcqR r → x.poX es r b → x.dep es r b)
+    {a b : EventId} (h : x.hbRC es a b) : x.hbV es a b ∨ x.poX es a b := by
+  have potr : ∀ a b c, x.poX es a b → x.poX es b c → x.poX es a c :=
+    fun _ _ _ ⟨ha, _, h₁⟩ ⟨_, hc, h₂⟩ => ⟨ha, hc, hpo_trans _ _ _ h₁ h₂⟩
+  have inv : x.poX es a b ∨ ∃ r, x.hbV es a r ∧ es.cls Event.isAcqR r ∧
+      (r = b ∨ x.poX es r b) := by
+    induction h with
+    | single h =>
+      rcases h with hp | hs
+      · exact .inl hp
+      · exact .inr ⟨_, .single (.inr hs), swRC_acq hs, .inl rfl⟩
+    | tail _ h ih =>
+      rcases h with hp | hs
+      · rcases ih with hpo | ⟨r, hr, hacqr, rfl | hpo⟩
+        · exact .inl (potr _ _ _ hpo hp)
+        · exact .inr ⟨r, hr, hacqr, .inr hp⟩
+        · exact .inr ⟨r, hr, hacqr, .inr (potr _ _ _ hpo hp)⟩
+      · have hc : x.hbV es _ _ := .single (.inr hs)
+        refine .inr ⟨_, ?_, swRC_acq hs, .inl rfl⟩
+        rcases ih with hpo | ⟨r, hr, hacqr, rfl | hpo⟩
+        · exact transGen_trans (.single (.inl (hrel _ _ hpo hs.1))) hc
+        · exact transGen_trans hr hc
+        · exact transGen_trans (transGen_trans hr (.single (.inl (hacq _ _ hacqr hpo)))) hc
+  rcases inv with hpo | ⟨r, hr, hacqr, rfl | hpo⟩
+  · exact .inr hpo
+  · exact .inl hr
+  · exact .inl (transGen_trans hr (.single (.inl (hacq _ _ hacqr hpo))))
+
+/-- `HB_v`-coherence implies RC11's coherence axiom, under the `po|loc`,
+    release and acquire conditions. -/
+theorem coherenceRC_of_coherenceV {co : Rel}
+    (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
+    (hpo_irrefl : ∀ a, ¬ es.poR a a)
+    (hLtrans : ∀ a b c, x.sameLoc es a b → x.sameLoc es b c → x.sameLoc es a c)
+    (hrfL : ∀ a b, x.rf a b → x.sameLoc es a b)
+    (hcoL : ∀ a b, co a b → x.sameLoc es a b)
+    (hpoloc : ∀ a b, x.poloc es a b → x.dep es a b)
+    (hrel : ∀ a w, x.poX es a w → es.cls Event.isRelW w → x.dep es a w)
+    (hacq : ∀ r b, es.cls Event.isAcqR r → x.poX es r b → x.dep es r b)
+    (h : x.CoherenceV es co) : x.CoherenceRC es co := by
+  rintro a ⟨b, hab, hba⟩
+  rcases hbRC_cases_v hpo_trans hrel hacq hab with hp | hpo
+  · exact h a ⟨b, hp, hba⟩
+  · rcases hba with rfl | heco
+    · exact hpo_irrefl _ hpo.2.2
+    · have hl := x.eco_loc es hLtrans hrfL hcoL heco
+      exact h a ⟨b, .single (.inl (hpoloc _ _ ⟨hpo, hl⟩)), .inr heco⟩
+
+end ForwardV
+
+/-- RC11's coherence axiom implies `HB_v`-coherence when `DP ∪ ≼ ⊆ ⊑`. -/
+theorem coherenceV_of_coherenceRC {co : Rel}
+    (hdep : ∀ a b, x.dep es a b → x.poX es a b)
+    (h : x.CoherenceRC es co) : x.CoherenceV es co := by
+  rintro a ⟨b, hab, hba⟩
+  refine h a ⟨b, transGen_mono (fun _ _ h => ?_) hab, hba⟩
+  rcases h with hd | hs
+  · exact .inl (hdep _ _ hd)
+  · exact .inr hs
+
+/-- `HB_v`-coherence and RC11's coherence axiom coincide under the conditions
+    of both directions. -/
+theorem coherenceV_iff_coherenceRC {co : Rel}
+    (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
+    (hpo_irrefl : ∀ a, ¬ es.poR a a)
+    (hLtrans : ∀ a b c, x.sameLoc es a b → x.sameLoc es b c → x.sameLoc es a c)
+    (hrfL : ∀ a b, x.rf a b → x.sameLoc es a b)
+    (hcoL : ∀ a b, co a b → x.sameLoc es a b)
+    (hpoloc : ∀ a b, x.poloc es a b → x.dep es a b)
+    (hrel : ∀ a w, x.poX es a w → es.cls Event.isRelW w → x.dep es a w)
+    (hacq : ∀ r b, es.cls Event.isAcqR r → x.poX es r b → x.dep es r b)
+    (hdep : ∀ a b, x.dep es a b → x.poX es a b) :
+    x.CoherenceV es co ↔ x.CoherenceRC es co :=
+  ⟨coherenceRC_of_coherenceV hpo_trans hpo_irrefl hLtrans hrfL hcoL hpoloc hrel hacq,
+   x.coherenceV_of_coherenceRC es hdep⟩
 
 end Execution
