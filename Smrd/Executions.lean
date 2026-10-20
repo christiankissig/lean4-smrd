@@ -177,21 +177,57 @@ structure CoherenceOrder (co : Rel) : Prop where
   total  : ∀ a b, x.X a → x.X b → es.cls Event.isWrite a → es.cls Event.isWrite b →
     a ≠ b → x.sameLoc es a b → co a b ∨ co b a
 
-/-- `SW ≜ rf ∩ (W_rel × R_acq)` -/
-def sw : Rel := fun w r => x.rf w r ∧ es.cls Event.isRelW w ∧ es.cls Event.isAcqR r
-
 /-- `FR ≜ rf⁻¹ ; CO` -/
 def fr (co : Rel) : Rel := fun r w' => ∃ w, x.rf w r ∧ co w w'
 
 /-- `ECO ≜ (rf ∪ CO ∪ FR)⁺` -/
 def eco (co : Rel) : Rel := Rel.plus ((x.rf.union co).union (x.fr co))
 
-/-- `HB ≜ (DP ∪ ≼ ∪ SW)⁺` -/
-def hb : Rel := Rel.plus ((x.dep es).union (x.sw es))
+/-- `X_F ≜ {f ∈ E ∩ F | X ∪ {f} conflict-free}`: the fences on the branches
+    `X` takes. An execution holds no fences (`Candidate`), but `⊑`, `SW` and
+    `HB` range over `X ∪ X_F`. -/
+def XF : EvSet := fun f =>
+  es.inE f ∧ es.cls Event.isFence f ∧ ∀ a, x.X a → ¬ es.Conflict a f
 
-/-- The `Coherence` axiom for a coherence order: `HB ; ECO?` is irreflexive.
-    This is RC11's coherence axiom with `SMRD`'s weaker `HB`, built from the
-    preserved program order `DP ∪ ≼` rather than all of `⊑`. It asks for
+/-- `X ∪ X_F` -/
+def XwF : EvSet := fun a => x.X a ∨ x.XF es a
+
+/-- `⊑` within `X ∪ X_F`. -/
+def poX : Rel := fun a b => x.XwF es a ∧ x.XwF es b ∧ es.poR a b
+
+/-- `⊑|loc ≜ {(e₁, e₂) ∈ ⊑ | loc(e₁) ≡_P loc(e₂)}` -/
+def poloc : Rel := fun a b => x.poX es a b ∧ x.sameLoc es a b
+
+/-- `rmw ≜ {(e_r, e_w) ∈ X × X | (e_r, c, e_w) ∈ ⊑ʳᵐʷ ∧ c ≡_P ⊤}`: the read
+    and the write of each read-modify-write operation that writes in the
+    execution, every `FADD` and a `CAS` on its succeeding branch, with `P` the
+    frozen predicate. -/
+def rmwRel : Rel := fun r w =>
+  x.X r ∧ x.X w ∧ ∃ ent ∈ es.rmw, ent.r = r ∧ ent.w = w ∧ EquivUnder (x.P es) ent.cond Expr.tt
+
+/-- `rf ; rmw`: from a write to the write of an RMW that reads from it. -/
+def rfRmw : Rel := fun a b => ∃ r, x.rf a r ∧ x.rmwRel es r b
+
+/-- `RS ≜ [W] ; ⊑|loc? ; [W_rlx,rel,sc] ; (rf ; rmw)*`. Every write is atomic
+    here, as the fragment has no non-atomic accesses. -/
+def rs : Rel := fun w w' =>
+  es.cls Event.isWrite w ∧ ∃ w₀, (w₀ = w ∨ x.poloc es w w₀) ∧
+    es.cls Event.isWrite w₀ ∧ (w' = w₀ ∨ Rel.plus (x.rfRmw es) w₀ w')
+
+/-- `SW ≜ [W_rel,sc ∪ F_rel,sc] ; ([F] ; ⊑)? ; RS ; rf ; [R_rlx,acq,sc] ;
+    (⊑ ; [F])? ; [R_acq,sc ∪ F_acq,sc]`, RC11's synchronises-with. -/
+def sw : Rel := fun a b =>
+  (es.cls Event.isRelW a ∨ es.cls Event.isRelF a) ∧
+  ∃ w w' r, (w = a ∨ (es.cls Event.isFence a ∧ x.poX es a w)) ∧ x.rs es w w' ∧
+    x.rf w' r ∧ es.cls Event.isRead r ∧
+    (b = r ∨ (x.poX es r b ∧ es.cls Event.isFence b)) ∧
+    (es.cls Event.isAcqR b ∨ es.cls Event.isAcqF b)
+
+/-- `HB ≜ (⊑ ∪ SW)⁺`, RC11's happens-before. -/
+def hb : Rel := Rel.plus ((x.poX es).union (x.sw es))
+
+/-- The `Coherence` axiom for a coherence order: `HB ; ECO?` is irreflexive,
+    RC11's coherence axiom (Axiom `def:mem-model-axiom:co`). It asks for
     coherence per location relative to `HB`, and not that `ECO ∪ HB` be
     acyclic, which would make the model multi-copy atomic. -/
 def Coherence (co : Rel) : Prop :=
@@ -224,13 +260,6 @@ theorem hb_eco1_irrefl_iff_hbLoc {co L : Rel}
     exact h a ⟨b, hab, hba⟩
   · rintro h a ⟨b, hab, hba⟩
     exact h a ⟨b, ⟨hab, hL b a hba⟩, hba⟩
-
-/-- `rmw ≜ {(e_r, e_w) ∈ X × X | (e_r, c, e_w) ∈ ⊑ʳᵐʷ ∧ c ≡_P ⊤}`: the read
-    and the write of each read-modify-write operation that writes in the
-    execution, every `FADD` and a `CAS` on its succeeding branch, with `P` the
-    frozen predicate. -/
-def rmwRel : Rel := fun r w =>
-  x.X r ∧ x.X w ∧ ∃ ent ∈ es.rmw, ent.r = r ∧ ent.w = w ∧ EquivUnder (x.P es) ent.cond Expr.tt
 
 /-- The `Atomicity` axiom for a coherence order: `rmw ∩ (FR ; CO) = ∅`. No
     write to the location falls `CO`-between the write the read of an RMW
