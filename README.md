@@ -30,15 +30,17 @@ python3 scripts/es_diff.py --bound 2 ../mordor/litmus-tests ../mordor/programs/e
 It needs a MoRDor build (`dune build` in `../mordor`, or `--mordor PATH`). Each test comes out as
 `agree`, `equiv` (expressions differ only syntactically), `pruned` (agree once events MoRDor does
 not generate are dropped: those on an unsatisfiable path, and branches the path decides),
-`value` (an expression is not equivalent), `differ`, `ub-model` (a difference under one of MoRDor's
+`value` (an expression is not equivalent), `differ`, `branches` (agree on every event but the
+branch events, which MoRDor elides where the path decides them, unevenly), `cut` (see below),
+`ub-model` (a difference under one of MoRDor's
 UB-optimising models, `UB11`, `RC11UB` or `IMMUB`, which fold `e / !r` to `e` and `denote` does not),
 or `skip` (a construct this library's syntax
 lacks: non-atomics, locks, strong RMWs, RMWs on pointers, statements after a parallel block).
 Registers read before they are assigned are unknowns in MoRDor, and `smrd-es` starts each of them
 out holding a symbol of its own.
 
-Loops differ by design at the step-counter. When a loop's counter runs out, `denote` generates
-nothing (`⟨while b P⟩ ≜ ∅`, as in the paper), so that path ends. MoRDor instead generates one more
-loop head (its `Blocked` check) and continues past the loop on the exit outcome. Loop programs
-therefore come out as `differ`, with exactly that head and its exit path. `do B while c` is
-translated as `B; while c B` with that loop's counter one lower.
+Loops are bounded differently. When a loop's counter runs out, `denote` generates nothing
+(`⟨while b P⟩ ≜ ∅`, as in the paper), and that path ends. MoRDor instead generates one more loop
+head (its `Blocked` check) and leaves the loop on its exit outcome. MoRDor's bound n is therefore
+`denote`'s bound n + 1 with each loop's last body removed, and the test compares loop programs in
+that form (status `cut`). `do B while c` is translated as `B; while c B`.
