@@ -1,6 +1,6 @@
 name = "lean4-smrd"
 version = "0.1.0"
-defaultTargets = ["lean4-smrd"]
+defaultTargets = ["lean4-smrd", "smrd-es"]
 
 [[lean_lib]]
 name = "Smrd"
@@ -8,3 +8,7 @@ name = "Smrd"
 [[lean_exe]]
 name = "lean4-smrd"
 root = "Main"
+
+[[lean_exe]]
+name = "smrd-es"
+root = "EsExport"
