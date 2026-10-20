@@ -37,8 +37,8 @@ lacks: non-atomics, locks, strong RMWs, RMWs on pointers, statements after a par
 Registers read before they are assigned are unknowns in MoRDor, and `smrd-es` starts each of them
 out holding a symbol of its own.
 
-Loops differ by design at the step-counter. When a loop's counter runs out, `denote` generates
-nothing (`⟨while b P⟩ ≜ ∅`, as in the paper), so that path ends. MoRDor instead generates one more
-loop head (its `Blocked` check) and continues past the loop on the exit outcome. Loop programs
-therefore come out as `differ`, with exactly that head and its exit path. `do B while c` is
-translated as `B; while c B` with that loop's counter one lower.
+Loops are bounded differently. When a loop's counter runs out, `denote` generates nothing
+(`⟨while b P⟩ ≜ ∅`, as in the paper), and that path ends. MoRDor instead generates one more loop
+head (its `Blocked` check) and leaves the loop on its exit outcome. MoRDor's bound n is therefore
+`denote`'s bound n + 1 with each loop's last body removed, and the test compares loop programs in
+that form (status `cut`). `do B while c` is translated as `B; while c B`.

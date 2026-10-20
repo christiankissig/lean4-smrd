@@ -26,12 +26,14 @@ domain, under C's reading of the operators); ``value`` (the same structure,
 with some expression not equivalent); ``differ`` (the structures differ);
 ``pruned`` (agree once the events of lean4-smrd's structure that MoRDor does not
 generate are dropped: those on an unsatisfiable path, and branches the path
-decides); ``ub-model`` (differ, under a model whose UB optimisation folds
+decides); ``branches`` (agree on every event but the branch events, which
+MoRDor elides where the path decides them, unevenly); ``cut`` (loop programs
+that agree, with lean4-smrd at bound n + 1 and its last loop bodies cut, the
+shape of MoRDor's ``Blocked`` check); ``ub-model`` (differ, under a model whose UB optimisation folds
 ``e / !r`` to ``e``, which ``denote`` does not); ``skip`` (a construct
 lean4-smrd's syntax lacks) or ``error``.
 
-Exit status 0 if every test agrees, is equivalent, is under a UB-optimising
-model or is skipped, 1 otherwise.
+Exit status 0 unless a test is ``value``, ``differ`` or ``error``.
 """
 
 import argparse
@@ -140,6 +142,7 @@ class Translator:
         self.globals = set()
         self.free = set()
         self.do_loops = set()
+        self.while_loops = set()
         for instr in self.instrs():
             c = instr["command"]
             if c["op"] in ("ReadVar", "WriteVar", "ReadRef"):
@@ -215,14 +218,14 @@ class Translator:
         if op == "Par":
             return par([self.body(t) for t in c["threads"]])
         if op == "Do":
-            # `do B while c` is `B; while c B`. MoRDor's bound n gives the body n
-            # times, so the `while` gets n - 1 (`program` sets it).
+            # `do B while c` is `B; while c B`.
             self.do_loops.add(c["loop_id"] + 1)
             b = self.body(c["body"])
             return seq([b, {"op": "while", "loop": c["loop_id"] + 1, "cond": pexpr(c["cond"]),
                             "body": b}])
         if op == "While":
             # LoopId 0 is reserved in lean4-smrd for "outside every loop".
+            self.while_loops.add(c["loop_id"] + 1)
             return {"op": "while", "loop": c["loop_id"] + 1, "cond": pexpr(c["cond"]),
                     "body": self.body(c["body"])}
         raise Unsupported(op)
@@ -285,8 +288,16 @@ class Translator:
         threads = [self.body(t["body"]) for t in self.doc["threads"]]
         if threads:
             init.append(par(threads))
+        # MoRDor's bound n runs a loop's body at most n times and then checks
+        # the condition once more (its `Blocked` check): the run stops if it
+        # holds and leaves the loop if not. In denote's terms that is the bound
+        # n + 1 with the last body cut off (`cut_last_bodies`); a `do` loop's
+        # first body lies outside the `while`, which so gets n.
+        bounds = {l: self.bound + 1 for l in self.while_loops}
+        bounds.update({l: self.bound for l in self.do_loops})
         return {"program": seq(init), "free": sorted(self.free),
-                "bounds": [[l, max(self.bound - 1, 0)] for l in sorted(self.do_loops)]}
+                "bounds": [[l, b] for l, b in sorted(bounds.items())],
+                "cut": {str(l): b - 1 for l, b in bounds.items() if b > 0}}
 
 
 # ---------------------------------------------------------------------------
@@ -515,11 +526,14 @@ def satisfiable(conds):
     return False
 
 
-def prune(es):
+def prune(es, decided="path"):
     """Drop the events MoRDor does not generate: those whose path condition is
-    unsatisfiable, and the branch events whose outcome the path condition
-    decides. Program order is transitive, so the forest of what is left hangs
-    the children of a dropped branch under its parent."""
+    unsatisfiable, and branch events whose outcome is decided -- with
+    `decided="const"` those whose condition mentions no symbol (MoRDor
+    evaluates it away), with `decided="path"` also those the path condition
+    decides. MoRDor drops some of the latter and keeps others, so `classify`
+    tries both. Program order is transitive, so the forest of what is
+    left hangs the children of a dropped branch under its parent."""
     absolute = lambda e: canon_expr(e, None, None)
 
     def path(ev_):
@@ -531,7 +545,12 @@ def prune(es):
             drop.add(e["id"])
         elif e["kind"]["type"] == "Branch":
             c = absolute(e["kind"]["cond"])
-            if satisfiable(path(e) + [c]) is False or satisfiable(path(e) + [("not", c)]) is False:
+            if decided == "none":
+                pass
+            elif decided == "const":
+                if not syms_of(c):
+                    drop.add(e["id"])
+            elif satisfiable(path(e) + [c]) is False or satisfiable(path(e) + [("not", c)]) is False:
                 drop.add(e["id"])
     return drop
 
@@ -568,9 +587,10 @@ def norm_cond(c):
 MORDOR_ORDER = {"rlx": "rlx", "acq": "acq", "rel": "rel", "sc": "sc"}
 
 
-def mordor_canon(doc):
+def mordor_canon(doc, branches=True):
     s = doc["structure"]
-    keep = {e["id"]: e for e in s["events"] if e["type"] not in ("Init", "Terminal")}
+    drop = ("Init", "Terminal") if branches else ("Init", "Terminal", "Branch")
+    keep = {e["id"]: e for e in s["events"] if e["type"] not in drop}
     parent, children, roots = forest(keep, s["po"])
     origin_of = s["origin"]
 
@@ -651,10 +671,39 @@ def compare(test, args, tmp):
     r = run([str(args.smrd_es), str(prog), str(args.bound)])
     if r.returncode != 0:
         return "error", f"smrd-es failed: {r.stderr.strip()[-300:]}"
-    status, detail = classify(json.loads(r.stdout), json.loads(esm.read_text()))
+    lean_es = cut_last_bodies(json.loads(r.stdout), lean_prog["cut"])
+    status, detail = classify(lean_es, json.loads(esm.read_text()))
+    if status == "agree" and lean_prog["cut"]:
+        return "cut", "agree with denote at bound n + 1, its last loop bodies cut"
     if status in ("value", "differ") and ub_model(test):
         return "ub-model", detail
     return status, detail
+
+
+def cut_last_bodies(es, cut):
+    """Drop the events of iteration `cut[ℓ]` of each loop `ℓ` other than its
+    head: the head then leads only out of the loop, as MoRDor's `Blocked`
+    check does. A head is the `Branch` at the program counter of the loop's
+    first event of iteration 0."""
+    if not cut:
+        return es
+    head = {}
+    for e in sorted(es["events"], key=lambda e: e["id"]):
+        for l, k in e["iter"]:
+            if str(l) in cut and k == 0 and str(l) not in head:
+                head[str(l)] = e["pc"]
+
+    def keep(e):
+        for l, k in e["iter"]:
+            if str(l) in cut and k == cut[str(l)]:
+                is_head = (e["kind"]["type"] == "Branch" and e["pc"] == head.get(str(l))
+                           and e["iter"][-1] == [l, k])
+                if not is_head:
+                    return False
+        return True
+    events = [e for e in es["events"] if keep(e)]
+    ids = {e["id"] for e in events}
+    return {**es, "events": events, "po": [p for p in es["po"] if p[0] in ids and p[1] in ids]}
 
 
 def classify(lean_es, mordor_doc):
@@ -662,11 +711,13 @@ def classify(lean_es, mordor_doc):
     mordor = mordor_canon(mordor_doc)
     if render(*lean) == render(*mordor):
         return "agree", ""
-    pruned = prune(lean_es)
-    if pruned:
-        lean = lean_canon(lean_es, pruned)
-        if render(*lean) == render(*mordor):
-            return "pruned", f"{len(pruned)} infeasible or decided events dropped from lean4-smrd's"
+    for decided in ("const", "path"):
+        pruned = prune(lean_es, decided)
+        if pruned:
+            lean = lean_canon(lean_es, pruned)
+            if render(*lean) == render(*mordor):
+                return "pruned", (f"{len(pruned)} infeasible or decided ({decided})"
+                                  " events dropped from lean4-smrd's")
     diff = "\n".join(difflib.unified_diff(pretty(*mordor), pretty(*lean), "mordor",
                                           "lean4-smrd", lineterm=""))
     pairs = pair(lean, mordor)
@@ -677,6 +728,14 @@ def classify(lean_es, mordor_doc):
         return "value", diff + "\n" + "\n".join(
             f"  lean {a}  vs  mordor {b}: {'equivalent' if v else 'NOT equivalent' if v is False else 'too many symbols'}"
             for (a, b), v in zip(pairs, verdicts))
+    # MoRDor elides some branches the path decides and keeps others; failing
+    # everything above, compare the events that are not branches, on the paths
+    # lean4-smrd's structure can take.
+    infeasible = prune(lean_es, "none")
+    no_branches = infeasible | {e["id"] for e in lean_es["events"]
+                                if e["kind"]["type"] == "Branch"}
+    if render(*lean_canon(lean_es, no_branches)) == render(*mordor_canon(mordor_doc, False)):
+        return "branches", "agree on every event but the branches"
     return "differ", diff
 
 
