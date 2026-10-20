@@ -26,9 +26,12 @@ domain, under C's reading of the operators); ``value`` (the same structure,
 with some expression not equivalent); ``differ`` (the structures differ);
 ``pruned`` (agree once the events of lean4-smrd's structure that MoRDor does not
 generate are dropped: those on an unsatisfiable path, and branches the path
-decides); ``skip`` (a construct lean4-smrd's syntax lacks) or ``error``.
+decides); ``ub-model`` (differ, under a model whose UB optimisation folds
+``e / !r`` to ``e``, which ``denote`` does not); ``skip`` (a construct
+lean4-smrd's syntax lacks) or ``error``.
 
-Exit status 0 if every test agrees, is equivalent or is skipped, 1 otherwise.
+Exit status 0 if every test agrees, is equivalent, is under a UB-optimising
+model or is skipped, 1 otherwise.
 """
 
 import argparse
@@ -610,6 +613,20 @@ def run(cmd):
         raise Timeout(f"{Path(cmd[0]).name} {cmd[1] if len(cmd) > 1 else ''} took over {TIMEOUT}s")
 
 
+# MoRDor's models with `ubopt` set (Context's model table): the interpreter
+# assumes no division by zero and folds `e / !r` to `e`.
+UB_MODELS = {"ub11", "rc11ub", "immub"}
+
+
+def ub_model(test):
+    """Whether an assertion of the test names a UB-optimising model."""
+    import re
+    text = Path(test).read_text(errors="replace")
+    tail = text[text.index("%%"):] if "%%" in text else ""
+    return any(m.strip().lower() in UB_MODELS
+               for group in re.findall(r"\[([^\]]*)\]", tail) for m in group.split(","))
+
+
 def compare(test, args, tmp):
     isa = Path(tmp) / "prog.isa.json"
     esm = Path(tmp) / "mordor.es.json"
@@ -634,9 +651,15 @@ def compare(test, args, tmp):
     r = run([str(args.smrd_es), str(prog), str(args.bound)])
     if r.returncode != 0:
         return "error", f"smrd-es failed: {r.stderr.strip()[-300:]}"
-    lean_es = json.loads(r.stdout)
+    status, detail = classify(json.loads(r.stdout), json.loads(esm.read_text()))
+    if status in ("value", "differ") and ub_model(test):
+        return "ub-model", detail
+    return status, detail
+
+
+def classify(lean_es, mordor_doc):
     lean = lean_canon(lean_es)
-    mordor = mordor_canon(json.loads(esm.read_text()))
+    mordor = mordor_canon(mordor_doc)
     if render(*lean) == render(*mordor):
         return "agree", ""
     pruned = prune(lean_es)
