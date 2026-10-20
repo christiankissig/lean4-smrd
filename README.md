@@ -30,7 +30,9 @@ python3 scripts/es_diff.py --bound 2 ../mordor/litmus-tests ../mordor/programs/e
 It needs a MoRDor build (`dune build` in `../mordor`, or `--mordor PATH`). Each test comes out as
 `agree`, `equiv` (expressions differ only syntactically), `pruned` (agree once events MoRDor does
 not generate are dropped: those on an unsatisfiable path, and branches the path decides),
-`value` (an expression is not equivalent), `differ`, `ub-model` (a difference under one of MoRDor's
+`value` (an expression is not equivalent), `differ`, `branches` (agree on every event but the
+branch events, which MoRDor elides where the path decides them, unevenly), `cut` (see below),
+`ub-model` (a difference under one of MoRDor's
 UB-optimising models, `UB11`, `RC11UB` or `IMMUB`, which fold `e / !r` to `e` and `denote` does not),
 or `skip` (a construct this library's syntax
 lacks: non-atomics, locks, strong RMWs, RMWs on pointers, statements after a parallel block).
