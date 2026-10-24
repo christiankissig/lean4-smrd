@@ -49,7 +49,7 @@ Smrd.Types                        expressions, values, events, event structures,
 └── Smrd.Forwardingcontext        δ = (F, WE), ψ_δ, remap_δ
       └── Smrd.Ppo                ≼_sync, ≼_rmw, ≼_alias, ≼^P_δ, pred, dependence on P
             └── Smrd.Justifications  (+ Smrd.Conjuncts) pre-justifications, elaborations, `Generated` (𝕁)
-                  └── Smrd.Executions  executions, freeze (DP, ≼, φ), NTA, RC11 coherence, atomicity, UAF, `Frozen`
+                  └── Smrd.Executions  executions, freeze (DP, ≼, φ), NTA, RC11 coherence, atomicity, UAF (sMRD `nta`, RC11 `ntaRC11`), RC11 no-thin-air (`NoThinAirRC11`), `Frozen`
                         └── Smrd.CoherenceRC11  preserved coherence and HB_v, reduced to RC11's axiom (FenceFree)
 ```
 
