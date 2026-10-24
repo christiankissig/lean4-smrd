@@ -284,6 +284,11 @@ def Consistent (Ω : Pred) : Prop :=
     RC11's. -/
 def ntaRC11 : Rel := Rel.plus ((x.poX es).union x.rf)
 
+/-- RC11's no-thin-air axiom (its "no load buffering"): `⊑ ∪ rf` is acyclic,
+    with `⊑` within `X ∪ X_F`. sMRD replaces `⊑` by `DP ∪ ≼` (`NoThinAir`), which
+    is what admits load buffering. -/
+def NoThinAirRC11 : Prop := Rel.Acyclic ((x.poX es).union x.rf)
+
 /-- `𝕏` exhibits a use-after-free under a model with no-thin-air order
     `nta_M`: an access `a` of the location a deallocation `d` frees, with
     `(a, d) ∉ nta_M`. The locations are compared under the frozen constraints
