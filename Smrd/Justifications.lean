@@ -287,7 +287,7 @@ theorem Generated.sat {Ω : Pred} {j : Justification} (h : es.Generated Ω j) :
   | lift _ _ _ _ _ _ _ _ _ _ _ hs =>
       obtain ⟨f, hP, _⟩ := hs; exact Or.inl ⟨f, hP⟩
 
-theorem preJust_δ {w : Event} {j : Justification} (h : preJust w = some j) : j.δ = .empty := by
+theorem δ_of_preJust {w : Event} {j : Justification} (h : preJust w = some j) : j.δ = .empty := by
   unfold preJust at h
   split at h <;> cases h <;> rfl
 
@@ -299,7 +299,7 @@ theorem Generated.we_mem {Ω : Pred} {j : Justification} (h : es.Generated Ω j)
     ∀ p ∈ j.δ.we, ∃ j₀ : Justification, es.weRel j₀ p.2 p.1 ∧ Sat j₀.P.holds ∧
       ∀ q ∈ j₀.δ.f, q ∈ j.δ.f := by
   induction h with
-  | pre _ hj _ => intro p hp; rw [preJust_δ hj] at hp; cases hp
+  | pre _ hj _ => intro p hp; rw [δ_of_preJust hj] at hp; cases hp
   | va _ _ _ _ ih => exact ih
   | str _ _ _ _ _ _ _ ih => exact ih
   | fwd _ _ _ _ _ _ _ _ _ ih =>
