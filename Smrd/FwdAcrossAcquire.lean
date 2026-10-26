@@ -176,7 +176,7 @@ theorem fwd_24 : esA.fwdRel jB 2 4 := by
       ⟨po_of (by decide), _, _, _, _, rfl, rfl, rfl, rfl, fun _ => .num 0,
         SA.holds (e := e2) (by simp [esA, e2]) _,
         by simp [Expr.holds, Expr.eval, Expr.glob]⟩), by decide⟩, ?_⟩,
-      _, _, _, _, rfl, rfl, rfl, rfl, fun _ _ _ _ h₁ h₂ => by rw [h₁] at h₂; cases h₂; rfl⟩,
+      po_of (by decide), _, _, _, _, rfl, rfl, rfl, rfl, fun _ _ _ _ h₁ h₂ => by rw [h₁] at h₂; cases h₂; rfl⟩,
     .inr (.inl ⟨⟨_, rfl, rfl⟩, ⟨_, rfl, rfl⟩⟩),
     fun ⟨e, he, hp⟩ => by cases he; simp [e4, W, Event.isVol] at hp⟩
   rintro ⟨e'', h₁, h₂⟩

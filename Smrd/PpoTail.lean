@@ -141,7 +141,9 @@ def PoForest (es : EventStructure) : Prop :=
   ∀ a b e, (a = e ∨ es.poR a e) → (b = e ∨ es.poR b e) → a = b ∨ es.poR a b ∨ es.poR b a
 
 /-- No forwarding, and every write elision `(e₂, e₁) ∈ WE` (`e₁` elided into
-    `e₂`) is `⊑`-forward, `e₁ ⊑ e₂`. -/
+    `e₂`) is `⊑`-forward, `e₁ ⊑ e₂`. The second half holds of every execution,
+    as Write Elision asks `e₁ ⊑ e₂` (`EventStructure.fwdBase`,
+    `Execution.weForward_of_noFwd`). -/
 def WEForward (es : EventStructure) (x : Execution) : Prop :=
   (∀ p ∈ x.δ.f, False) ∧ ∀ p ∈ x.δ.we, es.poR p.2 p.1
 
