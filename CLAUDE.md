@@ -48,9 +48,15 @@ Smrd.Types                        expressions, values, events, event structures,
 │     └── Smrd.Monotonicity     `denote_mono`: ⟨P⟩_n embeds into ⟨P⟩_{n'} for n ≤ n' (l:es-mono)
 └── Smrd.Forwardingcontext        δ = (F, WE), ψ_δ, remap_δ
       └── Smrd.Ppo                ≼_sync, ≼_rmw, ≼_alias, ≼^P_δ, pred, dependence on P
+            ├── Smrd.PpoMordor        MoRDor's ppo templates (ppo_sync, ppo_loc, ForwardingContext.ppo)
             └── Smrd.Justifications  (+ Smrd.Conjuncts) pre-justifications, elaborations, `Generated` (𝕁)
-                  └── Smrd.Executions  executions, freeze (DP, ≼, φ), NTA, RC11 coherence, atomicity, UAF (sMRD `nta`, RC11 `ntaRC11`), RC11 no-thin-air (`NoThinAirRC11`), `Frozen`
+                  └── Smrd.Executions  (+ PpoMordor) executions, freeze (DP, ≼ = MoRDor's freeze_ppo, ppoTrunc, ppoWin, φ), NTA, RC11 coherence, atomicity, UAF (sMRD `nta`, RC11 `ntaRC11`), RC11 no-thin-air (`NoThinAirRC11`), `Frozen`
                         └── Smrd.CoherenceRC11  preserved coherence and HB_v, reduced to RC11's axiom (FenceFree)
+                              └── Smrd.PpoTail  MoRDor's ≼: ≼ ⊆ ⊑ without δ, conditions (i)/(ii), NTA same as ppoWin
+                                    ├── Smrd.PpoEval  ≼ computed for global-location executions (`ppoEval_iff`), for `smrd-es` / scripts/ppo_diff.py
+                                    └── Smrd.PpoKit  (+ Monotonicity) concrete executions, list bounds on ≼, sw, eco
+                                          └── Smrd.PpoStability  truncated ≼ unstable (A), untruncated local/stable (B), no NTA change (C)
+                                                └── Smrd.PpoNecessity  untruncated ≼ needed for HB_v = RC11 (N1: CoRR, CoWR, MP); cross-thread ≼ (N2)
 ```
 
 `Smrd.Basic` re-exports all of the above and is the library root (`Smrd.lean` imports it).
