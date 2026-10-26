@@ -1,6 +1,7 @@
 import Smrd.Types
 import Smrd.Forwardingcontext
 import Smrd.Ppo
+import Smrd.PpoMordor
 import Smrd.Justifications
 
 /-!
@@ -104,11 +105,116 @@ def DP : Rel := fun a b =>
 /-- `P ≜ ⋀_{j ∈ J} P_j ∧ ψ_{δ_j}` -/
 def P : Pred := fun f => ∀ j ∈ x.J, j.P.holds f ∧ j.δ.psi es f
 
-/-- `≼ ≜ ⋃_{j ∈ J} ≼^{P_j}_δ ∩ {e ∈ X | e ⊑ w_j ∨ e = w_j}²` -/
-def ppo : Rel := fun a b =>
+/-- `X_F ≜ {f ∈ E ∩ F | X ∪ {f} conflict-free}`: the fences on the branches
+    `X` takes. An execution holds no fences (`Candidate`), but `⊑`, `SW` and
+    `HB` range over `X ∪ X_F`. -/
+def XF : EvSet := fun f =>
+  es.inE f ∧ es.cls Event.isFence f ∧ ∀ a, x.X a → ¬ es.Conflict a f
+
+/-- `X ∪ X_F` -/
+def XwF : EvSet := fun a => x.X a ∨ x.XF es a
+
+/-! ### Preserved program order
+
+`≼` is MoRDor's frozen `ppo` (`Execution.ppo`, below). The paper's truncated `≼`
+of Definition `def:freeze`, which is also sMRD's (Richards et al., Def. 4.9),
+is kept as `ppoTrunc`, and MoRDor's own truncation of its `ppo` to the
+justification windows (its experiment mode `MORDOR_PPO_TRUNC=paper`) as
+`ppoWin`. -/
+
+/-- The paper's `≼` (Definition `def:freeze`, sMRD Def. 4.9), truncated at the
+    justification windows:
+    `≼_trunc ≜ ⋃_{j ∈ J} ≼^{P_j}_δ ∩ {e ∈ X | e ⊑ w_j ∨ e = w_j}²`. -/
+def ppoTrunc : Rel := fun a b =>
   ∃ j ∈ x.J, es.ppo j.P.holds x.δ a b ∧
     x.X a ∧ x.X b ∧
     (a = j.w.id ∨ es.poR a j.w.id) ∧ (b = j.w.id ∨ es.poR b j.w.id)
+
+/-- The justification window of `j`, `{e | e ⊑ w_j ∨ e = w_j}`. -/
+def Win (j : Justification) : EvSet := fun e => e = j.w.id ∨ es.poR e j.w.id
+
+/-- Both events lie in one justification window. -/
+def InWin (a b : EventId) : Prop := ∃ j ∈ x.J, Win es j a ∧ Win es j b
+
+/-- MoRDor's combined predicate `p_combined` (`Freeze.prepare`),
+    `⋀_{j ∈ J} P_j ∧ ψ_δ ∧ ⋀_{e ∈ X} valres(e)`, with the shared context's `ψ`.
+    MoRDor's `path.p` takes the value restrictions of every event of the path,
+    fences and its terminal events included; its `statex` (allocation
+    disjointness) has no counterpart, see `ppo`. -/
+def Pm : Pred := fun f => (∀ j ∈ x.J, j.P.holds f) ∧ x.δ.psi es f ∧ x.valresX es f
+
+/-- The alias predicate of a justification's part, `P_j ∧ ψ_δ`. -/
+def PJ (j : Justification) : Pred := Pred.and j.P.holds (x.δ.psi es)
+
+/-- MoRDor's `ppos`: each justification's `ForwardingContext.ppo` under `P_j`,
+    cut to its window. -/
+def ppoJ : Rel := fun a b =>
+  ∃ j ∈ x.J, es.ppoM (x.PJ es j) j.P.holds x.δ a b ∧ Win es j a ∧ Win es j b
+
+/-- The relation `freeze_ppo` closes: the per-justification parts, the remapped
+    `ppo_sync` and `ppo_loc` under `p_combined`, restricted to the path
+    `X ∪ X_F`. -/
+def ppoStep : Rel := fun a b =>
+  x.XwF es a ∧ x.XwF es b ∧
+    (x.ppoJ es a b ∨ es.ppoSyncRM x.δ a b ∨ es.ppoLocM (x.Pm es) x.δ a b)
+
+/-- **`≼`, MoRDor's frozen `ppo`** (`mordor/src/executions.ml`, `Freeze.freeze_ppo`,
+    MoRDor commit 6dd8521):
+
+    `≼ ≜ X² ∩ (⊑-path ∩ (⋃_{j ∈ J} ≼^{P_j ∧ ψ_δ, P_j}_δ ∩ W_j² ∪ remap_δ(ppo_sync) ∪
+    ppo_loc^{P_m}_δ))⁺`,
+
+    with `W_j = {e | e ⊑ w_j ∨ e = w_j}` (`Win`), `P_m` MoRDor's `p_combined`
+    (`Pm`), the templates of `Smrd.PpoMordor`, and the path `X ∪ X_F`.
+
+    Differences from Definition `def:freeze` (and sMRD Def. 4.9, the same
+    union):
+
+    1. `≼_sync` and `≼_loc` are added uncut: the pairs after a thread's last
+       justified write are kept (MoRDor's DEPARTURES F1). The paper cuts every
+       pair to a justification window.
+    2. The union is restricted to the path and closed transitively; the paper's
+       is neither. The closure runs through fences, whose pairs are in
+       `ppo_sync`, before `≼` is restricted to `X`.
+    3. The templates are MoRDor's (`Smrd.PpoMordor`): `ppo_sync` has no
+       fence-crossing summand and keeps fence endpoints; locations equal
+       outright are ordered whatever the predicate; `ppo_loc` filters again by
+       aliasing.
+    4. Alias queries are under `P_j ∧ ψ_δ` (as sMRD's `≼^δ_P` has `ψ_δ`), and
+       `ppo_loc`'s under `p_combined`, which adds the value restrictions of the
+       path. The paper's are under `P_j`.
+    5. Every part is remapped under the shared context `δ` (MoRDor's
+       justifications carry the shared `fwd`/`we` by `remap_just`).
+
+    Consequences: remapping the uncut parts produces cross-thread pairs. An
+    initialising write `⊑`-before every thread is `ppo_sync`- or
+    `ppo_loc`-before the events of other threads; when a thread's write elides
+    it, the pair is remapped onto that write, as `(3, 6)` and `(6, 3)` of
+    MoRDor's `SB+sc` with both initialising writes elided, which makes `≼`
+    cyclic. So `≼ ⊆ ⊑` fails with write elision alone, without forwarding
+    (`Smrd.PpoTail`).
+
+    MoRDor's parts that have no counterpart here: the `Init` event `0` and the
+    `Terminal` events with `ppo_init` (`0` before, and the terminal events
+    after, every event of the path) -- a source and sinks of the relation
+    closed, so they add no pair between other events; the value restrictions
+    `path.p` carries only through fences or terminal events (a branch at the
+    end of a thread with no event after it); and `statex`, the allocation
+    disjointness MoRDor conjoins to `p_combined` (here allocation disjointness
+    is in `φ_rf`, which depends on `≼` through `nta`, and cannot be conjoined
+    to the predicate `≼` is computed under). -/
+def ppo : Rel := fun a b => x.X a ∧ x.X b ∧ Relation.TransGen (x.ppoStep es) a b
+
+/-- MoRDor's `ppoStep` cut to the justification windows. -/
+def ppoWinStep : Rel := fun a b =>
+  x.XwF es a ∧ x.XwF es b ∧
+    (x.ppoJ es a b ∨ ((es.ppoSyncRM x.δ a b ∨ es.ppoLocM (x.Pm es) x.δ a b) ∧ x.InWin es a b))
+
+/-- MoRDor's `ppo` with every part cut to the justification windows
+    (MoRDor's experiment mode `MORDOR_PPO_TRUNC=paper`, branch
+    `ppo-trunc-experiment`), the analogue of the paper's truncation over
+    MoRDor's templates. -/
+def ppoWin : Rel := fun a b => x.X a ∧ x.X b ∧ Relation.TransGen (x.ppoWinStep es) a b
 
 /-- The intra-thread dependency order `≼ ∪ DP`. -/
 def dep : Rel := (x.ppo es).union (x.DP)
@@ -182,15 +288,6 @@ def fr (co : Rel) : Rel := fun r w' => ∃ w, x.rf w r ∧ co w w'
 
 /-- `ECO ≜ (rf ∪ CO ∪ FR)⁺` -/
 def eco (co : Rel) : Rel := Rel.plus ((x.rf.union co).union (x.fr co))
-
-/-- `X_F ≜ {f ∈ E ∩ F | X ∪ {f} conflict-free}`: the fences on the branches
-    `X` takes. An execution holds no fences (`Candidate`), but `⊑`, `SW` and
-    `HB` range over `X ∪ X_F`. -/
-def XF : EvSet := fun f =>
-  es.inE f ∧ es.cls Event.isFence f ∧ ∀ a, x.X a → ¬ es.Conflict a f
-
-/-- `X ∪ X_F` -/
-def XwF : EvSet := fun a => x.X a ∨ x.XF es a
 
 /-- `⊑` within `X ∪ X_F`. -/
 def poX : Rel := fun a b => x.XwF es a ∧ x.XwF es b ∧ es.poR a b
