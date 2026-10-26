@@ -54,6 +54,8 @@ Smrd.Types                        expressions, values, events, event structures,
                         └── Smrd.CoherenceRC11  preserved coherence and HB_v, reduced to RC11's axiom (FenceFree)
                               └── Smrd.PpoTail  MoRDor's ≼: ≼ ⊆ ⊑ without δ, conditions (i)/(ii), NTA same as ppoWin
                                     └── Smrd.PpoEval  ≼ computed for global-location executions (`ppoEval_iff`), for `smrd-es` / scripts/ppo_diff.py
+                                    └── Smrd.PpoKit  (+ Monotonicity) concrete executions, list bounds on ≼, sw, eco
+                                          └── Smrd.PpoStability  truncated ≼ unstable (A), untruncated local/stable (B), no NTA change (C)
 ```
 
 `Smrd.Basic` re-exports all of the above and is the library root (`Smrd.lean` imports it).
