@@ -12,8 +12,8 @@ so that a relation's pairs can be bounded by a list and checked by `decide`.
 * `simple es rf`: the execution with `X` the candidates, `J` the
   pre-justifications, and `rf` a list; `isExecution_simple`, `phi_simple`
   prove it an execution with `φ` from decidable side conditions (`Simple`).
-* `syncL`, `aliasL` (the paper's `≼_sync`, `≼_alias` on global locations, as in
-  lean4-episodic-loops' `GammaPred`), `syncML` (MoRDor's `ppo_sync`); `ppo_mem`,
+* `syncL`, `aliasL` (the paper's `≼_sync`, `≼_alias` on global locations, as
+  lists), `syncML` (MoRDor's `ppo_sync`); `ppo_mem`,
   `ppoStep_mem` bound the paper's `≼^P_δ` and MoRDor's steps by them, without
   forwarding or elision.
 * `transGen_mem`: a transitive closure stays in a list closed under the step.
