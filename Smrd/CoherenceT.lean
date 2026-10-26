@@ -43,8 +43,11 @@ Elision therefore carries MoRDor's release restriction
   coherence order over `X ∖ †`. Against `coherenceV_iff_coherence_we`, the
   hypothesis that no event of the path is elided is gone (the transformed
   execution leaves them out), `NoCross` is weakened to `NoCrossLoc`, and the
-  execution justifies no elided write (`hJ`). No forwarding is still assumed
-  (`WEForward`): a forwarded event is in `†` too, and Forwarding across an
+  execution justifies no elided write (`hJ`). That elisions point `⊑`-forward
+  is derived (`we_po`: Write Elision asks `e₁ ⊑ e₂`, `EventStructure.fwdBase`),
+  so `WEForward` reduces to no forwarding (`weForward_of_noFwd`), which is
+  still assumed: a forwarded event is in `†` too, it is remapped `⊑`-backward
+  to its source, and Forwarding across an
   acquire is not restricted. That is a real gap, not only of the proof:
   forwarding a store into a later one across an acquire,
   `x := 1; r0 :acq= flag; x := 1`, makes `CoherenceT` admit an outcome RC11
@@ -191,6 +194,22 @@ theorem we_edge {Ω : Pred} (hx : x.IsExecution es Ω) {p : EventId × EventId} 
   obtain ⟨j₀, h₀, hs, hf⟩ := EventStructure.Generated.we_mem es (hx.generated j hj) p hpj
   exact ⟨j₀, h₀, hs, fun q hq => mem_δ_f hj (hf q hq)⟩
 
+/-- **Every elision of an execution is `⊑`-forward**, `e₁ ⊑ e₂` for
+    `(e₂, e₁) ∈ WE`: Write Elision asks it of the pair (`fwdBase`). -/
+theorem we_po {Ω : Pred} (hx : x.IsExecution es Ω) : ∀ p ∈ x.δ.we, es.poR p.2 p.1 :=
+  fun _ hp => by
+    obtain ⟨j₀, ⟨⟨⟨-, hpo, -⟩, -⟩, -⟩, -⟩ := we_edge hx hp
+    exact hpo
+
+/-- **`WEForward` holds of every execution without forwarding**: its second
+    half, elisions `⊑`-forward, is `we_po`. Its first half, no forwarding, is
+    not derived: Forwarding remaps the forwarded event `⊑`-backward, to its
+    source, so `remap_fwd` fails with it, and forwarding across an acquire is
+    a real gap of `CoherenceT` (`Smrd.FwdAcrossAcquire`). -/
+theorem weForward_of_noFwd {Ω : Pred} (hx : x.IsExecution es Ω) (hnoF : ∀ p ∈ x.δ.f, False) :
+    WEForward es x :=
+  ⟨hnoF, we_po hx⟩
+
 /-- Without forwarding, an elided event is the earlier write of an elision. -/
 theorem elided_we (hW : WEForward es x) {e : EventId} (h : x.elided e) :
     ∃ e₂, (e₂, e) ∈ x.δ.we := by
@@ -267,7 +286,13 @@ def RMWAcc (es : EventStructure) (c : EventId) : Prop := ∃ ent ∈ es.rmw, ent
     is an RMW access. MoRDor's Write Elision asks the elided write to be the
     immediate `ppo_loc`-predecessor of the eliding one (`fprime`), which an
     aliasing `c` in between would refute, and elides no RMW access
-    (`ForwardElab.we`, `elidable`); neither is derived here. -/
+    (`ForwardElab.we`, `elidable`); neither is derived here. `pred` is taken
+    in the eliding justification `j₀` (its `P` and `δ`), while the alias
+    queries here are under the execution's predicates: a justification of
+    `x` whose predicate Strengthening never made distinguish `c` from `a`
+    (e.g. `x := 1; *p := 2; x := 3`, elided under `p ≠ &x` and `*p := 2`
+    justified under `⊤`) may alias them, and `c` may already be remapped by
+    `j₀.δ`, so that it is not `≼`-between in `j₀`. -/
 def NoCrossLoc (es : EventStructure) (x : Execution) : Prop :=
   ∀ a a' c, x.δ.Remap a a' → es.poR a c → es.poR c a' →
     (es.mustAlias a c ∨ es.mayAlias (x.Pm es) a c ∨ (∃ j ∈ x.J, es.mayAlias (x.PJ es j) a c) ∨
@@ -465,11 +490,12 @@ theorem eco_tgt {Ω : Pred} (hx : x.IsExecution es Ω) (hW : WEForward es x) {co
     `RMWTightR`, `DP ⊆ ⊑`, and no justification of an elided write. No
     `NoCross`, and no hypothesis that the path has no elided event. -/
 theorem coherenceV_of_coherenceT {Ω : Pred} {co : Rel} (hx : x.IsExecution es Ω)
-    (hW : WEForward es x)
+    (hnoF : ∀ p ∈ x.δ.f, False)
     (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
     (hirr : ∀ a, ¬ es.poR a a) (hF : PoForest es) (hL : NoCrossLoc es x) (hT : RMWTightR es x)
     (hDP : ∀ a b, x.DP a b → es.poR a b) (hJ : ∀ j ∈ x.J, ¬ x.elided j.w.id)
     (hco : x.CoherenceOrderT es co) (h : x.CoherenceT es co) : x.CoherenceV es co := by
+  have hW := weForward_of_noFwd hx hnoF
   rintro a ⟨b, hab, hba⟩
   have ha : ¬ x.elided a := by
     rcases hba with rfl | heco
@@ -547,7 +573,7 @@ theorem coherenceT_of_coherenceV {co : Rel} (hnf : x.FenceFree es)
     forwarding, under the release restriction, `NoCrossLoc`, `RMWTightR`,
     `DP ⊆ ⊑`, and no justification of an elided write. -/
 theorem coherenceT_iff_coherenceV {Ω : Pred} {co : Rel} (hx : x.IsExecution es Ω)
-    (hnf : x.FenceFree es) (hW : WEForward es x)
+    (hnf : x.FenceFree es) (hnoF : ∀ p ∈ x.δ.f, False)
     (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
     (hirr : ∀ a, ¬ es.poR a a) (hF : PoForest es) (hL : NoCrossLoc es x) (hT : RMWTightR es x)
     (hDP : ∀ a b, x.DP a b → es.poR a b) (hJ : ∀ j ∈ x.J, ¬ x.elided j.w.id)
@@ -556,7 +582,7 @@ theorem coherenceT_iff_coherenceV {Ω : Pred} {co : Rel} (hx : x.IsExecution es 
     (hco : x.CoherenceOrderT es co) (hcoL : ∀ a b, co a b → x.sameLoc es a b)
     (hm : LocModel es x) :
     x.CoherenceT es co ↔ x.CoherenceV es co :=
-  ⟨coherenceV_of_coherenceT hx hW hpo_trans hirr hF hL hT hDP hJ hco,
+  ⟨coherenceV_of_coherenceT hx hnoF hpo_trans hirr hF hL hT hDP hJ hco,
    coherenceT_of_coherenceV hnf hpo_trans hirr hLtrans hrfL hcoL hm⟩
 
 end Equiv

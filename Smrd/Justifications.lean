@@ -92,9 +92,18 @@ variable (es : EventStructure)
 
 /-! ## Forwarding relations (Definition `def:fwd-rels`) -/
 
-/-- `e₁ -F'_j→ e₂ ≜ e₁ ∈ pred_δ(e₂, P) ∧ loc(e₁) ≡_{P ∧ ψ_δ} loc(e₂)` -/
+/-- `e₁ -F'_j→ e₂ ≜ e₁ ∈ pred_δ(e₂, P) ∧ e₁ ⊑ e₂ ∧ loc(e₁) ≡_{P ∧ ψ_δ} loc(e₂)`.
+
+    `e₁ ⊑ e₂` (in the program order of the event structure, not after
+    `remap_δ`) is explicit here. In sMRD as published `≼ ⊆ ⊑`, so `pred` is
+    `⊑`-before and the condition is implied; here `≼` is computed after
+    `remap_δ`, which can relate events of different threads (eliding `x := 0`
+    into `x := 1` makes `x := 1` an immediate `≼`-predecessor of a read of `x`
+    in another thread), and Forwarding and Write Elision would then forward
+    across threads. MoRDor likewise cuts forwarding to the window of the
+    justified write (`docs/DEPARTURES.md` E4). -/
 def fwdBase (j : Justification) (e₁ e₂ : EventId) : Prop :=
-  es.pred j.δ e₂ j.P.holds e₁ ∧
+  es.pred j.δ e₂ j.P.holds e₁ ∧ es.poR e₁ e₂ ∧
     ∃ ev₁ ev₂ l₁ l₂, es.ev e₁ = some ev₁ ∧ es.ev e₂ = some ev₂ ∧
       ev₁.loc = some l₁ ∧ ev₂.loc = some l₂ ∧
       EquivUnder (Pred.and j.P.holds (j.δ.psi es)) l₁ l₂

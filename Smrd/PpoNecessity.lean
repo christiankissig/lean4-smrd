@@ -484,6 +484,7 @@ theorem gen_jWE : esWW.Generated (fun _ => True) jWE := by
       ⟨show (0, 1) ∈ esWW.po by decide, _, _, _, _, rfl, rfl, rfl, rfl, fun _ => .num 0,
         SWW.holds (e := W 1 0 [1, 0] .rlx "x" 1) (by simp [esWW]) _,
         by simp [Expr.holds, Expr.eval, Expr.glob]⟩), by decide⟩, ?_⟩,
+      show (0, 1) ∈ esWW.po by decide,
       _, _, _, _, rfl, rfl, rfl, rfl, fun _ _ _ _ h₁ h₂ => by rw [h₁] at h₂; cases h₂; rfl⟩,
     ⟨_, rfl, rfl⟩, ⟨_, rfl, rfl⟩, fun ⟨e, he, hp⟩ => by cases he; simp [W, Event.isVol] at hp⟩,
     weNoRel_of (by decide) (by decide)⟩ ?_ ?_
@@ -738,6 +739,7 @@ theorem gen_jC : esC.Generated (fun _ => True) jC := by
       ⟨show (0, 1) ∈ esC.po by decide, _, _, _, _, rfl, rfl, rfl, rfl, fun _ => .num 0,
         SC.holds (e := W 1 0 [1] .rlx "x" 2) (by simp [esC]) _,
         by simp [Expr.holds, Expr.eval, Expr.glob]⟩), by decide⟩, ?_⟩,
+      show (0, 1) ∈ esC.po by decide,
       _, _, _, _, rfl, rfl, rfl, rfl, fun _ _ _ _ h₁ h₂ => by rw [h₁] at h₂; cases h₂; rfl⟩,
     ⟨_, rfl, rfl⟩, ⟨_, rfl, rfl⟩, fun ⟨e, he, hp⟩ => by cases he; simp [W, Event.isVol] at hp⟩,
     weNoRel_of (by decide) (by decide)⟩ ?_ ?_

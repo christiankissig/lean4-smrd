@@ -19,8 +19,8 @@ initial write puts it `FR`-before `x := 1`.
   remapped backward pair `(x := 2, flag)` of `ppo_sync`; `HB_T` has no such pair.
 * `not_generated`, `blind_not_execution`: under the release restriction the
   elision is not generated, and the execution above is no execution.
-* `forbidden_T`: with the restriction, no execution without forwarding (whose
-  elisions point `⊑`-forward) admits the outcome under `CoherenceT`.
+* `forbidden_T`: with the restriction, no execution without forwarding admits
+  the outcome under `CoherenceT`.
 
 `coww_elided_T` restates `Smrd.PpoNecessity.coww_elided` for `CoherenceT`: the
 coherence order there orders the elided write and is none of `X ∖ †`; under
@@ -117,10 +117,11 @@ theorem not_equiv_glob {P : Pred} (hs : Sat P) {y z : Var} (hne : y ≠ z) :
   exact hne this
 
 /-- **With the release restriction, no execution admits `r1 = 1 ∧ r2 = 0`
-    under `CoherenceT`**, for executions without forwarding whose elisions
-    point `⊑`-forward. -/
+    under `CoherenceT`**, for executions without forwarding (elisions point
+    `⊑`-forward in every execution, `we_po`). -/
 theorem forbidden_T {Ω : Pred} {x : Execution} (hx : x.IsExecution esR Ω) (hphi : x.phi esR)
-    (hW : WEForward esR x) (h35 : x.rf 3 5) (h06 : x.rf 0 6) : ¬ x.CoherentT esR := by
+    (hnoF : ∀ p ∈ x.δ.f, False) (h35 : x.rf 3 5) (h06 : x.rf 0 6) : ¬ x.CoherentT esR := by
+  have hW := weForward_of_noFwd hx hnoF
   rintro ⟨co, hco, hcoh, -⟩
   have X : ∀ e ∈ esR.events, x.X e.id := fun e he =>
     all_in_X hx SR (cand_of_mem SR.nodup he (by revert e; decide) (by revert e; decide))
@@ -139,7 +140,7 @@ theorem forbidden_T {Ω : Pred} {x : Execution} (hx : x.IsExecution esR Ω) (hph
   have n2 : ¬ x.elided 2 := by
     intro hel
     obtain ⟨e₂, he⟩ := elided_we hW hel
-    obtain ⟨j₀, ⟨⟨⟨-, ev₁, ev₂, l₁, l₂, h₁, h₂, hl₁, hl₂, heq⟩, -⟩, hnr⟩, hs, hf⟩ :=
+    obtain ⟨j₀, ⟨⟨⟨-, -, ev₁, ev₂, l₁, l₂, h₁, h₂, hl₁, hl₂, heq⟩, -⟩, hnr⟩, hs, hf⟩ :=
       we_edge hx he
     have hpo : esR.poR 2 e₂ := hW.2 _ he
     have : e₂ = 3 ∨ e₂ = 4 := by
@@ -252,7 +253,7 @@ theorem blind_we : esR.weRelBlind jB 2 4 := by
       ⟨po_of (by decide), _, _, _, _, rfl, rfl, rfl, rfl, fun _ => .num 0,
         SR.holds (e := e4) (by simp [esR, e4]) _,
         by simp [Expr.holds, Expr.eval, Expr.glob]⟩), by decide⟩, ?_⟩,
-      _, _, _, _, rfl, rfl, rfl, rfl, fun _ _ _ _ h₁ h₂ => by rw [h₁] at h₂; cases h₂; rfl⟩,
+      po_of (by decide), _, _, _, _, rfl, rfl, rfl, rfl, fun _ _ _ _ h₁ h₂ => by rw [h₁] at h₂; cases h₂; rfl⟩,
     ⟨_, rfl, rfl⟩, ⟨_, rfl, rfl⟩, fun ⟨e, he, hp⟩ => by cases he; simp [W, Event.isVol] at hp⟩
   rintro ⟨e'', h₁, h₂⟩
   have m₁ := hppo _ _ h₁
