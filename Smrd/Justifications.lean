@@ -29,6 +29,15 @@ predicate `Generated`, whose derivations are the elements of `⋃ᵢ 𝕁ᵢ`.
 * The origins `e ∈ S` of Strengthening are required to be `⊑`-related to `w`
   strictly: a reflexive reading would put `(w, w)` into `DP` for an allocation
   constraining its own symbol.
+
+## Deviations from the paper
+
+* Write Elision carries MoRDor's release restriction (`weNoRel`, MoRDor #207):
+  a releasing write is elided only into a releasing write, and no release
+  write, release or `sc` fence, or `sc` read lies `⊑`-between the two. The
+  paper's Write Elision is blind to the memory order (`weRelBlind`). The
+  restriction is what lets coherence leave elided writes out
+  (`Execution.CoherenceT`, `Smrd.CoherenceT`).
 -/
 
 /-- A justification `j : (P, D) ⊢^δ w`. -/
@@ -61,6 +70,22 @@ def preJust (w : Event) : Option Justification :=
   | .dealloc e   => some ⟨w.valres, e.syms, .empty, w⟩
   | _            => none
 
+namespace Event
+
+/-- MoRDor's `publishes` (`ForwardElab.publishes`): an event that makes the
+    stores `⊑`-before it visible to a thread synchronising with it, or orders
+    them in `psc` -- a write or fence of mode release or stronger, or an `sc`
+    read, `W_{rel,sc} ∪ F_{rel,sc} ∪ R_sc`. (MoRDor's `Unlock` has no
+    counterpart here.) -/
+def publishes (e : Event) : Bool :=
+  match e.kind with
+  | .write o .. => o.isRelSc
+  | .fence o => o.isRelSc
+  | .read .sc .. => true
+  | _ => false
+
+end Event
+
 namespace EventStructure
 
 variable (es : EventStructure)
@@ -84,12 +109,28 @@ def fwdRel (j : Justification) (e₁ e₂ : EventId) : Prop :=
      (es.cls Event.isRead e₁ ∧ es.cls Event.isRead e₂)) ∧
     ¬ es.cls Event.isVol e₂
 
-/-- `e₁ -WE_j→ e₂`, on pairs of writes, where the overwritten write `e₁` is
-    not a volatile access, `e₁ ∉ 𝒱`. Write elision is otherwise blind to the
-    memory order: a release write may be elided. -/
-def weRel (j : Justification) (e₁ e₂ : EventId) : Prop :=
+/-- The conditions of Write Elision blind to the memory order:
+    `e₁ -F'_j→ e₂` on a pair of writes, where the overwritten write `e₁` is not
+    a volatile access, `e₁ ∉ 𝒱`. -/
+def weRelBlind (j : Justification) (e₁ e₂ : EventId) : Prop :=
   es.fwdBase j e₁ e₂ ∧ es.cls Event.isWrite e₁ ∧ es.cls Event.isWrite e₂ ∧
     ¬ es.cls Event.isVol e₁
+
+/-- The release restriction on Write Elision (MoRDor #207,
+    `ForwardElab.elision_blocked`): a releasing write `e₁` is elided only into
+    a releasing write, and no event that publishes lies `⊑`-between `e₁` and
+    `e₂`. Eliding `e₁` sinks it to `e₂`, and a store does not sink past a
+    release: an acquire reading the release happens after `e₁` but not after
+    `e₂`, so once elided writes are out of coherence (`Execution.CoherenceT`)
+    the acquire could read a write coherence-before `e₁`. -/
+def weNoRel (e₁ e₂ : EventId) : Prop :=
+  (es.cls Event.isRelW e₁ → es.cls Event.isRelW e₂) ∧
+    ∀ c, es.poR e₁ c → es.poR c e₂ → ¬ es.cls Event.publishes c
+
+/-- `e₁ -WE_j→ e₂`: Write Elision's conditions (`weRelBlind`) under the
+    release restriction (`weNoRel`). -/
+def weRel (j : Justification) (e₁ e₂ : EventId) : Prop :=
+  es.weRelBlind j e₁ e₂ ∧ es.weNoRel e₁ e₂
 
 /-! ## Closed relabel-equivalence (Definition `def:rel-eq`) -/
 
@@ -245,5 +286,35 @@ theorem Generated.sat {Ω : Pred} {j : Justification} (h : es.Generated Ω j) :
       obtain ⟨f, hP, _⟩ := hs; exact Or.inl ⟨f, hP⟩
   | lift _ _ _ _ _ _ _ _ _ _ _ hs =>
       obtain ⟨f, hP, _⟩ := hs; exact Or.inl ⟨f, hP⟩
+
+theorem preJust_δ {w : Event} {j : Justification} (h : preJust w = some j) : j.δ = .empty := by
+  unfold preJust at h
+  split at h <;> cases h <;> rfl
+
+/-- Every Write Elision edge `(e₂, e₁)` of a generated justification was added
+    by Write Elision, under its conditions (`weRel`) against a justification
+    `j₀` with a satisfiable predicate, whose forwarding edges are among the
+    final ones. -/
+theorem Generated.we_mem {Ω : Pred} {j : Justification} (h : es.Generated Ω j) :
+    ∀ p ∈ j.δ.we, ∃ j₀ : Justification, es.weRel j₀ p.2 p.1 ∧ Sat j₀.P.holds ∧
+      ∀ q ∈ j₀.δ.f, q ∈ j.δ.f := by
+  induction h with
+  | pre _ hj _ => intro p hp; rw [preJust_δ hj] at hp; cases hp
+  | va _ _ _ _ ih => exact ih
+  | str _ _ _ _ _ _ _ ih => exact ih
+  | fwd _ _ _ _ _ _ _ _ _ ih =>
+      intro p hp
+      obtain ⟨j₀, h₀, hs, hf⟩ := ih p hp
+      exact ⟨j₀, h₀, hs, fun q hq => List.mem_append_left _ (hf q hq)⟩
+  | @we j₁ e₁ e₂ _ hwe _ hs ih =>
+      intro p hp
+      rcases List.mem_append.1 hp with hp | hp
+      · exact ih p hp
+      · simp only [List.mem_singleton] at hp
+        subst hp
+        obtain ⟨f, hP, -⟩ := hs
+        exact ⟨j₁, hwe, ⟨f, hP⟩, fun q hq => hq⟩
+  | lift _ _ _ _ _ _ _ _ _ _ _ _ _ ih₂ => exact ih₂
+  | weak _ _ _ _ ih => exact ih
 
 end EventStructure

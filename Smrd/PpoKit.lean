@@ -55,6 +55,15 @@ theorem find_id {L : List Event} (hnd : (L.map (·.id)).Nodup) {e : Event} (he :
 theorem ev_of_mem {es : EventStructure} (hnd : (es.events.map (·.id)).Nodup) {e : Event}
     (he : e ∈ es.events) : es.ev e.id = some e := find_id hnd he
 
+/-- Write Elision's release restriction from list checks. -/
+theorem weNoRel_of {es : EventStructure} {e₁ e₂ : EventId}
+    (h₁ : clsB es Event.isRelW e₁ = true → clsB es Event.isRelW e₂ = true)
+    (h₂ : ∀ p ∈ es.po, p.1 = e₁ → (p.2, e₂) ∈ es.po → clsB es Event.publishes p.2 = false) :
+    es.weNoRel e₁ e₂ := by
+  refine ⟨fun h => cls_clsB.2 (h₁ (cls_clsB.1 h)), fun c hc hce hp => ?_⟩
+  have := h₂ (e₁, c) hc rfl hce
+  rw [cls_clsB.1 hp] at this; cases this
+
 /-! ## Simple executions -/
 
 /-- A structure whose value restrictions are constant truths and whose ids are

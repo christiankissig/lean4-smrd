@@ -18,7 +18,8 @@ module records what follows.
   `⊑`-between an elided write and the write it is elided into is elided into
   it too), and RMWs are tight through `remap_δ` (`RMWTightR`). Without
   `NoCross` a backward pair within the thread remains (an elision across a
-  release write). The initialising write of `x := 0; (x := 1 ∥ x := 2)` elided
+  release write); Write Elision's release restriction excludes that one, and
+  `Smrd.CoherenceT` weakens `NoCross` to `NoCrossLoc`. The initialising write of `x := 0; (x := 1 ∥ x := 2)` elided
   into `x := 1` is no longer a counterexample (`Smrd.PpoNecessity`,
   `ppo_cross_thread`).
 * `coherenceV_of_coherence_we` (RC11 to `HB_v`, under the hypotheses of
@@ -361,10 +362,10 @@ them the direction (`Smrd.PpoNecessity.coww_elided`: `x := 1; x := 2` with
 theorem remap_self_of_not_elided {a : EventId} (h : ¬ x.elided a) : x.δ.Remap a a :=
   .canon fun c hc => h ((x.elided_iff a).2 ⟨c, hc⟩)
 
-/-- **Condition (i) between events that are not elided**, whatever `δ`. -/
-theorem poloc_dep_canon (hnf : x.FenceFree es) (hirr : ∀ a, ¬ es.poR a a)
-    (hcan : ∀ a, x.XwF es a → ¬ x.elided a) (hm : LocModel es x)
-    {a b : EventId} (h : x.poloc es a b) : x.dep es a b := by
+/-- **Condition (i) between two events that are not elided**, whatever `δ`. -/
+theorem poloc_dep_ne (hnf : x.FenceFree es) (hirr : ∀ a, ¬ es.poR a a) (hm : LocModel es x)
+    {a b : EventId} (hna : ¬ x.elided a) (hnb : ¬ x.elided b) (h : x.poloc es a b) :
+    x.dep es a b := by
   obtain ⟨⟨hXa, hXb, hpo⟩, ea, eb, la, lb, hea, heb, hla, hlb, heq⟩ := h
   have ha := X_of_XwF hnf hXa
   have hb := X_of_XwF hnf hXb
@@ -377,32 +378,50 @@ theorem poloc_dep_canon (hnf : x.FenceFree es) (hirr : ∀ a, ¬ es.poR a a)
     ⟨ea, eb, la, lb, hea, heb, hla, hlb, f, hP, by
       simp [Expr.holds, Expr.eval, hva, hvb]⟩
   exact .inl (ppo_of_step ha hb ⟨hXa, hXb, .inr ⟨.inr ⟨⟨⟨a, b, .inr ⟨hpo, .inr hal⟩,
-    remap_self_of_not_elided (hcan a hXa), remap_self_of_not_elided (hcan b hXb)⟩,
+    remap_self_of_not_elided hna, remap_self_of_not_elided hnb⟩,
     fun h => hirr a (h ▸ hpo)⟩, hal⟩, anchored_of_po hXb hpo⟩⟩)
 
-/-- **Condition (ii), release half, between events that are not elided.** -/
-theorem rel_dep_canon (hnf : x.FenceFree es) (hirr : ∀ a, ¬ es.poR a a)
-    (hcan : ∀ a, x.XwF es a → ¬ x.elided a)
-    {a w : EventId} (h : x.poX es a w) (hw : es.cls Event.isRelW w) : x.dep es a w := by
+/-- **Condition (i) between events that are not elided**, whatever `δ`. -/
+theorem poloc_dep_canon (hnf : x.FenceFree es) (hirr : ∀ a, ¬ es.poR a a)
+    (hcan : ∀ a, x.XwF es a → ¬ x.elided a) (hm : LocModel es x)
+    {a b : EventId} (h : x.poloc es a b) : x.dep es a b :=
+  poloc_dep_ne hnf hirr hm (hcan a h.1.1) (hcan b h.1.2.1) h
+
+/-- **Condition (ii), release half, between two events that are not elided.** -/
+theorem rel_dep_ne (hnf : x.FenceFree es) (hirr : ∀ a, ¬ es.poR a a)
+    {a w : EventId} (hna : ¬ x.elided a) (hnw : ¬ x.elided w) (h : x.poX es a w)
+    (hw : es.cls Event.isRelW w) : x.dep es a w := by
   obtain ⟨hXa, hXw, hpo⟩ := h
   have hrel : es.cls Event.isRelM w := by
     obtain ⟨e, he, h⟩ := hw; exact ⟨e, he, by simp [Event.isRelM, h]⟩
   exact .inl (ppo_of_step (X_of_XwF hnf hXa) (X_of_XwF hnf hXw)
-    ⟨hXa, hXw, .inr ⟨.inl ⟨⟨a, w, ⟨hpo, .inr hrel⟩, remap_self_of_not_elided (hcan a hXa),
-      remap_self_of_not_elided (hcan w hXw)⟩, fun h => hirr a (h ▸ hpo)⟩,
+    ⟨hXa, hXw, .inr ⟨.inl ⟨⟨a, w, ⟨hpo, .inr hrel⟩, remap_self_of_not_elided hna,
+      remap_self_of_not_elided hnw⟩, fun h => hirr a (h ▸ hpo)⟩,
       anchored_of_po hXw hpo⟩⟩)
 
-/-- **Condition (ii), acquire half, between events that are not elided.** -/
-theorem acq_dep_canon (hnf : x.FenceFree es) (hirr : ∀ a, ¬ es.poR a a)
+/-- **Condition (ii), release half, between events that are not elided.** -/
+theorem rel_dep_canon (hnf : x.FenceFree es) (hirr : ∀ a, ¬ es.poR a a)
     (hcan : ∀ a, x.XwF es a → ¬ x.elided a)
-    {r b : EventId} (hr : es.cls Event.isAcqR r) (h : x.poX es r b) : x.dep es r b := by
+    {a w : EventId} (h : x.poX es a w) (hw : es.cls Event.isRelW w) : x.dep es a w :=
+  rel_dep_ne hnf hirr (hcan a h.1) (hcan w h.2.1) h hw
+
+/-- **Condition (ii), acquire half, between two events that are not elided.** -/
+theorem acq_dep_ne (hnf : x.FenceFree es) (hirr : ∀ a, ¬ es.poR a a)
+    {r b : EventId} (hnr : ¬ x.elided r) (hnb : ¬ x.elided b)
+    (hr : es.cls Event.isAcqR r) (h : x.poX es r b) : x.dep es r b := by
   obtain ⟨hXr, hXb, hpo⟩ := h
   have hacq : es.cls Event.isAcqM r := by
     obtain ⟨e, he, h⟩ := hr; exact ⟨e, he, by simp [Event.isAcqM, h]⟩
   exact .inl (ppo_of_step (X_of_XwF hnf hXr) (X_of_XwF hnf hXb)
-    ⟨hXr, hXb, .inr ⟨.inl ⟨⟨r, b, ⟨hpo, .inl hacq⟩, remap_self_of_not_elided (hcan r hXr),
-      remap_self_of_not_elided (hcan b hXb)⟩, fun h => hirr r (h ▸ hpo)⟩,
+    ⟨hXr, hXb, .inr ⟨.inl ⟨⟨r, b, ⟨hpo, .inl hacq⟩, remap_self_of_not_elided hnr,
+      remap_self_of_not_elided hnb⟩, fun h => hirr r (h ▸ hpo)⟩,
       anchored_of_po hXb hpo⟩⟩)
+
+/-- **Condition (ii), acquire half, between events that are not elided.** -/
+theorem acq_dep_canon (hnf : x.FenceFree es) (hirr : ∀ a, ¬ es.poR a a)
+    (hcan : ∀ a, x.XwF es a → ¬ x.elided a)
+    {r b : EventId} (hr : es.cls Event.isAcqR r) (h : x.poX es r b) : x.dep es r b :=
+  acq_dep_ne hnf hirr (hcan r h.1) (hcan b h.2.1) hr h
 
 /-- **RC11 coherence from `HB_v`-coherence** where no event of the path is
     elided (forwarding and elision edges into events off the path allowed). -/
