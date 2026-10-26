@@ -10,5 +10,6 @@ import Smrd.Justifications
 import Smrd.Executions
 import Smrd.CoherenceRC11
 import Smrd.PpoTail
+import Smrd.PpoEval
 
 def hello := "world"

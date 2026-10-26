@@ -1,5 +1,6 @@
 import Lean.Data.Json
 import Smrd.EventStructureSemantics
+import Smrd.PpoEval
 
 /-!
 # `smrd-es`: the event structure of a program, as JSON
@@ -43,6 +44,15 @@ tagged by `type` (`R`, `W`, `Fence`, `Branch`, `Alloc`, `Dealloc`) and each guar
 `{"branch", "cond", "pos"}`. Expressions are `{"int": n}`, `{"bool": b}`,
 `{"loc": {"global": x | "heap": n, "off": n}}`, `{"sym": α}` (the id of the event
 introducing it), `{"<op>": [a, b]}` and `{"not": a}`.
+
+## Frozen `≼` (`scripts/ppo_diff.py`)
+
+If the input object has `"executions": [{"X": [...], "J": [...], "f": [[a, b], ...],
+"we": [[a, b], ...]}, ...]` -- the events of `X`, the ids of the justified events,
+and the forwarding context -- the output has `"ppo": [[[a, b], ...], ...]`, each
+execution's `≼` computed by `PpoEval.ppoEval` (MoRDor's frozen `ppo`; equal to
+`Execution.ppo` under the hypotheses of `PpoEval.ppoEval_iff`), and
+`"closed": [b, ...]`, whether `closedB` holds of it.
 -/
 
 open Lean
@@ -192,6 +202,33 @@ def denoteFree (n : Bounds) (P : Stmt) (free : List Reg) : EventStructure :=
   let ρ : RegState := free.zipIdx.map fun (r, i) => (r, Expr.sym (freeBase + i))
   (interp n ⟨0, []⟩ [] P ρ (fun _ _ => pure .empty) []).run' {}
 
+def pairs (j : Json) (k : String) : Except String (List (EventId × EventId)) := do
+  match j.getObjVal? k with
+  | .ok a => (← a.getArr?).toList.mapM fun e => do
+      let #[x, y] ← e.getArr? | throw s!"{k}: pairs expected"
+      pure (← x.getNat?, ← y.getNat?)
+  | .error _ => pure []
+
+def nats (j : Json) (k : String) : Except String (List Nat) := do
+  (← (← field j k).getArr?).toList.mapM (·.getNat?)
+
+/-- An execution for `ppoEval`: its events, its justified events (only their
+    ids matter), and its forwarding context. -/
+def execution (es : EventStructure) (j : Json) :
+    Except String (List EventId × List Justification × FwdCtx) := do
+  let X ← nats j "X"
+  let J ← nats j "J"
+  let js := J.filterMap fun w => (es.ev w).map fun e => (⟨Expr.tt, [], {}, e⟩ : Justification)
+  return (X, js, ⟨← pairs j "f", ← pairs j "we"⟩)
+
+def ppoJson (es : EventStructure) (ex : List Json) : Except String (Json × Json) := do
+  let rs ← ex.mapM fun j => do
+    let (X, J, δ) ← execution es j
+    let L := PpoEval.ppoEval es X J δ
+    let closed := PpoEval.closedB (PpoEval.stepL es X J δ) L
+    pure (Json.arr (L.toArray.map fun (a, b) => toJson [a, b]), Json.bool closed)
+  return (Json.arr (rs.toArray.map (·.1)), Json.arr (rs.toArray.map (·.2)))
+
 end EsExport
 
 def main (args : List String) : IO UInt32 := do
@@ -205,5 +242,12 @@ def main (args : List String) : IO UInt32 := do
   | .error err => IO.eprintln s!"smrd-es: {err}"; return 1
   | .ok (s, free, bounds) =>
       let n : Bounds := fun ℓ => (bounds.lookup ℓ).getD bound
-      IO.println (EsExport.esJson (EsExport.denoteFree n s free)).compress
-      return 0
+      let es := EsExport.denoteFree n s free
+      match Json.parse input >>= (·.getObjVal? "executions") >>= (·.getArr?) with
+      | .error _ => IO.println (EsExport.esJson es).compress; return 0
+      | .ok ex =>
+          match EsExport.ppoJson es ex.toList with
+          | .error err => IO.eprintln s!"smrd-es: {err}"; return 1
+          | .ok (ppo, closed) =>
+              IO.println ((EsExport.esJson es).setObjVal! "ppo" ppo |>.setObjVal! "closed" closed).compress
+              return 0
