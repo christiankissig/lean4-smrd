@@ -49,17 +49,18 @@ Smrd.Types                        expressions, values, events, event structures,
 └── Smrd.Forwardingcontext        δ = (F, WE), ψ_δ, remap_δ
       └── Smrd.Ppo                ≼_sync, ≼_rmw, ≼_alias, ≼^P_δ, pred, dependence on P
             ├── Smrd.PpoMordor        MoRDor's ppo templates (ppo_sync, ppo_loc, ForwardingContext.ppo)
-            └── Smrd.Justifications  (+ Smrd.Conjuncts) pre-justifications, elaborations, `Generated` (𝕁), Write Elision's release restriction (`weNoRel`)
+            └── Smrd.Justifications  (+ Smrd.Conjuncts) pre-justifications, elaborations, `Generated` (𝕁), Write Elision's release restriction (`weNoRel`), no RMW access elided (`RMWAcc`, `Generated.not_rmwAcc_elided`)
                   └── Smrd.Executions  (+ PpoMordor) executions, freeze (DP, ≼ = MoRDor's freeze_ppo cut to anchored pairs, ppoTrunc, ppoWin, φ), NTA, RC11 coherence, atomicity, UAF (sMRD `nta`, RC11 `ntaRC11`), RC11 no-thin-air (`NoThinAirRC11`), `Frozen`
                         └── Smrd.CoherenceRC11  preserved coherence and HB_v, reduced to RC11's axiom (FenceFree)
                               └── Smrd.PpoTail  MoRDor's ≼: ≼ ⊆ ⊑ without forwarding (elision allowed, `NoCross`), conditions (i)/(ii) off elided events, NTA same as ppoWin
-                                    ├── Smrd.CoherenceT  sMRD's coherence over X ∖ † (`CoherenceT`, `CoherentT`, `ConsistentT`); with Write Elision's release restriction (`weNoRel`, MoRDor #207) remap(ppo_sync) ⊆ ⊑, and `CoherenceT` ⇔ HB_v-coherence (no forwarding, `NoCrossLoc`)
+                                    ├── Smrd.CoherenceT  sMRD's coherence over X ∖ † (`CoherenceT`, `CoherentT`, `ConsistentT`); with Write Elision's release restriction (`weNoRel`, MoRDor #207) remap(ppo_sync) ⊆ ⊑; no RMW access elided (`rmw_not_elided`, `atomicityT_iff`); and `CoherenceT` ⇔ HB_v-coherence (no forwarding, `NoCrossLoc`)
                                     ├── Smrd.PpoEval  ≼ computed for global-location executions (`ppoEval_iff`), for `smrd-es` / scripts/ppo_diff.py
                                     └── Smrd.PpoKit  (+ Monotonicity) concrete executions, list bounds on ≼, sw, eco
                                           └── Smrd.PpoStability  truncated ≼ unstable (A), untruncated local/stable (B), no NTA change (C)
                                                 └── Smrd.PpoNecessity  untruncated ≼ needed for HB_v = RC11 (N1: CoRR, CoWR, MP); no cross-thread ≼ under elision (N2), HB_v ⇏ RC11 at an elided write (N3)
                                                       └── Smrd.WEAcrossRelease  (+ CoherenceT) MoRDor's WE-across-release.lit: RC11 forbids, CoherenceT admits under blind elision, the release restriction forbids; `coww_elided` over X ∖ †
-                                                            └── Smrd.FwdAcrossAcquire  MoRDor's RSE-across-acquire.lit: Forwarding across an acquire, CoherenceT admits what RC11 and HB_v-coherence forbid
+                                                            ├── Smrd.FwdAcrossAcquire  MoRDor's RSE-across-acquire.lit: Forwarding across an acquire, CoherenceT admits what RC11 and HB_v-coherence forbid
+                                                            └── Smrd.RMWElision  lost update `x := 0; (FADD; x := 5 ∥ FADD)`: RC11 forbids, CoherenceT admits when the FADD's write is elided, the RMW rule forbids
 ```
 
 `Smrd.Basic` re-exports all of the above and is the library root (`Smrd.lean` imports it).

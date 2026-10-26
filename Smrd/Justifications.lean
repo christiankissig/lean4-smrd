@@ -32,6 +32,14 @@ predicate `Generated`, whose derivations are the elements of `⋃ᵢ 𝕁ᵢ`.
 
 ## Deviations from the paper
 
+* Neither access of an RMW is in the elided position (`RMWAcc`, MoRDor
+  `docs/DEPARTURES.md` E4): not the forwarded event `e₂` of a Forwarding
+  (`fwdRel`), not the elided write `e₁` of a Write Elision (`weRel`). An RMW
+  access may still be a source. Elided events leave the execution
+  (`Execution.CoherenceT`, `X ∖ †`): eliding an RMW's write turns the RMW
+  into a plain read and a later store, about which Atomicity says nothing
+  (`Smrd.RMWElision`). Hence `Generated.not_rmwAcc_elided`. The paper's
+  `def:fwd-rels` does not exclude them yet (Todoist 6hpW3hjc4W2839jX).
 * Write Elision carries MoRDor's release restriction (`weNoRel`, MoRDor #207):
   a releasing write is elided only into a releasing write, and no release
   write, release or `sc` fence, or `sc` read lies `⊑`-between the two. The
@@ -90,6 +98,15 @@ namespace EventStructure
 
 variable (es : EventStructure)
 
+/-- An RMW access: the read or the write of an entry of `⊑ʳᵐʷ`. -/
+def RMWAcc (c : EventId) : Prop := ∃ ent ∈ es.rmw, ent.r = c ∨ ent.w = c
+
+instance (c : EventId) : Decidable (es.RMWAcc c) :=
+  inferInstanceAs (Decidable (∃ ent ∈ es.rmw, ent.r = c ∨ ent.w = c))
+
+theorem not_rmwAcc_of_nil (h : es.rmw = []) (c : EventId) : ¬ es.RMWAcc c := by
+  rintro ⟨ent, hm, -⟩; rw [h] at hm; cases hm
+
 /-! ## Forwarding relations (Definition `def:fwd-rels`) -/
 
 /-- `e₁ -F'_j→ e₂ ≜ e₁ ∈ pred_δ(e₂, P) ∧ e₁ ⊑ e₂ ∧ loc(e₁) ≡_{P ∧ ψ_δ} loc(e₂)`.
@@ -110,13 +127,14 @@ def fwdBase (j : Justification) (e₁ e₂ : EventId) : Prop :=
 
 /-- `e₁ -F_j→ e₂`: store forwarding `W × R_rlx`, store-store forwarding
     `W × W_rlx`, and load forwarding `R × R`, where the forwarded event `e₂`
-    is not a volatile access, `e₂ ∉ 𝒱`. -/
+    is not a volatile access, `e₂ ∉ 𝒱`, nor an RMW access (a deviation from
+    the paper, MoRDor E4). -/
 def fwdRel (j : Justification) (e₁ e₂ : EventId) : Prop :=
   es.fwdBase j e₁ e₂ ∧
     ((es.cls Event.isWrite e₁ ∧ es.cls Event.isRlxR e₂) ∨
      (es.cls Event.isWrite e₁ ∧ es.cls Event.isRlxW e₂) ∨
      (es.cls Event.isRead e₁ ∧ es.cls Event.isRead e₂)) ∧
-    ¬ es.cls Event.isVol e₂
+    ¬ es.cls Event.isVol e₂ ∧ ¬ es.RMWAcc e₂
 
 /-- The conditions of Write Elision blind to the memory order:
     `e₁ -F'_j→ e₂` on a pair of writes, where the overwritten write `e₁` is not
@@ -137,9 +155,10 @@ def weNoRel (e₁ e₂ : EventId) : Prop :=
     ∀ c, es.poR e₁ c → es.poR c e₂ → ¬ es.cls Event.publishes c
 
 /-- `e₁ -WE_j→ e₂`: Write Elision's conditions (`weRelBlind`) under the
-    release restriction (`weNoRel`). -/
+    release restriction (`weNoRel`), where the elided write `e₁` is not an
+    RMW access (a deviation from the paper, MoRDor E4). -/
 def weRel (j : Justification) (e₁ e₂ : EventId) : Prop :=
-  es.weRelBlind j e₁ e₂ ∧ es.weNoRel e₁ e₂
+  es.weRelBlind j e₁ e₂ ∧ es.weNoRel e₁ e₂ ∧ ¬ es.RMWAcc e₁
 
 /-! ## Closed relabel-equivalence (Definition `def:rel-eq`) -/
 
@@ -325,5 +344,35 @@ theorem Generated.we_mem {Ω : Pred} {j : Justification} (h : es.Generated Ω j)
         exact ⟨j₁, hwe, ⟨f, hP⟩, fun q hq => hq⟩
   | lift _ _ _ _ _ _ _ _ _ _ _ _ _ ih₂ => exact ih₂
   | weak _ _ _ _ ih => exact ih
+
+/-- Every forwarding edge `(e₁, e₂)` of a generated justification was added
+    by Forwarding, under its conditions (`fwdRel`) against a justification. -/
+theorem Generated.fwd_mem {Ω : Pred} {j : Justification} (h : es.Generated Ω j) :
+    ∀ p ∈ j.δ.f, ∃ j₀ : Justification, es.fwdRel j₀ p.1 p.2 := by
+  induction h with
+  | pre _ hj _ => intro p hp; rw [δ_of_preJust hj] at hp; cases hp
+  | va _ _ _ _ ih => exact ih
+  | str _ _ _ _ _ _ _ ih => exact ih
+  | @fwd j₁ _ _ _ _ e₁ e₂ _ _ _ _ _ _ hf _ _ _ _ _ _ ih =>
+      intro p hp
+      rcases List.mem_append.1 hp with hp | hp
+      · exact ih p hp
+      · simp only [List.mem_singleton] at hp
+        subst hp
+        exact ⟨j₁, hf⟩
+  | we _ _ _ _ ih => exact ih
+  | lift _ _ _ _ _ _ _ _ _ _ _ _ _ ih₂ => exact ih₂
+  | weak _ _ _ _ ih => exact ih
+
+/-- **No RMW access is elided** (`rmw_not_elided`): in every generated
+    justification, the target of each forwarding edge and the elided write of
+    each Write Elision edge is not an RMW access. -/
+theorem Generated.not_rmwAcc_elided {Ω : Pred} {j : Justification} (h : es.Generated Ω j) :
+    ∀ p, (p ∈ j.δ.f ∨ p ∈ j.δ.we) → ¬ es.RMWAcc p.2 := by
+  rintro p (hp | hp)
+  · obtain ⟨j₀, -, -, -, h⟩ := Generated.fwd_mem es h p hp
+    exact h
+  · obtain ⟨j₀, ⟨-, -, h⟩, -⟩ := Generated.we_mem es h p hp
+    exact h
 
 end EventStructure

@@ -17,5 +17,6 @@ import Smrd.PpoNecessity
 import Smrd.CoherenceT
 import Smrd.WEAcrossRelease
 import Smrd.FwdAcrossAcquire
+import Smrd.RMWElision
 
 def hello := "world"

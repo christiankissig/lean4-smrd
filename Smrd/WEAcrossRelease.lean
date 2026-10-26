@@ -104,7 +104,7 @@ theorem not_generated {Ω : Pred} {j : Justification} (h : esR.Generated Ω j) :
     (4, 2) ∉ j.δ.we := by
   intro hp
   obtain ⟨j₀, ⟨-, hnr⟩, -⟩ := Generated.we_mem esR h _ hp
-  exact not_weNoRel hnr
+  exact not_weNoRel hnr.1
 
 /-- The locations of two globals with different names are equal under no
     satisfiable predicate. -/
@@ -151,7 +151,7 @@ theorem forbidden_T {Ω : Pred} {x : Execution} (hx : x.IsExecution esR Ω) (hph
       refine not_equiv_glob (y := "x") (z := "flag") ?_ (by decide) heq
       obtain ⟨f, hP⟩ := hs
       exact ⟨f, hP, fun q hq => (hW.1 q (hf q hq)).elim⟩
-    · exact not_weNoRel hnr
+    · exact not_weNoRel hnr.1
   have hco02 := hco.total 0 2 ⟨X0, n0⟩ ⟨X2, n2⟩ ⟨_, rfl, rfl⟩ ⟨_, rfl, rfl⟩ (by decide)
     (sameLoc_of rfl rfl rfl rfl)
   have poT : ∀ a b, x.X a → x.X b → ¬ x.elided a → ¬ x.elided b → (a, b) ∈ esR.po →
