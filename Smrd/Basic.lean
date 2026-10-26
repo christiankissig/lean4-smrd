@@ -14,5 +14,8 @@ import Smrd.PpoEval
 import Smrd.PpoKit
 import Smrd.PpoStability
 import Smrd.PpoNecessity
+import Smrd.CoherenceT
+import Smrd.WEAcrossRelease
+import Smrd.FwdAcrossAcquire
 
 def hello := "world"

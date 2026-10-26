@@ -49,7 +49,10 @@ semantics (a sequential prefix of the program), and elidable.
 
 `coww_elided`: `x := 1; x := 2` with `x := 1` elided and `CO` `2 < 1` is
 `HB_v`-coherent and not RC11-coherent: the elided write lies in no pair of
-`DP ∪ ≼`, so condition (i) fails at it.
+`DP ∪ ≼`, so condition (i) fails at it. Once coherence ranges over `X ∖ †`
+(`Execution.CoherenceT`), the coherence order `2 < 1` orders an elided write
+and is none of the transformed execution, and the case goes away
+(`Smrd.WEAcrossRelease.coww_elided_T`).
 -/
 
 namespace PpoNecessity
@@ -477,12 +480,13 @@ theorem gen_jWE : esWW.Generated (fun _ => True) jWE := by
   have hppo : ∀ a b, esWW.ppo (pj (W 1 0 [1, 0] .rlx "x" 1)).P.holds
       (pj (W 1 0 [1, 0] .rlx "x" 1)).δ a b → (a, b) ∈ syncL esWW ++ aliasL esWW :=
     fun a b h => ppo_mem rfl gWW hδ0 h
-  refine .we (e₁ := 0) (e₂ := 1) hpre ⟨⟨⟨⟨(FwdCtx.remapRel_of_noEdge hδ0).2 (.inr
+  refine .we (e₁ := 0) (e₂ := 1) hpre ⟨⟨⟨⟨⟨(FwdCtx.remapRel_of_noEdge hδ0).2 (.inr
       ⟨show (0, 1) ∈ esWW.po by decide, _, _, _, _, rfl, rfl, rfl, rfl, fun _ => .num 0,
         SWW.holds (e := W 1 0 [1, 0] .rlx "x" 1) (by simp [esWW]) _,
         by simp [Expr.holds, Expr.eval, Expr.glob]⟩), by decide⟩, ?_⟩,
       _, _, _, _, rfl, rfl, rfl, rfl, fun _ _ _ _ h₁ h₂ => by rw [h₁] at h₂; cases h₂; rfl⟩,
-    ⟨_, rfl, rfl⟩, ⟨_, rfl, rfl⟩, fun ⟨e, he, hp⟩ => by cases he; simp [W, Event.isVol] at hp⟩ ?_ ?_
+    ⟨_, rfl, rfl⟩, ⟨_, rfl, rfl⟩, fun ⟨e, he, hp⟩ => by cases he; simp [W, Event.isVol] at hp⟩,
+    weNoRel_of (by decide) (by decide)⟩ ?_ ?_
   · rintro ⟨e'', h₁, h₂⟩
     have m₁ := hppo _ _ h₁
     have m₂ := hppo _ _ h₂
@@ -730,12 +734,13 @@ theorem gen_jC : esC.Generated (fun _ => True) jC := by
   have hppo : ∀ a b, esC.ppo (pj (W 1 0 [1] .rlx "x" 2)).P.holds
       (pj (W 1 0 [1] .rlx "x" 2)).δ a b → (a, b) ∈ syncL esC ++ aliasL esC :=
     fun a b h => ppo_mem rfl gC hδ0 h
-  refine .we (e₁ := 0) (e₂ := 1) hpre ⟨⟨⟨⟨(FwdCtx.remapRel_of_noEdge hδ0).2 (.inr
+  refine .we (e₁ := 0) (e₂ := 1) hpre ⟨⟨⟨⟨⟨(FwdCtx.remapRel_of_noEdge hδ0).2 (.inr
       ⟨show (0, 1) ∈ esC.po by decide, _, _, _, _, rfl, rfl, rfl, rfl, fun _ => .num 0,
         SC.holds (e := W 1 0 [1] .rlx "x" 2) (by simp [esC]) _,
         by simp [Expr.holds, Expr.eval, Expr.glob]⟩), by decide⟩, ?_⟩,
       _, _, _, _, rfl, rfl, rfl, rfl, fun _ _ _ _ h₁ h₂ => by rw [h₁] at h₂; cases h₂; rfl⟩,
-    ⟨_, rfl, rfl⟩, ⟨_, rfl, rfl⟩, fun ⟨e, he, hp⟩ => by cases he; simp [W, Event.isVol] at hp⟩ ?_ ?_
+    ⟨_, rfl, rfl⟩, ⟨_, rfl, rfl⟩, fun ⟨e, he, hp⟩ => by cases he; simp [W, Event.isVol] at hp⟩,
+    weNoRel_of (by decide) (by decide)⟩ ?_ ?_
   · rintro ⟨e'', h₁, h₂⟩
     have m₁ := hppo _ _ h₁
     have m₂ := hppo _ _ h₂
