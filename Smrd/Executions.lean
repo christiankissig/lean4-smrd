@@ -151,28 +151,42 @@ def PJ (j : Justification) : Pred := Pred.and j.P.holds (x.δ.psi es)
 def ppoJ : Rel := fun a b =>
   ∃ j ∈ x.J, es.ppoM (x.PJ es j) j.P.holds x.δ a b ∧ Win es j a ∧ Win es j b
 
-/-- The relation `freeze_ppo` closes: the per-justification parts, the remapped
-    `ppo_sync` and `ppo_loc` under `p_combined`, restricted to the path
-    `X ∪ X_F`. -/
+/-- Both events lie at or `⊑`-below one event of the path `X ∪ X_F`:
+    `∃ e ∈ X ∪ X_F. (a ⊑ e ∨ a = e) ∧ (b ⊑ e ∨ b = e)`. sMRD's windows
+    `{e | e ⊑ w_j ∨ e = w_j}` (Def. 4.9) anchor the same cut at the justified
+    writes only. Parallel composition has no join, so an anchored pair lies
+    within one thread's `⊑`-down-set (and its sequential prefix). -/
+def Anchored (a b : EventId) : Prop :=
+  ∃ e, x.XwF es e ∧ (a = e ∨ es.poR a e) ∧ (b = e ∨ es.poR b e)
+
+/-- The relation `freeze_ppo` closes: the per-justification parts, and the
+    remapped `ppo_sync` and `ppo_loc` under `p_combined` cut to `Anchored`
+    pairs, restricted to the path `X ∪ X_F`. -/
 def ppoStep : Rel := fun a b =>
   x.XwF es a ∧ x.XwF es b ∧
-    (x.ppoJ es a b ∨ es.ppoSyncRM x.δ a b ∨ es.ppoLocM (x.Pm es) x.δ a b)
+    (x.ppoJ es a b ∨ ((es.ppoSyncRM x.δ a b ∨ es.ppoLocM (x.Pm es) x.δ a b) ∧ x.Anchored es a b))
 
 /-- **`≼`, MoRDor's frozen `ppo`** (`mordor/src/executions.ml`, `Freeze.freeze_ppo`,
-    MoRDor commit 6dd8521):
+    MoRDor branch `ppo-anchor`):
 
-    `≼ ≜ X² ∩ (⊑-path ∩ (⋃_{j ∈ J} ≼^{P_j ∧ ψ_δ, P_j}_δ ∩ W_j² ∪ remap_δ(ppo_sync) ∪
-    ppo_loc^{P_m}_δ))⁺`,
+    `≼ ≜ X² ∩ (⊑-path ∩ (⋃_{j ∈ J} ≼^{P_j ∧ ψ_δ, P_j}_δ ∩ W_j² ∪
+    (remap_δ(ppo_sync) ∪ ppo_loc^{P_m}_δ) ∩ A))⁺`,
 
-    with `W_j = {e | e ⊑ w_j ∨ e = w_j}` (`Win`), `P_m` MoRDor's `p_combined`
-    (`Pm`), the templates of `Smrd.PpoMordor`, and the path `X ∪ X_F`.
+    with `W_j = {e | e ⊑ w_j ∨ e = w_j}` (`Win`), `A` the pairs at or
+    `⊑`-below one event of the path, `A = ⋃_{e ∈ X ∪ X_F} {c | c ⊑ e ∨ c = e}²`
+    (`Anchored`), `P_m` MoRDor's `p_combined` (`Pm`), the templates of
+    `Smrd.PpoMordor`, and the path `X ∪ X_F`.
 
     Differences from Definition `def:freeze` (and sMRD Def. 4.9, the same
     union):
 
-    1. `≼_sync` and `≼_loc` are added uncut: the pairs after a thread's last
-       justified write are kept (MoRDor's DEPARTURES F1). The paper cuts every
-       pair to a justification window.
+    1. `≼_sync` and `≼_loc` are cut, after remapping, to `A` instead of to the
+       windows `W_j²`: sMRD's window mechanism anchored at every event of the
+       path instead of only at the justified writes. The pairs after a
+       thread's last justified write are kept (MoRDor's DEPARTURES F1: the
+       thread's tail, which CoRR and MP need), while the pairs remapping moves
+       across threads are dropped, since parallel composition has no join and
+       no event of the path lies `⊑`-above events of two threads.
     2. The union is restricted to the path and closed transitively; the paper's
        is neither. The closure runs through fences, whose pairs are in
        `ppo_sync`, before `≼` is restricted to `X`.
@@ -186,13 +200,14 @@ def ppoStep : Rel := fun a b =>
     5. Every part is remapped under the shared context `δ` (MoRDor's
        justifications carry the shared `fwd`/`we` by `remap_just`).
 
-    Consequences: remapping the uncut parts produces cross-thread pairs. An
-    initialising write `⊑`-before every thread is `ppo_sync`- or
-    `ppo_loc`-before the events of other threads; when a thread's write elides
-    it, the pair is remapped onto that write, as `(3, 6)` and `(6, 3)` of
-    MoRDor's `SB+sc` with both initialising writes elided, which makes `≼`
-    cyclic. So `≼ ⊆ ⊑` fails with write elision alone, without forwarding
-    (`Smrd.PpoTail`).
+    Before the cut (MoRDor commit 6dd8521) the uncut parts were remapped
+    across threads: an initialising write `⊑`-before every thread, elided by
+    one thread's write, moved its pairs with the other threads onto that
+    write (`x := 0; (x := 1 ∥ x := 2)`, `Smrd.PpoNecessity.ppo_cross_thread`,
+    now the positive result), and `SB+sc` with both initialising writes
+    elided had a cyclic `≼`. With the cut every step of `≼` relates
+    `⊑`-comparable events, and without forwarding it lies in `⊑` where no
+    elision crosses an event (`Smrd.PpoTail`, `ppoStep_po_we`).
 
     MoRDor's parts that have no counterpart here: the `Init` event `0` and the
     `Terminal` events with `ppo_init` (`0` before, and the terminal events

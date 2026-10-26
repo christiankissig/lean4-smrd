@@ -8,8 +8,8 @@ over `HB_v ≜ (DP ∪ ≼ ∪ SW)⁺`, agree with RC11's coherence axiom, over
 `HB ≜ (⊑ ∪ SW)⁺`, under (i) `⊑|loc ⊆ DP ∪ ≼`, (ii) `⊑;[W_rel] ⊆ DP ∪ ≼` and
 `[R_acq];⊑ ⊆ DP ∪ ≼` for one direction, and `DP ∪ ≼ ⊆ ⊑` for the other. This
 module shows, from RC11's verdicts alone, which of these the paper's
-truncated `≼` misses and MoRDor's untruncated one supplies, and where
-MoRDor's breaks the other direction.
+truncated `≼` misses and MoRDor's untruncated one supplies, and how
+MoRDor's, cut to anchored pairs, keeps the other direction under elision.
 
 ## (N1) Conditions (i) and (ii) are necessary
 
@@ -32,16 +32,24 @@ which is justified unless elided, so the pair lies in that justification's
 window and the truncated `≼` contains it already (`trunc_of_poloc_write`,
 `trunc_of_po_rel`, for executions without forwarding or elision).
 
-## (N2) The converse needs `DP ∪ ≼ ⊆ ⊑`, which MoRDor's `≼` breaks
+## (N2) The converse needs `DP ∪ ≼ ⊆ ⊑`, which the anchored cut keeps
 
 `coherenceV_of_coherence` asks `DP ∪ ≼ ⊆ ⊑`. `ppo_cross_thread`:
 `x := 0; (x := 1 ∥ x := 2)` with `x := 1` eliding `x := 0` (Write Elision,
-`Generated.we`) and no forwarding: MoRDor's `≼` remaps the pair
-`(x := 0, x := 2)` of `ppo_loc` to `(x := 1, x := 2)`, across threads and
-outside `⊑`. With `CO` `0 < 2 < 1` the execution is RC11-coherent and not
+`Generated.we`) and no forwarding. Remapping moves the pair
+`(x := 0, x := 2)` of `ppo_loc` to `(x := 1, x := 2)`, across threads;
+before the cut to anchored pairs MoRDor's `≼` kept it, and with `CO`
+`0 < 2 < 1` the execution was RC11-coherent and not `HB_v`-coherent. Now no
+event of the path lies at or above both ends, the pair is dropped,
+`DP ∪ ≼ ⊆ ⊑` (from the general `dep_po_we`), and the execution is
 `HB_v`-coherent. The initialising write is an ordinary write in lean4-smrd's
-semantics (a sequential prefix of the program), and elidable, so the
-counterexample lives in Lean's model as in MoRDor's.
+semantics (a sequential prefix of the program), and elidable.
+
+## (N3) `HB_v` to RC11 fails at an elided write
+
+`coww_elided`: `x := 1; x := 2` with `x := 1` elided and `CO` `2 < 1` is
+`HB_v`-coherent and not RC11-coherent: the elided write lies in no pair of
+`DP ∪ ≼`, so condition (i) fails at it.
 -/
 
 namespace PpoNecessity
@@ -174,8 +182,8 @@ theorem poX_of {es : EventStructure} {x : Execution} {a b : EventId} (ha : x.X a
 theorem ppo_of_sync {es : EventStructure} {rf : List (EventId × EventId)} {a b : EventId}
     (hs : es.ppoSyncM a b) (hne : a ≠ b) (ha : (simple es rf).X a) (hb : (simple es rf).X b) :
     (simple es rf).ppo es a b :=
-  ⟨ha, hb, .single ⟨.inl ha, .inl hb, .inr (.inl ⟨(FwdCtx.remapRel_of_noEdge
-    (noEdge_simple es rf)).2 hs, hne⟩)⟩⟩
+  ⟨ha, hb, .single ⟨.inl ha, .inl hb, .inr ⟨.inl ⟨(FwdCtx.remapRel_of_noEdge
+    (noEdge_simple es rf)).2 hs, hne⟩, ⟨b, .inl hb, .inr hs.1, .inl rfl⟩⟩⟩⟩
 
 /-! ## (N1) CoRR: R–R after the last write -/
 
@@ -594,45 +602,68 @@ theorem phi_WW : xWW.phi esWW := by
     simp only [esWW, List.mem_cons, List.mem_nil_iff, or_false] at hm
     rcases hm with rfl | rfl | rfl <;> cases hk₁
 
-/-- MoRDor's `≼` orders `x := 1` before `x := 2`: `(x := 0, x := 2)` of
-    `ppo_loc`, with `x := 0` remapped onto `x := 1`. -/
-theorem ppo_WW : xWW.ppo esWW 1 2 := by
-  have X1 : xWW.X 1 := X_WW.2 (.inr (.inl rfl))
-  have X2 : xWW.X 2 := X_WW.2 (.inr (.inr rfl))
-  have hPm : xWW.Pm esWW (fun _ => .num 0) := by
-    refine ⟨?_, ?_, ?_⟩
-    rotate_left
-    · intro p hp; rw [δWW] at hp; cases hp
-    · intro a e _ he; exact SWW.holds (ev_inv he).1 _
-    intro j hj
-    simp only [xWW, JWW, List.mem_cons, List.mem_nil_iff, or_false] at hj
-    rcases hj with rfl | rfl <;> simp [jWE, pj, W, Event.valres, Expr.conj, Expr.holds,
-      Expr.eval, Expr.tt]
-  have hal : esWW.mayAlias (xWW.Pm esWW) 1 2 :=
-    ⟨_, _, _, _, rfl, rfl, rfl, rfl, _, hPm, by simp [Expr.holds, Expr.eval, Expr.glob]⟩
-  have r01 : xWW.δ.Remap 0 1 :=
-    .step (a := 1) (.inr (by rw [δWW]; simp))
-      (.canon fun c h => by have := edge_WW h; cases this.2)
-  have r22 : xWW.δ.Remap 2 2 := .canon fun c h => by have := edge_WW h; cases this.2
-  exact ⟨X1, X2, .single ⟨.inl X1, .inl X2, .inr (.inr ⟨⟨⟨0, 2, .inr ⟨show (0, 2) ∈ esWW.po by
-    decide, .inr ⟨_, _, _, _, rfl, rfl, rfl, rfl, _, hPm, by
-      simp [Expr.holds, Expr.eval, Expr.glob]⟩⟩, r01, r22⟩, by decide⟩, hal⟩)⟩⟩
+theorem remap_WW {a a' : EventId} (h : xWW.δ.Remap a a') : a = a' ∨ (a = 0 ∧ a' = 1) := by
+  induction h with
+  | canon _ => exact .inl rfl
+  | step he _ ih =>
+      obtain ⟨rfl, rfl⟩ := edge_WW he
+      rcases ih with rfl | ⟨h, -⟩
+      · exact .inr ⟨rfl, rfl⟩
+      · cases h
 
-/-- **(N2) `DP ∪ ≼ ⊄ ⊑` with write elision and without forwarding, and the
-    converse of `coherenceV_iff_coherence` fails**: the execution of
-    `x := 0; (x := 1 ∥ x := 2)` in which `x := 1` elides `x := 0` is an
-    execution with `φ`; MoRDor's `≼` orders `x := 1` before `x := 2` across
-    threads, outside `⊑`; under `CO = 0 < 2 < 1` it is RC11-coherent (and
-    atomic) but not `HB_v`-coherent. -/
+theorem poTrans_WW : ∀ a b c, esWW.poR a b → esWW.poR b c → esWW.poR a c :=
+  poTrans_of (by decide)
+theorem poIrr_WW : ∀ a, ¬ esWW.poR a a := poIrr_of (by decide)
+
+/-- `DP ∪ ≼ ⊆ ⊑`, from `dep_po_we`: no forwarding, and the elision of `x := 0`
+    into `x := 1` crosses no event. -/
+theorem dep_po_WW {a b : EventId} (h : xWW.dep esWW a b) : xWW.poX esWW a b := by
+  refine dep_po_we isExecution_WW.inX ⟨fun p hp => ?_, fun p hp => ?_⟩
+    isExecution_WW.fwdWF.uniq poTrans_WW poIrr_WW (poForest_of (by decide)) ?_ ?_
+    (fun _ _ h => (no_dp_WW h).elim) h
+  · rw [δWW] at hp; cases hp
+  · rw [δWW] at hp; simp at hp; subst hp; show (0, 1) ∈ esWW.po; decide
+  · intro a a' c hr h₁ h₂
+    rcases remap_WW hr with rfl | ⟨rfl, rfl⟩
+    · exact absurd (poTrans_WW _ _ _ h₁ h₂) (poIrr_WW _)
+    · have key : ∀ p ∈ esWW.po, p.2 = 1 → p.1 = 0 := by decide
+      have hc := key _ h₂ rfl
+      simp only at hc; subst hc
+      exact absurd h₁ (poIrr_WW _)
+  · refine ⟨fun ent hm => ?_, fun ent hm => ?_⟩ <;> (rw [SWW.normw] at hm; cases hm)
+
+/-- **(N2) With the anchored cut, write elision without forwarding keeps
+    `DP ∪ ≼ ⊆ ⊑`**: the execution of `x := 0; (x := 1 ∥ x := 2)` in which
+    `x := 1` elides `x := 0` is an execution with `φ`; the pair
+    `(x := 0, x := 2)` of `ppo_loc`, remapped to `(x := 1, x := 2)`, is cut,
+    as no event of the path lies at or above both; `DP ∪ ≼ ⊆ ⊑`; and under
+    `CO = 0 < 2 < 1` it is RC11-coherent, atomic and `HB_v`-coherent. (Before
+    the cut `≼` related `x := 1` to `x := 2` and the execution was not
+    `HB_v`-coherent.) -/
 theorem ppo_cross_thread :
     xWW.IsExecution esWW (fun _ => True) ∧ xWW.phi esWW ∧ (∀ p ∈ xWW.δ.f, False) ∧
-    xWW.ppo esWW 1 2 ∧ ¬ esWW.poR 1 2 ∧ ¬ (∀ a b, xWW.dep esWW a b → xWW.poX esWW a b) ∧
+    ¬ xWW.ppo esWW 1 2 ∧ (∀ a b, xWW.dep esWW a b → xWW.poX esWW a b) ∧
     xWW.CoherenceOrder esWW (relL coWW) ∧ xWW.Coherence esWW (relL coWW) ∧
-    xWW.Atomicity esWW (relL coWW) ∧ ¬ xWW.CoherenceV esWW (relL coWW) := by
+    xWW.Atomicity esWW (relL coWW) ∧ xWW.CoherenceV esWW (relL coWW) := by
   have hnr : ¬ esWW.poR 1 2 := by unfold EventStructure.poR; decide
   have hf : ∀ p ∈ xWW.δ.f, False := by intro p hp; rw [δWW] at hp; cases hp
-  refine ⟨isExecution_WW, phi_WW, hf, ppo_WW, hnr,
-    fun h => hnr (h 1 2 (.inl ppo_WW)).2.2, ?_, ?_, ?_, ?_⟩
+  have hcoh : xWW.Coherence esWW (relL coWW) := by
+    -- RC11's `HB` is `⊑` here, which `CO` does not reverse
+    refine coherenceVOver_of (D := xWW.poX esWW) (H := [(0, 1), (0, 2)]) (E := coWW) ?_ ?_
+      (by decide)
+    · intro a b h
+      refine transGen_mem (fun c d hs => ?_) (by decide) h
+      rcases hs with ⟨-, -, hpo⟩ | hsw
+      · exact hpo
+      · have := sw_mem hsw
+        have : swL esWW = [] := by decide
+        simp_all
+    · intro a b h
+      refine eco_mem (x := xWW) (L := coWW) (fun _ _ h => False.elim h) (fun _ _ h => h)
+        (fun _ _ h => by obtain ⟨_, h, _⟩ := h; exact False.elim h) (by decide) h
+  refine ⟨isExecution_WW, phi_WW, hf, fun h => hnr (dep_po_WW (.inl h)).2.2,
+    fun _ _ h => dep_po_WW h, ?_, hcoh, ?_, xWW.coherenceV_of_coherence esWW
+      (fun _ _ h => dep_po_WW h) hcoh⟩
   · refine ⟨fun a b h => ?_, fun a h => ?_, fun a b c h₁ h₂ => ?_, fun a b ha hb _ _ hne _ => ?_⟩
     · have hw : ∀ p ∈ coWW, clsB esWW Event.isWrite p.1 = true ∧
           clsB esWW Event.isWrite p.2 = true ∧ (p.1 = 0 ∨ p.1 = 1 ∨ p.1 = 2) ∧
@@ -648,22 +679,247 @@ theorem ppo_cross_thread :
       have m : ∀ c, xWW.X c → c ∈ [0, 1, 2] := fun c hc => by
         rcases X_WW.1 hc with rfl | rfl | rfl <;> simp
       exact key a (m a ha) b (m b hb) hne
-  · -- RC11's `HB` is `⊑` here, which `CO` does not reverse
-    refine coherenceVOver_of (D := xWW.poX esWW) (H := [(0, 1), (0, 2)]) (E := coWW) ?_ ?_
-      (by decide)
-    · intro a b h
-      refine transGen_mem (fun c d hs => ?_) (by decide) h
-      rcases hs with ⟨-, -, hpo⟩ | hsw
-      · exact hpo
-      · have := sw_mem hsw
-        have : swL esWW = [] := by decide
-        simp_all
-    · intro a b h
-      refine eco_mem (x := xWW) (L := coWW) (fun _ _ h => False.elim h) (fun _ _ h => h)
-        (fun _ _ h => by obtain ⟨_, h, _⟩ := h; exact False.elim h) (by decide) h
   · intro r w h; obtain ⟨-, -, ent, hm, -⟩ := h; cases hm
+
+/-! ## `HB_v` to RC11 fails at an elided write
+
+`x := 1; x := 2` with `x := 1` elided into `x := 2` and `CO = 2 < 1`: the
+elided write lies in no pair of `≼` (it has no image of its own) and in none
+of `DP`, so `HB_v` is empty and the execution `HB_v`-coherent, while RC11's
+`HB` orders `x := 1` before `x := 2` against `CO`. Condition (i) fails at the
+elided write, and `coherence_of_coherenceV_canon` asks that no event of the
+path is elided. -/
+
+/-- `x := 1; x := 2` -/
+def esC : EventStructure := ⟨[W 0 0 [0] .rlx "x" 1, W 1 0 [1] .rlx "x" 2], [(0, 1)], []⟩
+
+unseal interp in
+theorem denote_coww : denote (fun _ => 0) (.seq (st .rlx "x" 1) (st .rlx "x" 2)) = esC := rfl
+
+theorem SC : Simple esC := ⟨by decide, by decide, rfl⟩
+theorem gC : GlobLocs esC := globLocs_of (by decide)
+
+/-- `x := 2`'s pre-justification with `x := 1` elided: `WE = {(1, 0)}`. -/
+def jC : Justification :=
+  { pj (W 1 0 [1] .rlx "x" 2) with δ := { (pj (W 1 0 [1] .rlx "x" 2)).δ with we := [(1, 0)] } }
+def xC : Execution := ⟨esC.Candidate, [jC], fun _ _ => False⟩
+def coC : List (EventId × EventId) := [(1, 0)]
+
+theorem δC : xC.δ = ⟨[], [(1, 0)]⟩ := rfl
+
+theorem edge_C {a b : EventId} (h : xC.δ.edge a b) : a = 1 ∧ b = 0 := by
+  rw [δC] at h
+  rcases h with h | h
+  · cases h
+  · simp at h; exact h
+
+theorem remap_C {a a' : EventId} (h : xC.δ.Remap a a') : a = a' ∨ (a = 0 ∧ a' = 1) := by
+  induction h with
+  | canon _ => exact .inl rfl
+  | step he _ ih =>
+      obtain ⟨rfl, rfl⟩ := edge_C he
+      rcases ih with rfl | ⟨h, -⟩
+      · exact .inr ⟨rfl, rfl⟩
+      · cases h
+
+theorem gen_jC : esC.Generated (fun _ => True) jC := by
+  have hpre : esC.Generated (fun _ => True) (pj (W 1 0 [1] .rlx "x" 2)) :=
+    .pre (by simp [esC]) rfl ⟨fun _ => .num 0, SC.holds (e := W 1 0 [1] .rlx "x" 2) (by simp [esC]) _⟩
+  have hδ0 : ∀ a b, ¬ (pj (W 1 0 [1] .rlx "x" 2)).δ.edge a b := by
+    intro a b h; rcases h with h | h <;> cases h
+  have hppo : ∀ a b, esC.ppo (pj (W 1 0 [1] .rlx "x" 2)).P.holds
+      (pj (W 1 0 [1] .rlx "x" 2)).δ a b → (a, b) ∈ syncL esC ++ aliasL esC :=
+    fun a b h => ppo_mem rfl gC hδ0 h
+  refine .we (e₁ := 0) (e₂ := 1) hpre ⟨⟨⟨⟨(FwdCtx.remapRel_of_noEdge hδ0).2 (.inr
+      ⟨show (0, 1) ∈ esC.po by decide, _, _, _, _, rfl, rfl, rfl, rfl, fun _ => .num 0,
+        SC.holds (e := W 1 0 [1] .rlx "x" 2) (by simp [esC]) _,
+        by simp [Expr.holds, Expr.eval, Expr.glob]⟩), by decide⟩, ?_⟩,
+      _, _, _, _, rfl, rfl, rfl, rfl, fun _ _ _ _ h₁ h₂ => by rw [h₁] at h₂; cases h₂; rfl⟩,
+    ⟨_, rfl, rfl⟩, ⟨_, rfl, rfl⟩, fun ⟨e, he, hp⟩ => by cases he; simp [W, Event.isVol] at hp⟩ ?_ ?_
+  · rintro ⟨e'', h₁, h₂⟩
+    have m₁ := hppo _ _ h₁
+    have m₂ := hppo _ _ h₂
+    have key : ∀ p ∈ syncL esC ++ aliasL esC, ∀ q ∈ syncL esC ++ aliasL esC,
+        p.1 = 0 → q.2 = 1 → p.2 = q.1 → False := by decide
+    exact key _ m₁ _ m₂ rfl rfl rfl
+  · refine ⟨fun a ha => ?_, fun a b e ha hb => ?_⟩
+    · have : ∀ c d, Relation.TransGen
+          ({ (pj (W 1 0 [1] .rlx "x" 2)).δ with we := (pj (W 1 0 [1] .rlx "x" 2)).δ.we ++ [(1, 0)] }).edge c d →
+          c = 1 ∧ d = 0 := by
+        intro c d h
+        induction h with
+        | single h => rcases h with h | h <;> simp [pj, FwdCtx.empty] at h; exact h
+        | tail _ h ih =>
+            rcases h with h | h <;> simp [pj, FwdCtx.empty] at h
+            obtain ⟨-, rfl⟩ := ih; cases h.1
+      have := this a a ha
+      rw [this.1] at this; cases this.2
+    · rcases ha with h | h <;> simp [pj, FwdCtx.empty] at h
+      rcases hb with h' | h' <;> simp [pj, FwdCtx.empty] at h'
+      rw [h.1, h'.1]
+  · exact ⟨fun _ => .num 0, SC.holds (e := W 1 0 [1] .rlx "x" 2) (by simp [esC]) _, trivial⟩
+
+theorem X_C {a : EventId} : xC.X a ↔ a = 0 ∨ a = 1 := by
+  constructor
   · intro h
-    exact h 1 ⟨2, .single (.inl (.inl ppo_WW)),
-      .inr (.single (.inl (.inr (show (2, 1) ∈ coWW by decide))))⟩
+    have := ids_of_cand h
+    simp [EventStructure.ids, esC, W] at this
+    omega
+  · rintro (rfl | rfl)
+    · exact cand_of_mem SC.nodup (e := W 0 0 [0] .rlx "x" 1) (by simp [esC]) rfl rfl
+    · exact cand_of_mem SC.nodup (e := W 1 0 [1] .rlx "x" 2) (by simp [esC]) rfl rfl
+
+theorem elided_C {a : EventId} : xC.elided a ↔ a = 0 := by
+  constructor
+  · intro h; obtain ⟨b, hb⟩ := (xC.elided_iff a).1 h; exact (edge_C hb).2
+  · rintro rfl; exact ⟨(1, 0), .inr (by rw [δC]; simp), rfl⟩
+
+theorem isExecution_C : xC.IsExecution esC (fun _ => True) where
+  maximal := ⟨fun _ h => h, fun a b _ _ ⟨ea, eb, ha, hb, hn⟩ =>
+      hn ⟨fun _ => .num 0, SC.holds (ev_inv ha).1 _, SC.holds (ev_inv hb).1 _⟩,
+    fun _ hc hn => absurd hc hn⟩
+  generated j hj := by
+    simp only [xC, List.mem_cons, List.mem_nil_iff, or_false] at hj
+    subst hj; exact gen_jC
+  inX j hj := by
+    simp only [xC, List.mem_cons, List.mem_nil_iff, or_false] at hj
+    subst hj; exact X_C.2 (.inr rfl)
+  consistent := ⟨fun _ => .num 0, fun j hj => by
+      simp only [xC, List.mem_cons, List.mem_nil_iff, or_false] at hj
+      subst hj; simp [jC, pj, W, Event.valres, Expr.conj, Expr.holds, Expr.eval, Expr.tt],
+    fun a e _ he => SC.holds (ev_inv he).1 _⟩
+  fwdWF := by
+    rw [δC]
+    refine ⟨fun a ha => ?_, fun a b e ha hb => ?_⟩
+    · have : ∀ c d, Relation.TransGen (FwdCtx.edge ⟨[], [(1, 0)]⟩) c d → c = 1 ∧ d = 0 := by
+        intro c d h
+        induction h with
+        | single h => rcases h with h | h <;> simp at h; exact h
+        | tail _ h ih =>
+            rcases h with h | h <;> simp at h
+            obtain ⟨-, rfl⟩ := ih; cases h.1
+      have := this a a ha
+      rw [this.1] at this; cases this.2
+    · rcases ha with h | h <;> simp at h
+      rcases hb with h' | h' <;> simp at h'
+      rw [h.1, h'.1]
+  rf_wr _ _ h := h.elim
+  rf_func _ _ _ h := h.elim
+  justified w hw he hn := by
+    rcases X_C.1 hw with rfl | rfl
+    · exact absurd (elided_C.2 rfl) hn
+    · refine ⟨jC, by simp [xC], rfl, fun j' hj' _ => ?_⟩
+      simp only [xC, List.mem_cons, List.mem_nil_iff, or_false] at hj'
+      exact hj'
+
+theorem no_dp_C {a b : EventId} : ¬ xC.DP a b := by
+  rintro ⟨-, -, j, hj, -, h⟩
+  simp only [xC, List.mem_cons, List.mem_nil_iff, or_false] at hj
+  subst hj
+  simp [jC, pj, W, Event.valres, Expr.conj, Expr.syms, Expr.tt] at h
+
+theorem phi_C : xC.phi esC := by
+  refine ⟨fun e h _ => ?_, fun r => ⟨fun ⟨_, h⟩ => h.elim, ?_⟩, fun _ => .num 0, ?_, ?_, ?_, ?_⟩
+  · rcases h with ⟨_, h⟩ | ⟨_, h⟩
+    · exact h.elim
+    · exact no_dp_C h
+  · rintro ⟨hX, e, he, hp⟩
+    rcases X_C.1 hX with rfl | rfl <;> cases he <;> simp [W, Event.isRead] at hp
+  · intro j hj
+    simp only [xC, List.mem_cons, List.mem_nil_iff, or_false] at hj
+    subst hj
+    exact ⟨by simp [jC, pj, W, Event.valres, Expr.conj, Expr.holds, Expr.eval, Expr.tt],
+      fun p hp => by simp [jC, pj, FwdCtx.empty] at hp⟩
+  · intro _ _ _ _ h; exact h.elim
+  · intro a e α sz _ he hk
+    obtain ⟨hm, -⟩ := ev_inv he
+    simp only [esC, List.mem_cons, List.mem_nil_iff, or_false] at hm
+    rcases hm with rfl | rfl <;> cases hk
+  · intro a₁ a₂ e₁ e₂ α₁ α₂ s₁ s₂ _ _ _ he₁ _ hk₁
+    obtain ⟨hm, -⟩ := ev_inv he₁
+    simp only [esC, List.mem_cons, List.mem_nil_iff, or_false] at hm
+    rcases hm with rfl | rfl <;> cases hk₁
+
+/-- No pair of `ppoM` in `xC`: its only base pair `(0, 1)` is remapped to
+    `(1, 1)`. -/
+theorem no_ppoM_C {Pa Pr : Pred} {a b : EventId} : ¬ esC.ppoM Pa Pr xC.δ a b := by
+  rintro ⟨⟨a₀, b₀, hab, ha, hb⟩, hne⟩
+  have hpo : esC.poR a₀ b₀ := by
+    rcases hab with (hs | hm) | hal
+    · exact hs.1
+    · rcases hm with ⟨_, _, h⟩ | ⟨_, h, _⟩ <;> exact absurd h (not_rmwPairs rfl)
+    · exact hal.1
+  have h01 : a₀ = 0 ∧ b₀ = 1 := by
+    have : ∀ p ∈ esC.po, p.1 = 0 ∧ p.2 = 1 := by decide
+    exact this _ hpo
+  obtain ⟨rfl, rfl⟩ := h01
+  have ha' : a = 1 := by
+    cases ha with
+    | canon hno => exact absurd (show xC.δ.edge 1 0 from .inr (by rw [δC]; simp)) (hno 1)
+    | step he hr =>
+        obtain ⟨rfl, -⟩ := edge_C he
+        rcases remap_C hr with h | ⟨h, -⟩
+        · exact h.symm
+        · cases h
+  have hb' : b = 1 := by
+    rcases remap_C hb with h | ⟨h, -⟩
+    · exact h.symm
+    · cases h
+  exact hne (ha'.trans hb'.symm)
+
+theorem no_dep_C {a b : EventId} : ¬ xC.dep esC a b := by
+  rintro (⟨-, -, h⟩ | h)
+  · have : ∀ c d, xC.ppoStep esC c d → False := by
+      rintro c d ⟨-, -, ⟨j, -, hp, -⟩ | ⟨hs | ⟨hp, -⟩, -⟩⟩
+      · exact no_ppoM_C hp
+      · exact no_ppoM_C (esC.ppoSyncRM_sub_ppoM (xC.Pm esC) (xC.Pm esC) xC.δ _ _ hs)
+      · exact no_ppoM_C hp
+    cases h with
+    | single h => exact this _ _ h
+    | tail _ h => exact this _ _ h
+  · exact no_dp_C h
+
+/-- **`HB_v`-coherence does not imply RC11 coherence at an elided write**:
+    `x := 1; x := 2` with `x := 1` elided into `x := 2`, no forwarding, and
+    `CO = 2 < 1`, is an execution with `φ`, `HB_v`-coherent, and not
+    RC11-coherent. -/
+theorem coww_elided :
+    xC.IsExecution esC (fun _ => True) ∧ xC.phi esC ∧ (∀ p ∈ xC.δ.f, False) ∧
+    xC.CoherenceOrder esC (relL coC) ∧ xC.CoherenceV esC (relL coC) ∧
+    ¬ xC.Coherence esC (relL coC) := by
+  have hf : ∀ p ∈ xC.δ.f, False := by intro p hp; rw [δC] at hp; cases hp
+  have X0 : xC.X 0 := X_C.2 (.inl rfl)
+  have X1 : xC.X 1 := X_C.2 (.inr rfl)
+  refine ⟨isExecution_C, phi_C, hf, ?_, ?_, ?_⟩
+  · refine ⟨fun a b h => ?_, fun a h => ?_, fun a b c h₁ h₂ => ?_, fun a b ha hb _ _ hne _ => ?_⟩
+    · have hw : ∀ p ∈ coC, clsB esC Event.isWrite p.1 = true ∧
+          clsB esC Event.isWrite p.2 = true ∧ (p.1 = 0 ∨ p.1 = 1) ∧ (p.2 = 0 ∨ p.2 = 1) := by
+        decide
+      obtain ⟨h1, h2, h3, h4⟩ := hw _ h
+      exact ⟨X_C.2 h3, X_C.2 h4, cls_clsB.2 h1, cls_clsB.2 h2⟩
+    · have : ∀ p ∈ coC, p.1 ≠ p.2 := by decide
+      exact this _ h rfl
+    · have : Closed coC := by decide
+      exact this _ h₁ _ h₂ rfl
+    · have key : ∀ a ∈ [0, 1], ∀ b ∈ [0, 1], a ≠ b → (a, b) ∈ coC ∨ (b, a) ∈ coC := by decide
+      have m : ∀ c, xC.X c → c ∈ [0, 1] := fun c hc => by
+        rcases X_C.1 hc with rfl | rfl <;> simp
+      exact key a (m a ha) b (m b hb) hne
+  · rintro a ⟨b, hab, -⟩
+    have hsw : ∀ c d, xC.sw esC c d → False := by
+      intro c d h
+      have := sw_mem h
+      have : swL esC = [] := by decide
+      simp_all
+    have step : ∀ c d, ((xC.dep esC).union (xC.sw esC)) c d → False := by
+      rintro c d (h | h)
+      · exact no_dep_C h
+      · exact hsw _ _ h
+    cases hab with
+    | single h => exact step _ _ h
+    | tail _ h => exact step _ _ h
+  · intro h
+    exact h 0 ⟨1, .single (.inl (poX_of X0 X1 (show (0, 1) ∈ esC.po by decide))),
+      .inr (.single (.inl (.inr (show (1, 0) ∈ coC by decide))))⟩
 
 end PpoNecessity

@@ -7,7 +7,7 @@ import Smrd.PpoTail
 as it stands. For event structures whose locations are globals and which have
 no read-modify-writes, executions without fences, and forwarding contexts of
 depth one, its alias queries reduce to syntactic equality of locations, and
-`≼` to a list computation (`ppoEval`), which `ppoEval_iff` proves equal to
+`≼` to a list computation (`ppoEval`, the anchored cut as `anchorB`), which `ppoEval_iff` proves equal to
 `Execution.ppo`. It is what the differential test against MoRDor
 (`scripts/ppo_diff.py`, through the `smrd-ppo` executable) evaluates.
 
@@ -64,11 +64,16 @@ def imgB (δ : FwdCtx) (L : List (EventId × EventId)) (a b : EventId) : Bool :=
 
 def winB (j : Justification) (a : EventId) : Bool := a == j.w.id || decide ((a, j.w.id) ∈ es.po)
 
+/-- Both events at or `⊑`-below one event of `Xs` (`Execution.Anchored`). -/
+def anchorB (Xs : List EventId) (a b : EventId) : Bool :=
+  Xs.any fun e => (a == e || decide ((a, e) ∈ es.po)) && (b == e || decide ((b, e) ∈ es.po))
+
 /-- A step of MoRDor's `≼`, over the events `Xs`. -/
 def stepB (Xs : List EventId) (J : List Justification) (δ : FwdCtx) (a b : EventId) : Bool :=
   decide (a ∈ Xs) && decide (b ∈ Xs) &&
     ((J.any fun j => winB es j a && winB es j b && imgB δ (baseL es) a b) ||
-     imgB δ (syncL es) a b || (imgB δ (baseL es) a b && aliasB es a b))
+     ((imgB δ (syncL es) a b || (imgB δ (baseL es) a b && aliasB es a b)) &&
+       anchorB es Xs a b))
 
 /-- The steps among `Xs`. -/
 def stepL (Xs : List EventId) (J : List Justification) (δ : FwdCtx) : List (EventId × EventId) :=
@@ -278,6 +283,13 @@ theorem remapRel_iff {δ : FwdCtx} (hd : Depth1 δ) (hu : ∀ a b e, δ.edge a e
 
 variable {x : Execution}
 
+theorem anchor_iff {Xs : List EventId} (hw : ∀ c, x.XwF es c ↔ c ∈ Xs) {a b : EventId} :
+    x.Anchored es a b ↔ anchorB es Xs a b = true := by
+  unfold anchorB Execution.Anchored
+  simp only [List.any_eq_true, Bool.and_eq_true, Bool.or_eq_true, beq_iff_eq,
+    decide_eq_true_eq, hw]
+  rfl
+
 theorem step_iff (hg : GlobLocs es) (hrmw : es.rmw = []) (hnf : x.FenceFree es)
     {Xs : List EventId} (hX : ∀ a, x.X a ↔ a ∈ Xs)
     (hd : Depth1 x.δ) (hu : ∀ a b e, x.δ.edge a e → x.δ.edge b e → a = b)
@@ -293,26 +305,28 @@ theorem step_iff (hg : GlobLocs es) (hrmw : es.rmw = []) (hnf : x.FenceFree es)
   constructor
   · rintro ⟨ha, hb', h⟩
     refine ⟨⟨ha, hb'⟩, ?_⟩
-    rcases h with ⟨j, hj, hp, hwa, hwb⟩ | hs | ⟨hp, hal⟩
-    · refine .inl (.inl ⟨j, hj, ⟨⟨?_, ?_⟩, (remapRel_iff hd hu (hb (hPJ j hj))).1 hp⟩⟩)
+    rcases h with ⟨j, hj, hp, hwa, hwb⟩ | ⟨hs | ⟨hp, hal⟩, hA⟩
+    · refine .inl ⟨j, hj, ⟨⟨?_, ?_⟩, (remapRel_iff hd hu (hb (hPJ j hj))).1 hp⟩⟩
       · rcases hwa with h | h
         · simp [winB, h]
         · simp [winB, show (a, j.w.id) ∈ es.po from h]
       · rcases hwb with h | h
         · simp [winB, h]
         · simp [winB, show (b, j.w.id) ∈ es.po from h]
-    · exact .inl (.inr ((remapRel_iff hd hu (fun _ _ => syncM_iff)).1 hs))
-    · exact .inr ⟨(remapRel_iff hd hu (hb hPm)).1 hp, (mayAlias_iff hg hPm).1 hal⟩
+    · exact .inr ⟨.inl ((remapRel_iff hd hu (fun _ _ => syncM_iff)).1 hs), (anchor_iff hw).1 hA⟩
+    · exact .inr ⟨.inr ⟨(remapRel_iff hd hu (hb hPm)).1 hp, (mayAlias_iff hg hPm).1 hal⟩,
+        (anchor_iff hw).1 hA⟩
   · rintro ⟨⟨ha, hb'⟩, h⟩
     refine ⟨ha, hb', ?_⟩
-    rcases h with (⟨j, hj, ⟨hwa, hwb⟩, hi⟩ | hi) | ⟨hi, hal⟩
+    rcases h with ⟨j, hj, ⟨hwa, hwb⟩, hi⟩ | ⟨hi | ⟨hi, hal⟩, hA⟩
     · refine .inl ⟨j, hj, (remapRel_iff hd hu (hb (hPJ j hj))).2 hi, ?_, ?_⟩
       · simp only [winB, Bool.or_eq_true, beq_iff_eq, decide_eq_true_eq] at hwa
         exact hwa
       · simp only [winB, Bool.or_eq_true, beq_iff_eq, decide_eq_true_eq] at hwb
         exact hwb
-    · exact .inr (.inl ((remapRel_iff hd hu (fun _ _ => syncM_iff)).2 hi))
-    · exact .inr (.inr ⟨(remapRel_iff hd hu (hb hPm)).2 hi, (mayAlias_iff hg hPm).2 hal⟩)
+    · exact .inr ⟨.inl ((remapRel_iff hd hu (fun _ _ => syncM_iff)).2 hi), (anchor_iff hw).2 hA⟩
+    · exact .inr ⟨.inr ⟨(remapRel_iff hd hu (hb hPm)).2 hi, (mayAlias_iff hg hPm).2 hal⟩,
+        (anchor_iff hw).2 hA⟩
 
 /-- **The computed `≼` is MoRDor's `≼`**, under the hypotheses of the module
     docstring; `closedB` is checked on the computed list. -/

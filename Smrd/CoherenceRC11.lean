@@ -49,7 +49,9 @@ The conditions are where the operational semantics falls short of RC11
 (`TODO(rc11-co)` in `app-opsem.tex`). `≼_sync` contains `⊑;[W_rel]` and
 `[R_acq];⊑`, but `≼` truncates them at the last justified event of a thread
 and remaps them under forwarding. Release sequences beyond the releasing write
-are not in `SW_ra`, but are in `HB_v`. `DP ∪ ≼ ⊆ ⊑` is open under `remap_δ`.
+are not in `SW_ra`, but are in `HB_v`. For MoRDor's `≼`, `Smrd.PpoTail`
+discharges the conditions: `DP ∪ ≼ ⊆ ⊑` without forwarding where no elision
+crosses an event, (i) and (ii) where no event of the path is elided.
 -/
 
 namespace Execution
