@@ -13,5 +13,6 @@ import Smrd.PpoTail
 import Smrd.PpoEval
 import Smrd.PpoKit
 import Smrd.PpoStability
+import Smrd.PpoNecessity
 
 def hello := "world"

@@ -56,6 +56,7 @@ Smrd.Types                        expressions, values, events, event structures,
                                     └── Smrd.PpoEval  ≼ computed for global-location executions (`ppoEval_iff`), for `smrd-es` / scripts/ppo_diff.py
                                     └── Smrd.PpoKit  (+ Monotonicity) concrete executions, list bounds on ≼, sw, eco
                                           └── Smrd.PpoStability  truncated ≼ unstable (A), untruncated local/stable (B), no NTA change (C)
+                                                └── Smrd.PpoNecessity  untruncated ≼ needed for HB_v = RC11 (N1: CoRR, CoWR, MP); cross-thread ≼ (N2)
 ```
 
 `Smrd.Basic` re-exports all of the above and is the library root (`Smrd.lean` imports it).
