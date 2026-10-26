@@ -391,6 +391,30 @@ def closeL : Nat → List (EventId × EventId) → List (EventId × EventId)
       let L' := L ++ (L.flatMap fun p => (L.filter (fun q => q.1 == p.2)).map fun q => (p.1, q.2))
       closeL n (L'.eraseDups)
 
+theorem poTrans_of {es : EventStructure} (h : Closed es.po) :
+    ∀ a b c, es.poR a b → es.poR b c → es.poR a c :=
+  fun _ _ _ h₁ h₂ => h _ h₁ _ h₂ rfl
+
+theorem poIrr_of {es : EventStructure} (h : ∀ p ∈ es.po, p.1 ≠ p.2) : ∀ a, ¬ es.poR a a :=
+  fun _ h' => h _ h' rfl
+
+/-- The pairs of `L` into one event have comparable sources: `L` is a forest. -/
+def ForestL (L : List (EventId × EventId)) : Prop :=
+  ∀ p ∈ L, ∀ q ∈ L, p.2 = q.2 → p.1 = q.1 ∨ (p.1, q.1) ∈ L ∨ (q.1, p.1) ∈ L
+
+instance (L : List (EventId × EventId)) : Decidable (ForestL L) := by
+  unfold ForestL; infer_instance
+
+theorem poForest_of {es : EventStructure} (h : ForestL es.po) : Execution.PoForest es := by
+  intro a b e ha hb
+  rcases ha with rfl | ha
+  · rcases hb with rfl | hb
+    · exact .inl rfl
+    · exact .inr (.inr hb)
+  · rcases hb with rfl | hb
+    · exact .inr (.inl ha)
+    · exact h _ ha _ hb rfl
+
 theorem pair_eta (p : EventId × EventId) : (p.1, p.2) = p := rfl
 
 /-! ## Coherence over a dependency relation -/
@@ -505,7 +529,8 @@ theorem ppo_of_alias {es : EventStructure} {x : Execution} (hδ : ∀ a, ¬ x.el
     (hXb : x.X b) : x.ppo es a b := by
   have hal : es.mayAlias (x.Pm es) a b :=
     ⟨ea, eb, _, _, ha, hb, hla, hlb, f, hf, by simp [Expr.holds, Expr.eval, Expr.glob]⟩
-  refine ⟨hXa, hXb, .single ⟨.inl hXa, .inl hXb, .inr (.inr ⟨⟨?_, hne⟩, hal⟩)⟩⟩
+  refine ⟨hXa, hXb, .single ⟨.inl hXa, .inl hXb, .inr ⟨.inr ⟨⟨?_, hne⟩, hal⟩,
+    ⟨b, .inl hXb, .inr hpo, .inl rfl⟩⟩⟩⟩
   exact (FwdCtx.remapRel_of_noEdge (noEdge_of_noElided hδ)).2 (.inr ⟨hpo, .inr hal⟩)
 
 end PpoKit

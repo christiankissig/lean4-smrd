@@ -50,13 +50,13 @@ Smrd.Types                        expressions, values, events, event structures,
       └── Smrd.Ppo                ≼_sync, ≼_rmw, ≼_alias, ≼^P_δ, pred, dependence on P
             ├── Smrd.PpoMordor        MoRDor's ppo templates (ppo_sync, ppo_loc, ForwardingContext.ppo)
             └── Smrd.Justifications  (+ Smrd.Conjuncts) pre-justifications, elaborations, `Generated` (𝕁)
-                  └── Smrd.Executions  (+ PpoMordor) executions, freeze (DP, ≼ = MoRDor's freeze_ppo, ppoTrunc, ppoWin, φ), NTA, RC11 coherence, atomicity, UAF (sMRD `nta`, RC11 `ntaRC11`), RC11 no-thin-air (`NoThinAirRC11`), `Frozen`
+                  └── Smrd.Executions  (+ PpoMordor) executions, freeze (DP, ≼ = MoRDor's freeze_ppo cut to anchored pairs, ppoTrunc, ppoWin, φ), NTA, RC11 coherence, atomicity, UAF (sMRD `nta`, RC11 `ntaRC11`), RC11 no-thin-air (`NoThinAirRC11`), `Frozen`
                         └── Smrd.CoherenceRC11  preserved coherence and HB_v, reduced to RC11's axiom (FenceFree)
-                              └── Smrd.PpoTail  MoRDor's ≼: ≼ ⊆ ⊑ without δ, conditions (i)/(ii), NTA same as ppoWin
+                              └── Smrd.PpoTail  MoRDor's ≼: ≼ ⊆ ⊑ without forwarding (elision allowed, `NoCross`), conditions (i)/(ii) off elided events, NTA same as ppoWin
                                     ├── Smrd.PpoEval  ≼ computed for global-location executions (`ppoEval_iff`), for `smrd-es` / scripts/ppo_diff.py
                                     └── Smrd.PpoKit  (+ Monotonicity) concrete executions, list bounds on ≼, sw, eco
                                           └── Smrd.PpoStability  truncated ≼ unstable (A), untruncated local/stable (B), no NTA change (C)
-                                                └── Smrd.PpoNecessity  untruncated ≼ needed for HB_v = RC11 (N1: CoRR, CoWR, MP); cross-thread ≼ (N2)
+                                                └── Smrd.PpoNecessity  untruncated ≼ needed for HB_v = RC11 (N1: CoRR, CoWR, MP); no cross-thread ≼ under elision (N2), HB_v ⇏ RC11 at an elided write (N3)
 ```
 
 `Smrd.Basic` re-exports all of the above and is the library root (`Smrd.lean` imports it).

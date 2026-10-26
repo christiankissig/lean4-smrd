@@ -55,9 +55,10 @@ in three steps, using only the event structure semantics (`denote`).
   programs without fences or RMWs, with `DP ⊆ ⊑` and a location model,
   No-Thin-Air over MoRDor's `≼` is No-Thin-Air over the paper's truncated `≼`.
   It goes through `noThinAir_iff_win` (`Smrd.PpoTail`), over MoRDor's own cut
-  to the windows, whose conditions are (1) every step of `≼` in `⊑` -- no
-  pair across threads, which write elision of an initialising write breaks
-  (`Smrd.PpoNecessity.ppo_cross_thread`) -- and (2) `DP ⊆ ⊑`, with (3) the
+  to the windows, whose conditions are (1) every step of `≼` in `⊑` -- which
+  also holds without forwarding where no elision crosses an event
+  (`Smrd.PpoTail.ppoStep_po_we`, `noThinAir_iff_win_we`; the truncated side
+  of this theorem is still taken without elision) -- and (2) `DP ⊆ ⊑`, with (3) the
   combined predicate built into `≼`; then `ppoTrunc ⊆ ppoWin ⊆ ppoTrunc⁺`
   (`ppoTrunc_sub_win`, `win_sub_trunc`).
 * `dep_po`: under (1) and (2), `DP ∪ ≼ ⊆ ⊑`, which the converse of
@@ -288,16 +289,17 @@ theorem ppoStep_iff_local {es : EventStructure} {x : Execution} (hr : es.rmw = [
     · exact absurd hc (not_rmwPairs hr)
     · exact .inr ⟨hpo, sameGlob_of_alias hg hal⟩
   constructor
-  · rintro ⟨ha, hb, ⟨j, -, hp, -⟩ | hs | ⟨hp, -⟩⟩
+  · rintro ⟨ha, hb, ⟨j, -, hp, -⟩ | ⟨hs | ⟨hp, -⟩, -⟩⟩
     · exact ⟨ha, hb, base hp⟩
     · exact ⟨ha, hb, base (es.ppoSyncRM_sub_ppoM (x.Pm es) (x.Pm es) x.δ _ _ hs)⟩
     · exact ⟨ha, hb, base hp⟩
   · rintro ⟨ha, hb, hne, hs | ⟨hpo, ea, eb, y, hea, heb, hla, hlb⟩⟩
-    · exact ⟨ha, hb, .inr (.inl ⟨(FwdCtx.remapRel_of_noEdge hδ).2 hs, hne⟩)⟩
+    · exact ⟨ha, hb, .inr ⟨.inl ⟨(FwdCtx.remapRel_of_noEdge hδ).2 hs, hne⟩,
+        ⟨b, hb, .inr hs.1, .inl rfl⟩⟩⟩
     · have hal : es.mayAlias (x.Pm es) a b :=
         ⟨ea, eb, _, _, hea, heb, hla, hlb, f, hf, by simp [Expr.holds, Expr.eval, Expr.glob]⟩
-      exact ⟨ha, hb, .inr (.inr ⟨⟨(FwdCtx.remapRel_of_noEdge hδ).2 (.inr ⟨hpo, .inr hal⟩), hne⟩,
-        hal⟩)⟩
+      exact ⟨ha, hb, .inr ⟨.inr ⟨⟨(FwdCtx.remapRel_of_noEdge hδ).2 (.inr ⟨hpo, .inr hal⟩), hne⟩,
+        hal⟩, ⟨b, hb, .inr hpo, .inl rfl⟩⟩⟩
 
 /-- An inclusion `𝔼₁ ⊆ 𝔼₂` preserving events and `⊑`, with image `⊑`-downward
     closed, and executions related by restriction. -/
