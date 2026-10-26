@@ -20,6 +20,9 @@ Elision therefore carries MoRDor's release restriction
 
 ## Results
 
+* `rmw_not_elided`, `rmwRel_XT`, `atomicityT_iff`: no RMW access is elided
+  (Forwarding and Write Elision exclude it, `EventStructure.RMWAcc`), so every
+  `rmw` pair lies in `X ∖ †` and Atomicity over `X ∖ †` is RC11's.
 * `coherentT_iff_coherent`: without elided events, `CoherentT` is RC11's
   `Coherent`.
 * `remap_cross_pub`: under the restriction, an elision crosses no event that
@@ -31,8 +34,8 @@ Elision therefore carries MoRDor's release restriction
   `(x := 2, flag :rel= 1)` that made MoRDor's sMRD forbid the outcome above is
   not generated, and not needed.
 * `dep_po_T`: `DP ∪ ≼ ⊆ ⊑` without forwarding, where no elision crosses an
-  event that may alias the elided write or is an RMW access, or elides an RMW
-  access (`NoCrossLoc`). This replaces `NoCross` of `Smrd.PpoTail`: crossings
+  event that may alias the elided write or is an RMW access (`NoCrossLoc`);
+  that no RMW access is elided is derived (`rmw_not_elided`). This replaces `NoCross` of `Smrd.PpoTail`: crossings
   of publishing events are excluded by the restriction, and the remaining
   ones are those MoRDor's `pred` condition (the elided write is the
   immediate `ppo_loc`-predecessor) is meant to exclude, which is not derived
@@ -267,26 +270,87 @@ theorem remap_cross_pub {Ω : Pred} (hx : x.IsExecution es Ω) (hW : WEForward e
         rcases he with hf | hw
         · exact (hW.1 _ hf).elim
         · exact hw
-      obtain ⟨j₀, ⟨-, -, hnr⟩, -⟩ := we_edge hx hwe
+      obtain ⟨j₀, ⟨-, ⟨-, hnr⟩, -⟩, -⟩ := we_edge hx hwe
       have hb : b = e' ∨ es.poR b e' := remap_fwd hW hpo_trans hr
       rcases hF c b e' (.inr h₂) (hb.elim (fun h => .inl h) .inr) with rfl | hcb | hbc
       · exact .inl hr
       · exact .inr (hnr c h₁ hcb)
       · exact ih c hbc h₂
 
-/-! ## `≼` within `⊑` -/
+/-! ## RMWs are not elided
 
-/-- An RMW access: the read or the write of an entry of `⊑ʳᵐʷ`. -/
-def RMWAcc (es : EventStructure) (c : EventId) : Prop := ∃ ent ∈ es.rmw, ent.r = c ∨ ent.w = c
+Neither access of an RMW is in the elided position (`EventStructure.fwdRel`,
+`EventStructure.weRel`, MoRDor E4), so every pair of `rmw` lies in `X ∖ †`,
+and Atomicity over `X ∖ †` is RC11's on those pairs: the transformation
+removes no RMW access and splits no RMW. -/
+
+/-- A forwarding edge in the shared context is one of a justification. -/
+theorem mem_δ_f_inv {p : EventId × EventId} (hp : p ∈ x.δ.f) : ∃ j ∈ x.J, p ∈ j.δ.f := by
+  obtain ⟨X, J, rf⟩ := x
+  simp only [δ] at *
+  induction J with
+  | nil => cases hp
+  | cons j J ih =>
+      simp only [FwdCtx.union, List.foldr_cons] at hp
+      rcases List.mem_append.1 hp with hp | hp
+      · exact ⟨j, List.mem_cons_self .., hp⟩
+      · obtain ⟨j', hj', hp'⟩ := ih hp
+        exact ⟨j', List.mem_cons_of_mem _ hj', hp'⟩
+
+/-- **No RMW access of an execution is elided** (`rmw_not_elided`). -/
+theorem rmw_not_elided {Ω : Pred} (hx : x.IsExecution es Ω) {e : EventId} (h : x.elided e) :
+    ¬ es.RMWAcc e := by
+  obtain ⟨p, hp, rfl⟩ := h
+  rcases hp with hp | hp
+  · obtain ⟨j, hj, hpj⟩ := mem_δ_f_inv hp
+    exact EventStructure.Generated.not_rmwAcc_elided es (hx.generated j hj) p (.inl hpj)
+  · obtain ⟨j, hj, hpj⟩ := mem_δ_we_inv hp
+    exact EventStructure.Generated.not_rmwAcc_elided es (hx.generated j hj) p (.inr hpj)
+
+/-- `remap_δ` fixes RMW accesses. -/
+theorem remap_rmwAcc {Ω : Pred} (hx : x.IsExecution es Ω) {e e' : EventId} (h : x.δ.Remap e e')
+    (hr : es.RMWAcc e) : e = e' :=
+  Classical.byContradiction fun hne => rmw_not_elided hx (elided_of_remap_ne h hne) hr
+
+/-- **Every `rmw` pair of an execution lies in `X ∖ †`.** -/
+theorem rmwRel_XT {Ω : Pred} (hx : x.IsExecution es Ω) {r w : EventId} (h : x.rmwRel es r w) :
+    x.XT r ∧ x.XT w := by
+  obtain ⟨hr, hw, ent, hm, rfl, rfl, -⟩ := h
+  exact ⟨⟨hr, fun hel => rmw_not_elided hx hel ⟨ent, hm, .inl rfl⟩⟩,
+    ⟨hw, fun hel => rmw_not_elided hx hel ⟨ent, hm, .inr rfl⟩⟩⟩
+
+/-- `rmw` of the transformed execution: the pairs of `rmw` within `X ∖ †`. -/
+def rmwRelT (es : EventStructure) (x : Execution) : Rel := fun r w =>
+  x.rmwRel es r w ∧ x.XT r ∧ x.XT w
+
+/-- **`rmw` of `X ∖ †` is `rmw` of `X`.** -/
+theorem rmwRelT_iff {Ω : Pred} (hx : x.IsExecution es Ω) {r w : EventId} :
+    x.rmwRelT es r w ↔ x.rmwRel es r w :=
+  ⟨fun h => h.1, fun h => ⟨h, rmwRel_XT hx h⟩⟩
+
+/-- Atomicity over `X ∖ †`: `rmw_T ∩ (FR ; CO) = ∅`. -/
+def AtomicityT (es : EventStructure) (x : Execution) (co : Rel) : Prop :=
+  ∀ r w, x.rmwRelT es r w → ¬ ∃ w', x.fr co r w' ∧ co w' w
+
+/-- **Atomicity over `X ∖ †` is RC11's `Atomicity`**: no RMW pair is dropped
+    by the transformation. -/
+theorem atomicityT_iff {Ω : Pred} (hx : x.IsExecution es Ω) {co : Rel} :
+    x.AtomicityT es co ↔ x.Atomicity es co :=
+  ⟨fun h r w hrw => h r w ((rmwRelT_iff hx).2 hrw),
+   fun h r w hrw => h r w ((rmwRelT_iff hx).1 hrw)⟩
+
+/-! ## `≼` within `⊑` -/
 
 /-- The crossings the release restriction leaves: no elision of `a` into
     `remap_δ(a) = a'` crosses an event `c`, `a ⊑ c ⊑ a'`, that may alias `a`
     (under a justification's alias predicate `P_j ∧ ψ_δ` or the combined
-    predicate), unless `c` is elided into `a'` too; nor one where `a` or `c`
-    is an RMW access. MoRDor's Write Elision asks the elided write to be the
+    predicate), unless `c` is elided into `a'` too; nor one where `c` is an
+    RMW access. MoRDor's Write Elision asks the elided write to be the
     immediate `ppo_loc`-predecessor of the eliding one (`fprime`), which an
-    aliasing `c` in between would refute, and elides no RMW access
-    (`ForwardElab.we`, `elidable`); neither is derived here. `pred` is taken
+    aliasing `c` in between would refute; that is not derived here. That `a`
+    is no RMW access is (`rmw_not_elided`); crossing one is not excluded:
+    `x := 1; FADD_rel(x, 1)` may elide `x := 1` into the FADD's write, across
+    its read. `pred` is taken
     in the eliding justification `j₀` (its `P` and `δ`), while the alias
     queries here are under the execution's predicates: a justification of
     `x` whose predicate Strengthening never made distinguish `c` from `a`
@@ -296,7 +360,7 @@ def RMWAcc (es : EventStructure) (c : EventId) : Prop := ∃ ent ∈ es.rmw, ent
 def NoCrossLoc (es : EventStructure) (x : Execution) : Prop :=
   ∀ a a' c, x.δ.Remap a a' → es.poR a c → es.poR c a' →
     (es.mustAlias a c ∨ es.mayAlias (x.Pm es) a c ∨ (∃ j ∈ x.J, es.mayAlias (x.PJ es j) a c) ∨
-      RMWAcc es a ∨ RMWAcc es c) →
+      es.RMWAcc c) →
     x.δ.Remap c a'
 
 /-- Where `δ` has no edge, `NoCrossLoc` holds. -/
@@ -362,8 +426,11 @@ theorem ppoM_po_T {Ω : Pred} (hx : x.IsExecution es Ω) (hW : WEForward es x)
         · rcases remap_cross_pub hx hW hpo_trans hirr hF ra b hbase hba' with h' | h'
           · exact h'
           · exact absurd (cls_mono es (fun _ h => Event.publishes_of_isRelM h) hrel) h'
-      · exact hL a a' b ra hbase hba' (.inr (.inr (.inr (.inr ⟨ent, hm, .inl hr'⟩))))
-      · exact hL a a' b ra hbase hba' (.inr (.inr (.inr (.inl ⟨ent, hm, .inr hw⟩))))
+      · exact hL a a' b ra hbase hba' (.inr (.inr (.inr ⟨ent, hm, .inl hr'⟩)))
+      · -- `a` is the RMW's write, which is not elided, so `a = a'`
+        have haa : a = a' := remap_rmwAcc hx ra ⟨ent, hm, .inr hw⟩
+        subst haa
+        exact absurd (hpo_trans _ _ _ hbase hba') (hirr _)
       · rcases hal.2 with hm | hm
         · exact hL a a' b ra hbase hba' (.inl hm)
         · rcases hPa a b hm with h' | h'

@@ -178,7 +178,8 @@ theorem fwd_24 : esA.fwdRel jB 2 4 := by
         by simp [Expr.holds, Expr.eval, Expr.glob]⟩), by decide⟩, ?_⟩,
       po_of (by decide), _, _, _, _, rfl, rfl, rfl, rfl, fun _ _ _ _ h₁ h₂ => by rw [h₁] at h₂; cases h₂; rfl⟩,
     .inr (.inl ⟨⟨_, rfl, rfl⟩, ⟨_, rfl, rfl⟩⟩),
-    fun ⟨e, he, hp⟩ => by cases he; simp [e4, W, Event.isVol] at hp⟩
+    fun ⟨e, he, hp⟩ => by cases he; simp [e4, W, Event.isVol] at hp,
+    EventStructure.not_rmwAcc_of_nil _ rfl _⟩
   rintro ⟨e'', h₁, h₂⟩
   have m₁ := hppo _ _ h₁
   have m₂ := hppo _ _ h₂
