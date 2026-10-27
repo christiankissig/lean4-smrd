@@ -43,7 +43,7 @@ semantic (`Pred := Valuation → Prop`), and syntactic predicates are `Expr`s de
 ```
 Smrd.Types                        expressions, values, events, event structures, relations
 ├── Smrd.Conjuncts                `conj(P)`, predicates read up to their conjuncts (par:conj)
-├── Smrd.EventStructureSemantics  program syntax, CPS semantics ⟨P⟩_{n ρ κ φ}, per-loop step-counters
+├── Smrd.EventStructureSemantics  program syntax, CPS semantics ⟨P⟩_{n ρ κ φ} (∥ joins: κ runs once, after both threads), per-loop step-counters
 │     ├── Smrd.Fresh            `denote_ids_nodup`: the events of ⟨P⟩_n have distinct ids
 │     └── Smrd.Monotonicity     `denote_mono`: ⟨P⟩_n embeds into ⟨P⟩_{n'} for n ≤ n' (l:es-mono)
 └── Smrd.Forwardingcontext        δ = (F, WE), ψ_δ, remap_δ
@@ -61,6 +61,7 @@ Smrd.Types                        expressions, values, events, event structures,
                                                       └── Smrd.WEAcrossRelease  (+ CoherenceT) MoRDor's WE-across-release.lit: RC11 forbids, CoherenceT admits under blind elision, the release restriction forbids; `coww_elided` over X ∖ †
                                                             ├── Smrd.FwdAcrossAcquire  MoRDor's RSE-across-acquire.lit: Forwarding across an acquire, CoherenceT admits what RC11 and HB_v-coherence forbid
                                                             └── Smrd.RMWElision  lost update `x := 0; (FADD; x := 5 ∥ FADD)`: RC11 forbids, CoherenceT admits when the FADD's write is elided, the RMW rule forbids
+Smrd.Labels  (Fresh + Monotonicity + Executions) labels are unique in P̄: distinct events of ⟨P⟩_n with one label conflict (`labels_unique`, `conflictFree_label_inj`), for distinct loop ids
 ```
 
 `Smrd.Basic` re-exports all of the above and is the library root (`Smrd.lean` imports it).

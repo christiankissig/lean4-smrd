@@ -105,6 +105,10 @@ namespace EventStructure
 @[simp] theorem events_plus (k k' : EventStructure) : (k.plus k').events = k.events ++ k'.events := rfl
 @[simp] theorem po_plus (k k' : EventStructure) : (k.plus k').po = k.po ++ k'.po := rfl
 @[simp] theorem rmw_plus (k k' : EventStructure) : (k.plus k').rmw = k.rmw ++ k'.rmw := rfl
+@[simp] theorem events_join (k k' : EventStructure) : (k.join k').events = k.events ++ k'.events := rfl
+@[simp] theorem po_join (k k' : EventStructure) :
+    (k.join k').po = k.po ++ k'.po ++ k.ids.flatMap (fun a => k'.ids.map (fun b => (a, b))) := rfl
+@[simp] theorem rmw_join (k k' : EventStructure) : (k.join k').rmw = k.rmw ++ k'.rmw := rfl
 @[simp] theorem events_addRMW (k : EventStructure) (r : EventId) (c : Expr) (w : EventId) :
     (k.addRMW r c w).events = k.events := rfl
 @[simp] theorem po_addRMW (k : EventStructure) (r : EventId) (c : Expr) (w : EventId) :
@@ -146,6 +150,24 @@ theorem plus {k₁ k₂ k₁' k₂' : EventStructure} (h : Embeds θ τ k₁ k�
   · simp only [po_plus, List.mem_append] at hx ⊢
     exact hx.elim (fun h₁ => Or.inl (h.po x h₁)) (fun h₁ => Or.inr (h'.po x h₁))
   · simp only [rmw_plus, List.mem_append] at hx ⊢
+    exact hx.elim (fun h₁ => Or.inl (h.rmw x h₁)) (fun h₁ => Or.inr (h'.rmw x h₁))
+
+theorem mem_ids {k₁ k₂ : EventStructure} (h : Embeds θ τ k₁ k₂) {a : EventId} (ha : a ∈ k₁.ids) :
+    θ a ∈ k₂.ids := by
+  obtain ⟨e, he, rfl⟩ := List.mem_map.1 ha
+  exact List.mem_map.2 ⟨e.ren θ τ, h.events e he, rfl⟩
+
+theorem join {k₁ k₂ k₁' k₂' : EventStructure} (h : Embeds θ τ k₁ k₂) (h' : Embeds θ τ k₁' k₂') :
+    Embeds θ τ (k₁.join k₁') (k₂.join k₂') := by
+  refine ⟨?_, ?_, ?_⟩ <;> intro x hx
+  · simp only [events_join, List.mem_append] at hx ⊢
+    exact hx.elim (fun h₁ => Or.inl (h.events x h₁)) (fun h₁ => Or.inr (h'.events x h₁))
+  · simp only [po_join, List.mem_append, List.mem_flatMap, List.mem_map] at hx ⊢
+    rcases hx with (h₁ | h₁) | ⟨a, ha, b, hb, rfl⟩
+    · exact Or.inl (Or.inl (h.po x h₁))
+    · exact Or.inl (Or.inr (h'.po x h₁))
+    · exact Or.inr ⟨θ a, h.mem_ids ha, θ b, h'.mem_ids hb, rfl⟩
+  · simp only [rmw_join, List.mem_append] at hx ⊢
     exact hx.elim (fun h₁ => Or.inl (h.rmw x h₁)) (fun h₁ => Or.inr (h'.rmw x h₁))
 
 theorem addRMW {k₁ k₂ : EventStructure} {r₁ w₁ r₂ w₂ : EventId} {c₁ c₂ : Expr}
@@ -678,16 +700,24 @@ theorem interp_sim : ∀ (N : Nat) (s : Stmt) (n₁ n₂ : Bounds) (ctx ctx₂ :
     | par s₁ s₂ =>
         rw [interp.eq_def n₁ ctx pc, interp.eq_def n₂ _ pc]
         simp only [Stmt.loops, sumB_append, Stmt.par.sizeOf_spec] at hN
-        refine thread (fun t₁ t₂ ht => seq2 ?_ ?_ (fun θ τ k₁ k₂ k₁' k₂' _ _ hk hk' => Embeds.plus hk hk'))
+        have hE : KSim θ₀ τ₀ bI bT (fun _ _ => pure .empty) (fun _ _ => pure .empty) :=
+          fun _ _ _ _ _ _ _ _ _ _ _ _ _ _ => SimBy.empty (fun _ _ E => Embeds.empty E) Gen.Fresh.pure_empty
+        refine thread (fun t₁ t₂ ht => seq2
+          (seq2 ?_ ?_ (fun θ τ k₁ k₂ k₁' k₂' _ _ hk hk' => Embeds.plus hk hk')) ?_
+          (fun θ τ k₁ k₂ k₁' k₂' _ _ hk hk' => Embeds.join hk hk'))
         · have hτu : Agree (upd τ₀ t₁ t₂) τ₀ bT := Agree.upd_self t₂ ht
-          exact interp_sim N s₁ n₁ n₂ ctx _ (pc ++ [0]) ρ₁ ρ₂ φ _ κ₁ κ₂ θ₀ (upd τ₀ t₁ t₂) bI (t₁ + 1)
+          exact interp_sim N s₁ n₁ n₂ ctx _ (pc ++ [0]) ρ₁ ρ₂ φ _ _ _ θ₀ (upd τ₀ t₁ t₂) bI (t₁ + 1)
             (by nomega) hn (by rw [hτu ctx.thread hthr]) rfl hρ hB hG (by nomega)
-            (hκ.mono (Nat.le_refl _) (by nomega) (Agree.refl _ _) hτu) hfr
+            (hE.mono (Nat.le_refl _) (by nomega) (Agree.refl _ _) hτu)
+            (fun _ _ => Gen.Fresh.pure_empty)
         · intro θ τ b b' hb hb' hθ hτ
-          exact interp_sim N s₂ n₁ n₂ { ctx with thread := t₁ } _ (pc ++ [1]) ρ₁ ρ₂ φ _ κ₁ κ₂ θ τ b b'
+          exact interp_sim N s₂ n₁ n₂ { ctx with thread := t₁ } _ (pc ++ [1]) ρ₁ ρ₂ φ _ _ _ θ τ b b'
             (by nomega) hn (by simp [hτ.upd_at]) (hφr θ hθ).symm (hρ.congr hB hθ) (hB.mono hb)
             (hG.mono hb) (by simp <;> nomega)
-            (hκ.mono hb (by nomega) hθ (hτ.upd_below ht)) hfr
+            (hE.mono hb (by nomega) hθ (hτ.upd_below ht)) (fun _ _ => Gen.Fresh.pure_empty)
+        · intro θ τ b b' hb hb' hθ hτ
+          exact hκ.app hb (by nomega) hθ (hτ.upd_below ht) (hρ.congr hB hθ) (hB.mono hb)
+            (hG.mono hb) (hφr θ hθ)
     | ite b s₁ s₂ =>
         rw [interp.eq_def n₁ ctx pc, interp.eq_def n₂ _ pc]
         simp only [Stmt.loops, sumB_append, Stmt.ite.sizeOf_spec] at hN
@@ -796,7 +826,7 @@ def EventStructure.PoClosed (E : EventStructure) : Prop :=
 
 theorem EventStructure.poClosed_inv : ESInv EventStructure.PoClosed := by
   refine ⟨by simp [EventStructure.PoClosed, EventStructure.empty], fun e k hk => ?_,
-    fun k k' hk hk' => ?_, fun k r c w hk _ => ?_⟩
+    fun k k' hk hk' => ?_, fun k k' hk hk' => ?_, fun k r c w hk _ => ?_⟩
   · intro p hp
     simp only [EventStructure.po_prefix, List.mem_append, List.mem_map] at hp
     simp only [EventStructure.ids_prefix, List.mem_cons]
@@ -809,6 +839,13 @@ theorem EventStructure.poClosed_inv : ESInv EventStructure.PoClosed := by
     rcases hp with hp | hp
     · exact ⟨Or.inl (hk p hp).1, Or.inl (hk p hp).2⟩
     · exact ⟨Or.inr (hk' p hp).1, Or.inr (hk' p hp).2⟩
+  · intro p hp
+    simp only [EventStructure.po_join, List.mem_append, List.mem_flatMap, List.mem_map] at hp
+    simp only [EventStructure.ids_join, List.mem_append]
+    rcases hp with (hp | hp) | ⟨a, ha, b, hb, rfl⟩
+    · exact ⟨Or.inl (hk p hp).1, Or.inl (hk p hp).2⟩
+    · exact ⟨Or.inr (hk' p hp).1, Or.inr (hk' p hp).2⟩
+    · exact ⟨Or.inl ha, Or.inr hb⟩
   · intro p hp
     simp only [EventStructure.po_addRMW] at hp
     simpa using hk p hp
@@ -836,11 +873,16 @@ theorem RMWShape.mono {k k' : EventStructure} (hsub : ∀ e ∈ k.events, e ∈ 
 
 theorem EventStructure.rmwClosed_inv : ESInv EventStructure.RMWClosed := by
   refine ⟨by simp [EventStructure.RMWClosed, EventStructure.empty], fun e k hk => ?_,
-    fun k k' hk hk' => ?_, fun k r c w hk hs => ?_⟩
+    fun k k' hk hk' => ?_, fun k k' hk hk' => ?_, fun k r c w hk hs => ?_⟩
   · intro ent hent
     exact (hk ent hent).mono (fun _ h => List.mem_cons_of_mem _ h)
   · intro ent hent
     simp only [EventStructure.rmw_plus, List.mem_append] at hent
+    rcases hent with h | h
+    · exact (hk ent h).mono (fun _ h => List.mem_append_left _ h)
+    · exact (hk' ent h).mono (fun _ h => List.mem_append_right _ h)
+  · intro ent hent
+    simp only [EventStructure.rmw_join, List.mem_append] at hent
     rcases hent with h | h
     · exact (hk ent h).mono (fun _ h => List.mem_append_left _ h)
     · exact (hk' ent h).mono (fun _ h => List.mem_append_right _ h)
