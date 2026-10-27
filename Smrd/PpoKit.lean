@@ -64,6 +64,21 @@ theorem weNoRel_of {es : EventStructure} {e₁ e₂ : EventId}
   have := h₂ (e₁, c) hc rfl hce
   rw [cls_clsB.1 hp] at this; cases this
 
+/-- Forwarding's acquire restriction from list checks. -/
+theorem fwdNoAcq_of {es : EventStructure} {e₁ e₂ : EventId}
+    (h₁ : clsB es Event.isAcqR e₂ = true → clsB es Event.isAcqR e₁ = true)
+    (h₂ : clsB es Event.isScR e₂ = true → clsB es Event.isScR e₁ = true)
+    (h₃ : ∀ p ∈ es.po, p.1 = e₁ → (p.2, e₂) ∈ es.po →
+      clsB es Event.acquires p.2 = false ∧
+        (clsB es Event.isSc e₂ = true → clsB es Event.isSc p.2 = false)) :
+    es.fwdNoAcq e₁ e₂ := by
+  refine ⟨fun h => cls_clsB.2 (h₁ (cls_clsB.1 h)), fun h => cls_clsB.2 (h₂ (cls_clsB.1 h)),
+    fun c hc hce => ⟨fun hp => ?_, fun hs hp => ?_⟩⟩
+  · have := (h₃ (e₁, c) hc rfl hce).1
+    rw [cls_clsB.1 hp] at this; cases this
+  · have := (h₃ (e₁, c) hc rfl hce).2 (cls_clsB.1 hs)
+    rw [cls_clsB.1 hp] at this; cases this
+
 /-! ## Simple executions -/
 
 /-- A structure whose value restrictions are constant truths and whose ids are

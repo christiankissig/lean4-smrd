@@ -255,7 +255,7 @@ theorem Generated.past {Ω : Pred} (hwf : es.SymWF)
       have hW₁ : es.FwdWin j₁ := fun p hp => hW p (List.mem_append_left _ hp)
       have ih := ih hW₁
       have hwin := hW (e₁, e₂) (List.mem_append_right _ (List.mem_singleton_self _))
-      obtain ⟨⟨-, h12, -⟩, hcls, -, -⟩ := hf
+      obtain ⟨⟨⟨-, h12, -⟩, hcls, -⟩, -, -⟩ := hf
       have hsrc : es.cls Event.isWrite e₁ ∨ es.cls Event.isRead e₁ := by
         rcases hcls with ⟨h, -⟩ | ⟨h, -⟩ | ⟨h, -⟩
         · exact .inl h
@@ -395,12 +395,13 @@ theorem noThinAir_iff_trunc_past {Ω : Pred}
   PpoStability.noThinAir_iff_trunc hx hphi hpo_trans hirr hnf hr hδ hm
     (dp_po hx hwf hpo_trans (fwdWin_of_noEdge hδ))
 
-/-- `dep_po_T` with `DP ⊆ ⊑` derived. -/
-theorem dep_po_T_past {Ω : Pred} (hx : x.IsExecution es Ω) (hW : WEForward es x)
+/-- `dep_po_T` with `DP ⊆ ⊑` derived, where store-store forwarding stays
+    within the justification windows (`FwdWin`; vacuous without forwarding). -/
+theorem dep_po_T_past {Ω : Pred} (hx : x.IsExecution es Ω)
     (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
-    (hirr : ∀ a, ¬ es.poR a a) (hF : PoForest es) (hLc : NoCrossLoc es x) (hT : RMWTightR es x)
-    (hwf : es.SymWF) {a b : EventId} (h : x.dep es a b) :
+    (hirr : ∀ a, ¬ es.poR a a) (hF : PoForest es) (hL : NoRevLoc es x) (hT : RMWTightR es x)
+    (hwf : es.SymWF) (hFW : ∀ j ∈ x.J, es.FwdWin j) {a b : EventId} (h : x.dep es a b) :
     x.poX es a b :=
-  dep_po_T hx hW hpo_trans hirr hF hLc hT (dp_po_noFwd hx hwf hpo_trans hW.1) h
+  dep_po_T hx hpo_trans hirr hF hL hT (dp_po hx hwf hpo_trans hFW) h
 
 end Execution

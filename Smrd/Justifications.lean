@@ -66,6 +66,17 @@ predicate `Generated`, whose derivations are the elements of `⋃ᵢ 𝕁ᵢ`.
   paper's Write Elision is blind to the memory order (`weRelBlind`). The
   restriction is what lets coherence leave elided writes out
   (`Execution.CoherenceT`, `Smrd.CoherenceT`).
+* Forwarding carries MoRDor's acquire restriction (`fwdNoAcq`, MoRDor #210,
+  `ForwardElab.forwarding_blocked` under `MORDOR_FWD_SYNC=acq`): no event that
+  acquires (acquire or `sc` read or fence) lies `⊑`-between the source `e₁`
+  and the forwarded event `e₂`; an acquire (`sc`) read is forwarded only from
+  an acquire (`sc`) read; and an `sc` event is not forwarded across an `sc`
+  event. Every kind of forwarding hoists `e₂` up to `e₁`, and an access does
+  not move above an acquire (it may move above a release). The paper's
+  Forwarding is blind to the memory order (`fwdRelBlind`). Without the
+  restriction `CoherenceT` admits an outcome RC11 forbids
+  (`Smrd.FwdAcrossAcquire`); with it, the remapped `ppo_sync` has no backward
+  pair even with forwarding (`Execution.ppoSyncRM_po_T`).
 -/
 
 /-- A justification `j : (P, D) ⊢^δ w`. -/
@@ -112,6 +123,23 @@ def publishes (e : Event) : Bool :=
   | .read .sc .. => true
   | _ => false
 
+/-- MoRDor's `acquires` (`ForwardElab.acquires`): an event that orders the
+    events `⊑`-after it after what it synchronises with, a read or fence of
+    mode acquire or stronger, `R_{acq,sc} ∪ F_{acq,sc}`. (MoRDor's `Lock` has
+    no counterpart here.) -/
+def acquires (e : Event) : Bool := e.isAcqR || e.isAcqF
+
+/-- MoRDor's `is_sc`: an `sc` access or fence. -/
+def isSc (e : Event) : Bool :=
+  match e.kind with
+  | .read .sc .. => true
+  | .write .sc .. => true
+  | .fence .sc => true
+  | _ => false
+
+/-- `R_sc` -/
+def isScR (e : Event) : Bool := match e.kind with | .read .sc .. => true | _ => false
+
 end Event
 
 namespace EventStructure
@@ -145,16 +173,39 @@ def fwdBase (j : Justification) (e₁ e₂ : EventId) : Prop :=
       ev₁.loc = some l₁ ∧ ev₂.loc = some l₂ ∧
       EquivUnder (Pred.and j.P.holds (j.δ.psi es)) l₁ l₂
 
-/-- `e₁ -F_j→ e₂`: store forwarding `W × R_rlx`, store-store forwarding
-    `W × W_rlx`, and load forwarding `R × R`, where the forwarded event `e₂`
-    is not a volatile access, `e₂ ∉ 𝒱`, nor an RMW access (a deviation from
-    the paper, MoRDor E4). -/
-def fwdRel (j : Justification) (e₁ e₂ : EventId) : Prop :=
+/-- The conditions of Forwarding blind to the memory order: store forwarding
+    `W × R_rlx`, store-store forwarding `W × W_rlx`, and load forwarding
+    `R × R`, where the forwarded event `e₂` is not a volatile access,
+    `e₂ ∉ 𝒱`. -/
+def fwdRelBlind (j : Justification) (e₁ e₂ : EventId) : Prop :=
   es.fwdBase j e₁ e₂ ∧
     ((es.cls Event.isWrite e₁ ∧ es.cls Event.isRlxR e₂) ∨
      (es.cls Event.isWrite e₁ ∧ es.cls Event.isRlxW e₂) ∨
      (es.cls Event.isRead e₁ ∧ es.cls Event.isRead e₂)) ∧
-    ¬ es.cls Event.isVol e₂ ∧ ¬ es.RMWAcc e₂
+    ¬ es.cls Event.isVol e₂
+
+/-- The acquire restriction on Forwarding (MoRDor #210,
+    `ForwardElab.forwarding_blocked` under `MORDOR_FWD_SYNC=acq`): an acquire
+    read `e₂` is forwarded only from an acquire read, an `sc` read only from an
+    `sc` read, and no event that acquires lies `⊑`-between `e₁` and `e₂`, nor
+    an `sc` event when `e₂` is one. Forwarding hoists `e₂` up to `e₁`, and an
+    access does not move above an acquire: once forwarded events are out of
+    coherence (`Execution.CoherenceT`), the events `⊑`-after the acquire
+    could see a write that happens before `e₂` as coherence-later than
+    `e₂`'s source (`Smrd.FwdAcrossAcquire`). Forwarding an acquire read from
+    a weaker event drops the acquire. An `sc` read is not hoisted above an
+    `sc` write (store buffering). -/
+def fwdNoAcq (e₁ e₂ : EventId) : Prop :=
+  (es.cls Event.isAcqR e₂ → es.cls Event.isAcqR e₁) ∧
+    (es.cls Event.isScR e₂ → es.cls Event.isScR e₁) ∧
+    ∀ c, es.poR e₁ c → es.poR c e₂ →
+      ¬ es.cls Event.acquires c ∧ (es.cls Event.isSc e₂ → ¬ es.cls Event.isSc c)
+
+/-- `e₁ -F_j→ e₂`: Forwarding's conditions (`fwdRelBlind`) under the acquire
+    restriction (`fwdNoAcq`), where the forwarded event `e₂` is not an RMW
+    access (a deviation from the paper, MoRDor E4). -/
+def fwdRel (j : Justification) (e₁ e₂ : EventId) : Prop :=
+  es.fwdRelBlind j e₁ e₂ ∧ es.fwdNoAcq e₁ e₂ ∧ ¬ es.RMWAcc e₂
 
 /-- The conditions of Write Elision blind to the memory order:
     `e₁ -F'_j→ e₂` on a pair of writes, where the overwritten write `e₁` is not
@@ -399,7 +450,7 @@ theorem Generated.fwd_mem {Ω : Pred} {j : Justification} (h : es.Generated Ω j
 theorem Generated.not_rmwAcc_elided {Ω : Pred} {j : Justification} (h : es.Generated Ω j) :
     ∀ p, (p ∈ j.δ.f ∨ p ∈ j.δ.we) → ¬ es.RMWAcc p.2 := by
   rintro p (hp | hp)
-  · obtain ⟨j₀, -, -, -, h⟩ := Generated.fwd_mem es h p hp
+  · obtain ⟨j₀, -, -, h⟩ := Generated.fwd_mem es h p hp
     exact h
   · obtain ⟨j₀, ⟨-, -, h⟩, -⟩ := Generated.we_mem es h p hp
     exact h
