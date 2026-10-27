@@ -38,8 +38,19 @@ predicate `Generated`, whose derivations are the elements of `⋃ᵢ 𝕁ᵢ`.
   write"). sMRD's formal Def. 4.11, and the paper's `def:elab-str`, also admit
   `w ⊑ e`, which gives `DP` edges that run against `⊑`. Under the restriction
   every origin of a dependency precedes its write (`Smrd.DPPast`,
-  `Execution.dp_po`), up to store-store forwarding from beyond the write and
-  Lifting.
+  `Execution.dp_po`), up to store-store forwarding from beyond the write.
+
+* Lifting asks every symbol of the relabelled premise `⟦P₁⟧_Λ` to have its
+  origin `⊑`-before the lifted write `w₂`. Closed relabel-equivalence
+  constrains `Λ` on `D₁` only, so a symbol of `P₁` outside `D₁` -- a guard on
+  `w₁`'s path, or a Strengthening conjunct -- may keep an origin in another
+  thread than `w₂`, or `⊑`-after it, and the lifted justification then has a
+  `DP` edge against `⊑`, within an execution (`Smrd.LiftCross`). The paper's
+  `def:elab-lift` admits it. MoRDor's Lifting does not produce it: it lifts
+  only writes in conflict, and only when `P₂` has the negation of each
+  conjunct of `⟦P₁⟧_Λ` it does not share
+  (`LiftElab.find_distinguishing_predicate`), so the symbols of `⟦P₁⟧_Λ` are
+  symbols of `P₂`.
 
 * Neither access of an RMW is in the elided position (`RMWAcc`, MoRDor
   `docs/DEPARTURES.md` E4): not the forwarded event `e₂` of a Forwarding
@@ -292,7 +303,10 @@ inductive Generated (Ω : Pred) : Justification → Prop
       disjunction (`Expr.liftPred`). The predicate is equivalent to SMRD's
       `⟦P₁⟧_Λ ∨ P₂` (`Expr.liftPred_holds_iff`) and has its symbols
       (`Expr.mem_syms_liftPred_iff`). Neither justified write, nor the origin
-      of a dependency of either, is a volatile access. -/
+      of a dependency of either, is a volatile access.
+
+      Every symbol of the relabelled premise `⟦P₁⟧_Λ` has its origin
+      `⊑`-before `w₂`, a deviation from the paper; see the module header. -/
   | lift {j₁ j₂ : Justification} (Λ : Relabelling) :
       Generated Ω j₁ → Generated Ω j₂ →
       j₁.δ = j₂.δ →
@@ -303,6 +317,7 @@ inductive Generated (Ω : Pred) : Justification → Prop
         es.ClosedRelabEq j₁.δ Λ j₁.P ev₁ j₂.P ev₂) →
       ¬ es.cls Event.isVol j₁.w.id → ¬ es.cls Event.isVol j₂.w.id →
       (∀ α ∈ j₁.D ++ j₂.D, ¬ es.cls Event.isVol α) →
+      (∀ α ∈ (j₁.P.rename Λ).syms, es.poR α j₂.w.id) →
       Sat (Pred.and (Expr.liftPred (j₁.P.rename Λ) j₂.P).holds Ω) →
       Generated Ω { j₂ with P := Expr.liftPred (j₁.P.rename Λ) j₂.P }
   /-- Weakening (Definition `def:elab-weak`): drop a conjunct the global
@@ -326,7 +341,7 @@ theorem Generated.sat {Ω : Pred} {j : Justification} (h : es.Generated Ω j) :
       obtain ⟨f, hP, _⟩ := hs; exact Or.inl ⟨f, hP⟩
   | str _ _ _ _ _ _ hs | weak _ _ _ hs =>
       obtain ⟨f, hP, _⟩ := hs; exact Or.inl ⟨f, hP⟩
-  | lift _ _ _ _ _ _ _ _ _ _ _ hs =>
+  | lift _ _ _ _ _ _ _ _ _ _ _ _ hs =>
       obtain ⟨f, hP, _⟩ := hs; exact Or.inl ⟨f, hP⟩
 
 theorem δ_of_preJust {w : Event} {j : Justification} (h : preJust w = some j) : j.δ = .empty := by
@@ -356,7 +371,7 @@ theorem Generated.we_mem {Ω : Pred} {j : Justification} (h : es.Generated Ω j)
         subst hp
         obtain ⟨f, hP, -⟩ := hs
         exact ⟨j₁, hwe, ⟨f, hP⟩, fun q hq => hq⟩
-  | lift _ _ _ _ _ _ _ _ _ _ _ _ _ ih₂ => exact ih₂
+  | lift _ _ _ _ _ _ _ _ _ _ _ _ _ _ ih₂ => exact ih₂
   | weak _ _ _ _ ih => exact ih
 
 /-- Every forwarding edge `(e₁, e₂)` of a generated justification was added
@@ -375,7 +390,7 @@ theorem Generated.fwd_mem {Ω : Pred} {j : Justification} (h : es.Generated Ω j
         subst hp
         exact ⟨j₁, hf⟩
   | we _ _ _ _ ih => exact ih
-  | lift _ _ _ _ _ _ _ _ _ _ _ _ _ ih₂ => exact ih₂
+  | lift _ _ _ _ _ _ _ _ _ _ _ _ _ _ ih₂ => exact ih₂
   | weak _ _ _ _ ih => exact ih
 
 /-- **No RMW access is elided** (`rmw_not_elided`): in every generated

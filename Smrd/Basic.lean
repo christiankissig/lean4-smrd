@@ -19,6 +19,7 @@ import Smrd.WEAcrossRelease
 import Smrd.FwdAcrossAcquire
 import Smrd.RMWElision
 import Smrd.DPPast
+import Smrd.LiftCross
 import Smrd.SymWFDenote
 import Smrd.Labels
 

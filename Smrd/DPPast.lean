@@ -5,7 +5,8 @@ import Smrd.CoherenceT
 # Dependencies run along `⊑` (`DP ⊆ ⊑`)
 
 With Strengthening restricted to origins `⊑`-before the justified write
-(`Generated.str`, sMRD §4.7's prose), every symbol of a generated
+(`Generated.str`, sMRD §4.7's prose) and Lifting to relabelled premises
+whose symbols are `⊑`-before the lifted write (`Generated.lift`), every symbol of a generated
 justification's predicate, dependencies and expressions has its origin
 `⊑`-before the justified event (`Generated.past`), and so `DP ⊆ ⊑`
 (`Execution.dp_po`). The hypotheses `DP ⊆ ⊑` of `noThinAir_iff_win`,
@@ -25,14 +26,15 @@ justification's predicate, dependencies and expressions has its origin
   in `val(e₁)`'s origins from beyond the write. Store forwarding and load
   forwarding need nothing: they replace the symbol of a read `e₂`, which, if it
   occurs, is an origin and so `⊑`-before the write.
-* `LiftPast`: Lifting keeps `⟦P₁⟧_Λ`'s symbols `⊑`-before `w₂`. Closed
-  relabel-equivalence constrains `Λ` on `D₁` only (`D₂ = Λ(D₁)`); a symbol of
-  `P₁` outside `D₁` keeps an origin `⊑`-before `w₁`, which need not be
-  `⊑`-before `w₂` (the other arm of a branch, or `w₁` in another thread or
-  `⊑`-after `w₂`).
-
-Value Assignment, Strengthening, Write Elision and Weakening preserve the
-invariant without further hypotheses.
+Value Assignment, Strengthening, Write Elision, Lifting and Weakening preserve
+the invariant without further hypotheses. Lifting does so by its restriction
+that `⟦P₁⟧_Λ`'s symbols have origins `⊑`-before `w₂` (`Generated.lift`).
+Without it the invariant fails, and on executions too: closed
+relabel-equivalence constrains `Λ` on `D₁` only (`D₂ = Λ(D₁)`), and a symbol
+of `P₁` outside `D₁` keeps an origin `⊑`-before `w₁` only. `LiftPast`, the
+hypothesis that took the restriction's place, does not hold of programs: in
+`r := y; if r = 0 then x := 1 ∥ x := 1` the guard's read lifts into the other
+thread's write (`Smrd.LiftCross`).
 -/
 
 namespace Expr
@@ -168,7 +170,9 @@ def Past (j : Justification) : Prop :=
 def FwdWin (j : Justification) : Prop :=
   ∀ p ∈ j.δ.f, es.cls Event.isWrite p.2 → es.poR p.2 j.w.id ∨ p.2 = j.w.id
 
-/-- Lifting keeps the relabelled premise's symbols `⊑`-before `w₂`. -/
+/-- Lifting keeps the relabelled premise's symbols `⊑`-before `w₂`, whatever
+    the relabelling: the hypothesis `DP ⊆ ⊑` took before Lifting was restricted.
+    It fails for programs (`LiftCross.not_liftPast`). -/
 def LiftPast (Ω : Pred) : Prop :=
   ∀ (j₁ j₂ : Justification) (Λ : Relabelling), es.Generated Ω j₁ → es.Generated Ω j₂ →
     j₁.δ = j₂.δ → Λ.Injective → es.ClosedRelabEq j₁.δ Λ j₁.P j₁.w j₂.P j₂.w →
@@ -213,9 +217,9 @@ theorem val_src_po (hwf : es.SymWF) (hpo : ∀ a b c, es.poR a b → es.poR b c 
     · cases hr
 
 /-- **Every origin of a generated justification is `⊑`-before its event**,
-    given `SymWF`, the forwarding window and `LiftPast`. -/
+    given `SymWF` and the forwarding window. -/
 theorem Generated.past {Ω : Pred} (hwf : es.SymWF)
-    (hpo : ∀ a b c, es.poR a b → es.poR b c → es.poR a c) (hL : es.LiftPast Ω)
+    (hpo : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
     {j : Justification} (h : es.Generated Ω j) : es.FwdWin j → es.Past j := by
   induction h with
   | @pre w j hw hj _ =>
@@ -310,12 +314,12 @@ theorem Generated.past {Ω : Pred} (hwf : es.SymWF)
   | @we j₁ e₁ e₂ _ _ _ _ ih =>
       intro hW
       exact ih hW
-  | @lift j₁ j₂ Λ g₁ g₂ hδ hΛ hrel hD _ _ _ _ _ _ ih₂ =>
+  | @lift j₁ j₂ Λ _ _ _ _ _ _ _ _ _ _ hL _ _ ih₂ =>
       intro hW α hα
       have ih := ih₂ hW
       rcases hα with h | h
       · rcases List.mem_append.1 ((Expr.mem_syms_liftPred_iff _ _ α).1 h) with h | h
-        · exact hL j₁ j₂ Λ g₁ g₂ hδ hΛ hrel hD α h
+        · exact hL α h
         · exact ih α (.inl h)
       · exact ih α (.inr h)
   | @weak j₁ P' Pw _ hc _ _ ih =>
@@ -336,12 +340,12 @@ open EventStructure
 variable {es : EventStructure} {x : Execution}
 
 /-- **`DP ⊆ ⊑`**: every dependency runs `⊑`-forward, given `SymWF`, the
-    forwarding window and `LiftPast`. -/
+    forwarding window. -/
 theorem dp_po {Ω : Pred} (hx : x.IsExecution es Ω) (hwf : es.SymWF)
-    (hpo : ∀ a b c, es.poR a b → es.poR b c → es.poR a c) (hL : es.LiftPast Ω)
+    (hpo : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
     (hW : ∀ j ∈ x.J, es.FwdWin j) : ∀ a b, x.DP a b → es.poR a b := by
   rintro a b ⟨-, -, j, hj, rfl, hab⟩
-  exact (hx.generated j hj).past hwf hpo hL (hW j hj) a
+  exact (hx.generated j hj).past hwf hpo (hW j hj) a
     (by rcases hab with h | h; exact .inl h; exact .inr (.inl h))
 
 /-- Without forwarding the window holds vacuously. -/
@@ -356,8 +360,7 @@ end Execution
 
 /-! ## The `DP ⊆ ⊑` hypotheses, derived
 
-Without forwarding the window is vacuous, so `DP ⊆ ⊑` reduces to `SymWF` and
-`LiftPast`. -/
+Without forwarding the window is vacuous, so `DP ⊆ ⊑` reduces to `SymWF`. -/
 
 namespace Execution
 
@@ -366,19 +369,19 @@ open EventStructure
 variable {es : EventStructure} {x : Execution}
 
 theorem dp_po_noFwd {Ω : Pred} (hx : x.IsExecution es Ω) (hwf : es.SymWF)
-    (hpo : ∀ a b c, es.poR a b → es.poR b c → es.poR a c) (hL : es.LiftPast Ω)
+    (hpo : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
     (hF : ∀ p ∈ x.δ.f, False) : ∀ a b, x.DP a b → es.poR a b :=
-  dp_po hx hwf hpo hL (fwdWin_of_noFwd hF)
+  dp_po hx hwf hpo (fwdWin_of_noFwd hF)
 
 /-- `noThinAir_iff_win_we` with `DP ⊆ ⊑` derived. -/
 theorem noThinAir_iff_win_we_past {Ω : Pred} (hx : x.IsExecution es Ω) (hphi : x.phi es)
     (hW : WEForward es x)
     (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
     (hirr : ∀ a, ¬ es.poR a a) (hF : PoForest es) (hN : NoCross es x) (hT : RMWTightR es x)
-    (hwf : es.SymWF) (hL : es.LiftPast Ω) :
+    (hwf : es.SymWF) :
     x.NoThinAir es ↔ Rel.Acyclic ((depWin es x).union x.rf) :=
   noThinAir_iff_win_we hx hphi hW hpo_trans hirr hF hN hT
-    (dp_po_noFwd hx hwf hpo_trans hL hW.1)
+    (dp_po_noFwd hx hwf hpo_trans hW.1)
 
 /-- `noThinAir_iff_trunc` with `DP ⊆ ⊑` derived. -/
 theorem noThinAir_iff_trunc_past {Ω : Pred}
@@ -387,17 +390,17 @@ theorem noThinAir_iff_trunc_past {Ω : Pred}
     (hirr : ∀ a, ¬ es.poR a a)
     (hnf : ∀ e ∈ es.events, e.isFence = false) (hr : es.rmw = [])
     (hδ : ∀ a b, ¬ x.δ.edge a b) (hm : LocModel es x)
-    (hwf : es.SymWF) (hL : es.LiftPast Ω) :
+    (hwf : es.SymWF) :
     x.NoThinAir es ↔ Rel.Acyclic (((x.ppoTrunc es).union x.DP).union x.rf) :=
   PpoStability.noThinAir_iff_trunc hx hphi hpo_trans hirr hnf hr hδ hm
-    (dp_po hx hwf hpo_trans hL (fwdWin_of_noEdge hδ))
+    (dp_po hx hwf hpo_trans (fwdWin_of_noEdge hδ))
 
 /-- `dep_po_T` with `DP ⊆ ⊑` derived. -/
 theorem dep_po_T_past {Ω : Pred} (hx : x.IsExecution es Ω) (hW : WEForward es x)
     (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
     (hirr : ∀ a, ¬ es.poR a a) (hF : PoForest es) (hLc : NoCrossLoc es x) (hT : RMWTightR es x)
-    (hwf : es.SymWF) (hL : es.LiftPast Ω) {a b : EventId} (h : x.dep es a b) :
+    (hwf : es.SymWF) {a b : EventId} (h : x.dep es a b) :
     x.poX es a b :=
-  dep_po_T hx hW hpo_trans hirr hF hLc hT (dp_po_noFwd hx hwf hpo_trans hL hW.1) h
+  dep_po_T hx hW hpo_trans hirr hF hLc hT (dp_po_noFwd hx hwf hpo_trans hW.1) h
 
 end Execution

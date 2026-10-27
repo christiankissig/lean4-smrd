@@ -506,7 +506,7 @@ theorem Generated.w_mem {es : EventStructure} {Ω : Pred} {j : Justification}
   | fwd _ _ _ _ _ _ _ _ _ ih =>
       obtain ⟨e, he, hid, hef⟩ := ih; exact ⟨e, he, hid, hef⟩
   | we _ _ _ _ ih => exact ih
-  | lift _ _ _ _ _ _ _ _ _ _ _ _ _ ih₂ => exact ih₂
+  | lift _ _ _ _ _ _ _ _ _ _ _ _ _ _ ih₂ => exact ih₂
   | weak _ _ _ _ ih => exact ih
 
 /-- Without guards that can fail, an execution contains every candidate. -/
