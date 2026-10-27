@@ -148,8 +148,51 @@ theorem sw_shape (hnf : x.FenceFree es) {a b : EventId} (h : x.sw es a b) :
 
 theorem sameLoc_symm {a b : EventId} (h : x.sameLoc es a b) : x.sameLoc es b a := by
   obtain ⟨ea, eb, la, lb, ha, hb, hla, hlb, heq⟩ := h
-  exact ⟨eb, ea, lb, la, hb, ha, hlb, hla,
-    fun f hf v₁ v₂ h₁ h₂ => (heq f hf v₂ v₁ h₂ h₁).symm⟩
+  exact ⟨eb, ea, lb, la, hb, ha, hlb, hla, fun f hP hrf => (heq f hP hrf).symm⟩
+
+/-- `sameLoc` is transitive: locations are compared as partial values. -/
+theorem sameLoc_trans {a b c : EventId} (hab : x.sameLoc es a b) (hbc : x.sameLoc es b c) :
+    x.sameLoc es a c := by
+  obtain ⟨ea, eb, la, lb, hea, heb, hla, hlb, h₁⟩ := hab
+  obtain ⟨eb', ec, lb', lc, heb', hec, hlb', hlc, h₂⟩ := hbc
+  rw [heb] at heb'; cases heb'
+  rw [hlb] at hlb'; cases hlb'
+  exact ⟨ea, ec, la, lc, hea, hec, hla, hlc, fun f hP hrf => (h₁ f hP hrf).trans (h₂ f hP hrf)⟩
+
+/-- Same-location pairs evaluate to one location under every model of
+    `P ∧ φ_rf`. -/
+theorem sameLoc_equivUnder {a b : EventId} {ea eb : Event} {la lb : Expr}
+    (h : x.sameLoc es a b) (ha : es.ev a = some ea) (hb : es.ev b = some eb)
+    (hla : ea.loc = some la) (hlb : eb.loc = some lb) :
+    EquivUnder (Pred.and (x.P es) (x.phiRf es)) la lb := by
+  obtain ⟨ea', eb', la', lb', ha', hb', hla', hlb', heq⟩ := h
+  rw [ha] at ha'; cases ha'
+  rw [hb] at hb'; cases hb'
+  rw [hla] at hla'; cases hla'
+  rw [hlb] at hlb'; cases hlb'
+  intro f hf v₁ v₂ h₁ h₂
+  have := heq f hf.1 hf.2
+  rw [h₁, h₂] at this; exact Option.some.inj this
+
+/-- `rf ⊆ sameLoc`, for an `rf` from writes to reads (`IsExecution.rf_wr`):
+    `φ_rf` equates the locations along `rf`. -/
+theorem rfLoc (hrfw : ∀ w r, x.rf w r → es.cls Event.isWrite w ∧ es.cls Event.isRead r)
+    {w r : EventId} (h : x.rf w r) : x.sameLoc es w r := by
+  obtain ⟨⟨ew, hw, hW⟩, ⟨er, hr, hR⟩⟩ := hrfw w r h
+  have hlw : ∃ l, ew.loc = some l := by
+    obtain ⟨id, kind, label, guards⟩ := ew
+    cases kind <;> simp_all [Event.isWrite, Event.loc]
+  have hlr : ∃ l, er.loc = some l := by
+    obtain ⟨id, kind, label, guards⟩ := er
+    cases kind <;> simp_all [Event.isRead, Event.loc]
+  obtain ⟨lw, hlw⟩ := hlw
+  obtain ⟨lr, hlr⟩ := hlr
+  exact ⟨ew, er, lw, lr, hw, hr, hlw, hlr, fun f _ hrf => (hrf.1 w r ew er h hw hr).1 lw lr hlw hlr⟩
+
+/-- `rf ⊆ sameLoc` in an execution. -/
+theorem rfLoc_of_isExecution {Ω : Pred} (hx : x.IsExecution es Ω) :
+    ∀ w r, x.rf w r → x.sameLoc es w r :=
+  fun _ _ h => x.rfLoc es (fun w r h => ⟨(hx.rf_wr w r h).1, (hx.rf_wr w r h).2.1⟩) h
 
 /-- `ECO` relates only events at one location, given that the same-location
     relation is transitive and contains `rf` and `CO`. -/

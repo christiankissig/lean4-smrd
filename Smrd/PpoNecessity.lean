@@ -144,18 +144,20 @@ theorem P_simple {es : EventStructure} (S : Simple es) (rf : List (EventId × Ev
   exact ⟨by rw [hP]; exact S.holds hw f, fun p hp => by rw [hδ] at hp; cases hp⟩
 
 theorem locOf_of_sameLoc {es : EventStructure} (S : Simple es) (hg : GlobLocs es)
-    {rf : List (EventId × EventId)} {a b : EventId} (h : (simple es rf).sameLoc es a b) :
+    {rf : List (EventId × EventId)} (hφ : (simple es rf).phi es) {a b : EventId}
+    (h : (simple es rf).sameLoc es a b) :
     locOf es a = locOf es b := by
   obtain ⟨ea, eb, la, lb, ha, hb, hla, hlb, heq⟩ := h
   obtain ⟨x, rfl⟩ := hg ea (ev_inv ha).1 _ hla
   obtain ⟨y, rfl⟩ := hg eb (ev_inv hb).1 _ hlb
-  have := heq (fun _ => .num 0) (P_simple S rf _) _ _ rfl rfl
+  obtain ⟨f, hP, hrf⟩ := hφ.2.2
+  have := heq f hP hrf
   cases this
   simp [locOf, ha, hb, hla, hlb]
 
 /-- A coherence order given as a list. -/
 theorem coherenceOrder_simple {es : EventStructure} (S : Simple es) (hg : GlobLocs es)
-    {rf co : List (EventId × EventId)}
+    {rf co : List (EventId × EventId)} (hφ : (simple es rf).phi es)
     (hw : ∀ p ∈ co, clsB es Event.isWrite p.1 = true ∧ clsB es Event.isWrite p.2 = true)
     (hirr : ∀ p ∈ co, p.1 ≠ p.2) (htr : Closed co)
     (htot : ∀ a ∈ es.ids, ∀ b ∈ es.ids, clsB es Event.isWrite a = true →
@@ -171,12 +173,12 @@ theorem coherenceOrder_simple {es : EventStructure} (S : Simple es) (hg : GlobLo
   trans a b c h₁ h₂ := htr _ h₁ _ h₂ rfl
   total a b ha hb hwa hwb hne hsl :=
     htot a (ids_of_cand ha) b (ids_of_cand hb) (cls_clsB.1 hwa) (cls_clsB.1 hwb) hne
-      (locOf_of_sameLoc S hg hsl)
+      (locOf_of_sameLoc S hg hφ hsl)
 
 theorem sameLoc_of {es : EventStructure} {x : Execution} {a b : EventId} {ea eb : Event}
     {l : Expr} (ha : es.ev a = some ea) (hb : es.ev b = some eb) (hla : ea.loc = some l)
     (hlb : eb.loc = some l) : x.sameLoc es a b :=
-  ⟨ea, eb, l, l, ha, hb, hla, hlb, fun _ _ _ _ h₁ h₂ => by rw [h₁] at h₂; cases h₂; rfl⟩
+  ⟨ea, eb, l, l, ha, hb, hla, hlb, fun _ _ _ => rfl⟩
 
 theorem poX_of {es : EventStructure} {x : Execution} {a b : EventId} (ha : x.X a) (hb : x.X b)
     (h : es.poR a b) : x.poX es a b := ⟨Or.inl ha, Or.inl hb, h⟩
@@ -244,7 +246,7 @@ theorem corr_necessary :
     (∀ co, xCoRR.CoherenceOrder esCoRR co → ¬ xCoRR.Coherence esCoRR co) ∧
     CoherenceVOver esCoRR xCoRR ((xCoRR.ppoTrunc esCoRR).union xCoRR.DP) (relL coCoRR) ∧
     ¬ xCoRR.CoherenceV esCoRR (relL coCoRR) := by
-  refine ⟨corr_exec.1, corr_exec.2, coherenceOrder_simple SCoRR gCoRR (by decide) (by decide)
+  refine ⟨corr_exec.1, corr_exec.2, coherenceOrder_simple SCoRR gCoRR corr_exec.2 (by decide) (by decide)
     (by decide) (by decide), fun _ h => corr_rc11 h, ?_, ?_⟩
   · exact coherenceV_trunc SCoRR gCoRR (by decide) (H := [(0, 1)])
       (E := [(1, 2), (0, 3), (0, 1), (3, 1), (0, 2), (3, 2)])
@@ -300,7 +302,7 @@ theorem cowr_necessary :
     (∀ co, co 1 2 → ¬ xCoWR.Coherence esCoWR co) ∧
     CoherenceVOver esCoWR xCoWR ((xCoWR.ppoTrunc esCoWR).union xCoWR.DP) (relL coCoWR) ∧
     ¬ xCoWR.CoherenceV esCoWR (relL coCoWR) := by
-  refine ⟨cowr_exec.1, cowr_exec.2, coherenceOrder_simple SCoWR gCoWR (by decide) (by decide)
+  refine ⟨cowr_exec.1, cowr_exec.2, coherenceOrder_simple SCoWR gCoWR cowr_exec.2 (by decide) (by decide)
     (by decide) (by decide), fun _ h => cowr_rc11 h, ?_, ?_⟩
   · exact coherenceV_trunc SCoWR gCoWR (by decide) (H := [(0, 1), (0, 2)])
       (E := [(1, 3), (0, 1), (0, 2), (1, 2), (3, 2), (0, 3)])
@@ -372,7 +374,7 @@ theorem mp_necessary :
     (∀ co, xMP.CoherenceOrder esMP co → ¬ xMP.Coherence esMP co) ∧
     CoherenceVOver esMP xMP ((xMP.ppoTrunc esMP).union xMP.DP) (relL coMP) ∧
     ¬ xMP.CoherenceV esMP (relL coMP) := by
-  refine ⟨mp_exec.1, mp_exec.2, coherenceOrder_simple SMP gMP (by decide) (by decide)
+  refine ⟨mp_exec.1, mp_exec.2, coherenceOrder_simple SMP gMP mp_exec.2 (by decide) (by decide)
     (by decide) (by decide), fun _ h => mp_rc11 h, ?_, ?_⟩
   · exact coherenceV_trunc SMP gMP (by decide)
       (H := [(0, 2), (0, 3), (1, 3), (2, 3), (3, 4), (0, 4), (1, 4), (2, 4)])
@@ -407,10 +409,10 @@ theorem trunc_of_poloc_write {es : EventStructure} {x : Execution} {Ω : Pred}
   have hnel : ∀ c, ¬ x.elided c := fun c hc => by
     obtain ⟨b, hb⟩ := (x.elided_iff c).1 hc; exact hδ _ _ hb
   obtain ⟨j, hj, hjw, -⟩ := hx.justified w hXw hE (hnel w)
-  obtain ⟨f, hPm, hdef⟩ := hm
+  obtain ⟨f, hPm, hrf, hdef⟩ := hm
   obtain ⟨va, hva⟩ := Option.isSome_iff_exists.1 (hdef a ea la hXa hea hla)
   obtain ⟨vw, hvw⟩ := Option.isSome_iff_exists.1 (hdef w ew lw hXw hew hlw)
-  have hv : va = vw := heq f (P_of_Pm hPm) va vw hva hvw
+  have hv : va = vw := Option.some.inj (hva ▸ hvw ▸ heq f (P_of_Pm hPm) hrf)
   subst hv
   refine ⟨j, hj, ⟨(FwdCtx.remapRel_of_noEdge hδ).2 (.inr ⟨hpo, ea, ew, la, lw, hea, hew, hla, hlw,
     f, hPm.1 j hj, by simp [Expr.holds, Expr.eval, hva, hvw]⟩), fun h => hirr a (h ▸ hpo)⟩,

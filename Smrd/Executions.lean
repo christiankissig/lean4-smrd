@@ -15,6 +15,14 @@ Executions `𝕏 = (X, J, rf)` (Definition `def:executions`), freezing
 `Coherent` asks for one coherence order under which both `Coherence` and
 `Atomicity` hold, as the paper's axioms share `CO`.
 
+## Deviations from the paper
+
+* **Same location** (`sameLoc`, and so `⊑|loc`, `RS`, `SW`, `HB` and the
+  totality of `CO`) compares locations under `P ∧ φ_rf`, the constraints of
+  the execution (as use-after-free does, under `φ`), where the paper's `⊑|loc`
+  takes `≡_P`; and it compares them as partial values, so that it is
+  transitive and contains `rf` without further hypotheses.
+
 `Frozen` abstracts an execution to the events and dependency relations the
 futures of Appendix A.7 are built from (`EpisodicLoops.Futures`, in
 `lean4-episodic-loops`).
@@ -284,10 +292,22 @@ def phi : Prop :=
 /-- `No-Thin-Air`: `DP ∪ ≼ ∪ rf` is acyclic. -/
 def NoThinAir : Prop := Rel.Acyclic ((x.dep es).union x.rf)
 
-/-- Two writes at the same location under the frozen predicate. -/
+/-- Two events at the same location under the execution's own constraints,
+    the frozen `P` together with `φ_rf`: their locations evaluate alike, to
+    one value or to none, under every model of `P ∧ φ_rf`.
+
+    Deviations from the paper, whose `⊑|loc` compares under `≡_P`: the
+    constraints include `φ_rf`, which equates the locations along `rf` (as
+    use-after-free compares under `φ`), so `rf ⊆ sameLoc`
+    (`Execution.rfLoc`); and the locations are compared as partial values,
+    `⟦loc(a)⟧_f = ⟦loc(b)⟧_f`, rather than by `EquivUnder`, which holds
+    vacuously where either side fails to evaluate. So `sameLoc` is symmetric
+    and transitive outright (`Execution.sameLoc_trans`); where the locations
+    evaluate under every model the two agree (`sameLoc_iff_equivUnder`). -/
 def sameLoc (a b : EventId) : Prop :=
   ∃ ea eb la lb, es.ev a = some ea ∧ es.ev b = some eb ∧
-    ea.loc = some la ∧ eb.loc = some lb ∧ EquivUnder (x.P es) la lb
+    ea.loc = some la ∧ eb.loc = some lb ∧
+    ∀ f, x.P es f → x.phiRf es f → la.eval f = lb.eval f
 
 /-- A coherence order: a strict order on the writes of `X`, total on the writes
     to each location. -/
@@ -307,7 +327,8 @@ def eco (co : Rel) : Rel := Rel.plus ((x.rf.union co).union (x.fr co))
 /-- `⊑` within `X ∪ X_F`. -/
 def poX : Rel := fun a b => x.XwF es a ∧ x.XwF es b ∧ es.poR a b
 
-/-- `⊑|loc ≜ {(e₁, e₂) ∈ ⊑ | loc(e₁) ≡_P loc(e₂)}` -/
+/-- `⊑|loc ≜ {(e₁, e₂) ∈ ⊑ | loc(e₁) ≡_P loc(e₂)}`, with `≡` as `sameLoc`
+    (under `P ∧ φ_rf`). -/
 def poloc : Rel := fun a b => x.poX es a b ∧ x.sameLoc es a b
 
 /-- `rmw ≜ {(e_r, e_w) ∈ X × X | (e_r, c, e_w) ∈ ⊑ʳᵐʷ ∧ c ≡_P ⊤}`: the read

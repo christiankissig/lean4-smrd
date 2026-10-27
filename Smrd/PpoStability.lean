@@ -63,9 +63,9 @@ in three steps, using only the event structure semantics (`denote`).
   (`ppoTrunc_sub_win`, `win_sub_trunc`).
 * `dep_po`: under (1) and (2), `DP ∪ ≼ ⊆ ⊑`, which the converse of
   `coherenceV_iff_coherence` needs.
-* `coherence_congr`: RC11's `Coherence` does not mention `≼`: it is a function
-  of `X`, `rf` and the frozen `P` (through `sameLoc` and `rmw`), so replacing
-  the truncated `≼` by the untruncated one changes no coherence verdict.
+* `coherence_congr`: RC11's `Coherence` mentions `≼` only through `φ_rf`
+  (whose allocation disjointness asks for `nta`): it is a function of `X`,
+  `rf`, the frozen `P` and `φ_rf` (through `sameLoc` and `rmw`).
 -/
 
 namespace PpoStability
@@ -448,10 +448,12 @@ theorem dep_po {es : EventStructure} {x : Execution}
   · exact ppo_po hpo_trans hstep hp
   · exact hDP a b hd
 
-/-- RC11's `Coherence` does not mention `≼`: two executions with the same
-    events, `rf` and frozen predicate have the same coherence verdict. -/
+/-- RC11's `Coherence` mentions `≼` only through `φ_rf`: two executions with
+    the same events, `rf`, frozen predicate and `φ_rf` have the same coherence
+    verdict. -/
 theorem coherence_congr {es : EventStructure} {x x' : Execution} {co : Rel}
-    (hX : x.X = x'.X) (hrf : x.rf = x'.rf) (hP : x.P es = x'.P es) :
+    (hX : x.X = x'.X) (hrf : x.rf = x'.rf) (hP : x.P es = x'.P es)
+    (hφ : x.phiRf es = x'.phiRf es) :
     x.Coherence es co ↔ x'.Coherence es co := by
   obtain ⟨X, J, rf⟩ := x
   obtain ⟨X', J', rf'⟩ := x'
@@ -462,7 +464,7 @@ theorem coherence_congr {es : EventStructure} {x x' : Execution} {co : Rel}
     simp only [Execution.rfRmw, Execution.rmwRel, hP]
   have hsw : Execution.sw es ⟨X, J, rf⟩ = Execution.sw es ⟨X, J', rf⟩ := by
     funext a b
-    simp only [Execution.sw, Execution.rs, Execution.poloc, Execution.sameLoc, hP, hrr]
+    simp only [Execution.sw, Execution.rs, Execution.poloc, Execution.sameLoc, hP, hφ, hrr]
     rfl
   unfold Execution.Coherence Execution.hb
   rw [hsw]
@@ -552,7 +554,7 @@ theorem win_step_sub_trunc {es : EventStructure} {x : Execution} {Ω : Pred}
   obtain ⟨hXa, hXb, hs⟩ := h
   have ha := X_of_XwF hff hXa
   have hb := X_of_XwF hff hXb
-  obtain ⟨f, hPm, hdef⟩ := hm
+  obtain ⟨f, hPm, -, hdef⟩ := hm
   have hdef' : ∀ e l, (es.ev a = some e ∨ es.ev b = some e) → e.loc = some l →
       (l.eval f).isSome := by
     rintro e l (h | h) hl

@@ -13,23 +13,23 @@ where they hold; where they do not, a counterexample.
   a strict order, for every program, with the join of parallel composition
   (`EventStructure.join`). The invariant `PoOK` is closed under the
   combinators once the ids are distinct (`denote_ids_nodup`).
-* **`rf` and locations.** `sameLoc` compares locations under the frozen `P`
-  alone, while `φ` asks only that `P ∧ φ_rf` be satisfiable: `φ_rf` equates
-  the locations along `rf` under its witness, not under every model of `P`.
-  So `rf ⊆ sameLoc` does not follow from `φ` (`rfLoc_of_phi_false`). It
-  holds under `P ∧ φ_rf` (`rf_equivUnder_phiRf`), where `P` entails `φ_rf`
-  (`rfLoc_of_entails`), and where the locations along `rf` are closed
-  (`rfLoc_of_phi_closed`, e.g. the globals of a program without pointers).
-* **Transitivity of `sameLoc`** (`sameLoc_trans`): `EquivUnder P` is
-  transitive through a middle expression that evaluates under every model of
-  `P`. Without that it fails in `⟨P⟩_n`: a location `1 / 0` is `sameLoc` to
-  every location (`sameLoc_trans_false`).
-* **A location model** (`locModel_of_phi`, `locModel_of_sat`): the frozen `P`
-  entails the justifications' predicates and `ψ_δ` of the shared context
-  (`Pm_of_P`); a model of it under which the value restrictions of `X` hold
-  and the locations of `X` evaluate is one. `φ` gives neither: its witness
-  need not satisfy `valres` (`locModel_of_phi_false_valres`), and a location
-  may evaluate under no valuation (`locModel_of_phi_false_loc`).
+* **`rf` and locations** (`Execution.rfLoc`, `Execution.sameLoc_trans`, in
+  `Smrd.CoherenceRC11`): `sameLoc` compares locations under `P ∧ φ_rf` as
+  partial values, so it contains `rf` and is transitive outright. Where the
+  locations evaluate under every model of `P ∧ φ_rf` it is `≡_{P ∧ φ_rf}`
+  (`sameLoc_iff_equivUnder`).
+* **Locations that evaluate** (`denote_totalLocs`): a location expression
+  that is a value or a symbol evaluates under every valuation (`Expr.Total`).
+  Arithmetic may fail, on a division by zero or an ill-typed operand, under
+  every model of `P ∧ φ_rf` (`*(1 / 0)`); `⟨P⟩_n` has `Total` locations where
+  the program copies pointers rather than computing them (`Stmt.PtrWF`).
+* **A location model** (`locModel_of_sat`, `locModel_of_totalLocs`,
+  `locModel_of_denote`): the frozen `P` entails the justifications'
+  predicates and `ψ_δ` of the shared context (`Pm_of_P`); a model of it, of
+  the value restrictions of `X` and of `φ_rf`, under which the locations of
+  `X` evaluate, is one. `φ` gives neither: its witness need not satisfy
+  `valres` (`locModel_of_phi_false_valres`), and a location may evaluate under
+  no valuation (`locModel_of_phi_false_loc`).
 -/
 
 namespace EventStructure
@@ -182,6 +182,32 @@ theorem EquivUnder.trans {P : Pred} {e₁ e₂ e₃ : Expr} (h₁₂ : EquivUnde
 theorem Expr.eval_closed {e : Expr} (h : e.syms = []) (f g : Valuation) : e.eval f = e.eval g :=
   e.eval_congr f g (fun α hα => by simp [h] at hα)
 
+/-! ## Locations that evaluate -/
+
+/-- A location expression that evaluates under every valuation: a value or a
+    symbol. Arithmetic may fail, on a division by zero or on an operand of the
+    wrong type (a symbol valued `true`, say, in `α + 1`). -/
+def Expr.Total : Expr → Prop
+  | .val _ | .sym _ => True
+  | _ => False
+
+theorem Expr.Total.eval_isSome {e : Expr} (h : e.Total) (f : Valuation) : (e.eval f).isSome := by
+  cases e <;> simp_all [Expr.Total, Expr.eval]
+
+/-- The location of an event of this kind, if any, is `Total`. -/
+def EventKind.LocTotal : EventKind → Prop
+  | .read _ l _ _ | .write _ l _ _ | .dealloc l => l.Total
+  | _ => True
+
+theorem Event.loc_total {e : Event} (h : e.kind.LocTotal) {l : Expr} (hl : e.loc = some l) :
+    l.Total := by
+  obtain ⟨id, kind, label, guards⟩ := e
+  cases kind <;> simp_all [Event.loc, EventKind.LocTotal] <;> subst hl <;> trivial
+
+/-- Every location of `k` is `Total`. -/
+def EventStructure.TotalLocs (k : EventStructure) : Prop :=
+  ∀ e ∈ k.events, ∀ l, e.loc = some l → l.Total
+
 namespace Execution
 
 variable {es : EventStructure} {x : Execution}
@@ -211,57 +237,37 @@ theorem psi_of_P {f : Valuation} (h : x.P es f) : x.δ.psi es f := by
 theorem Pm_of_P {f : Valuation} (h : x.P es f) (hv : x.valresX es f) : x.Pm es f :=
   ⟨fun j hj => (h j hj).1, psi_of_P h, hv⟩
 
-/-! ## Locations that evaluate -/
+/-- The locations of the events of `S` evaluate under `f`. -/
+def LocsEvalAt (es : EventStructure) (S : EvSet) (f : Valuation) : Prop :=
+  ∀ a e l, S a → es.ev a = some e → e.loc = some l → (l.eval f).isSome
 
-/-- The locations of the events of `S` evaluate under every model of the
-    frozen `P`. -/
-def LocsEval (es : EventStructure) (x : Execution) (S : EvSet) : Prop :=
-  ∀ f, x.P es f → ∀ a e l, S a → es.ev a = some e → e.loc = some l → (l.eval f).isSome
+/-- `Total` locations evaluate under every valuation. -/
+theorem locsEvalAt_of_totalLocs (ht : es.TotalLocs) (S : EvSet) (f : Valuation) :
+    LocsEvalAt es S f := fun _ e l _ he hl => by
+  unfold EventStructure.ev at he
+  exact (ht e (List.mem_of_find?_eq_some he) l hl).eval_isSome f
 
-/-- Closed locations that evaluate at all evaluate everywhere: e.g. the
-    globals `&x` of a program without pointers. -/
-theorem locsEval_of_closed {S : EvSet}
-    (h : ∀ a e l, S a → es.ev a = some e → e.loc = some l → l.syms = [] ∧ ∃ g, (l.eval g).isSome) :
-    LocsEval es x S := by
-  intro f _ a e l ha he hl
-  obtain ⟨hs, g, hg⟩ := h a e l ha he hl
-  rw [Expr.eval_closed hs f g]; exact hg
+/-! ## `sameLoc` against `≡` -/
 
-/-! ## Transitivity of `sameLoc` -/
+/-- Where the locations of `a` and `b` evaluate under every model of
+    `P ∧ φ_rf`, `sameLoc` is `≡_{P ∧ φ_rf}` (`EquivUnder`) of their
+    locations. -/
+theorem sameLoc_iff_equivUnder {a b : EventId} {ea eb : Event} {la lb : Expr}
+    (ha : es.ev a = some ea) (hb : es.ev b = some eb) (hla : ea.loc = some la)
+    (hlb : eb.loc = some lb)
+    (hdef : ∀ f, x.P es f → x.phiRf es f → (la.eval f).isSome ∧ (lb.eval f).isSome) :
+    x.sameLoc es a b ↔ EquivUnder (Pred.and (x.P es) (x.phiRf es)) la lb := by
+  refine ⟨fun h => x.sameLoc_equivUnder es h ha hb hla hlb, fun h => ?_⟩
+  refine ⟨ea, eb, la, lb, ha, hb, hla, hlb, fun f hP hrf => ?_⟩
+  obtain ⟨v₁, hv₁⟩ := Option.isSome_iff_exists.1 (hdef f hP hrf).1
+  obtain ⟨v₂, hv₂⟩ := Option.isSome_iff_exists.1 (hdef f hP hrf).2
+  rw [hv₁, hv₂, h f ⟨hP, hrf⟩ v₁ v₂ hv₁ hv₂]
 
-/-- `sameLoc` is transitive through an event whose location evaluates under
-    every model of `P`. -/
-theorem sameLoc_trans {a b c : EventId}
-    (hb : ∀ f, x.P es f → ∀ e l, es.ev b = some e → e.loc = some l → (l.eval f).isSome)
-    (hab : x.sameLoc es a b) (hbc : x.sameLoc es b c) : x.sameLoc es a c := by
-  obtain ⟨ea, eb, la, lb, hea, heb, hla, hlb, h₁⟩ := hab
-  obtain ⟨eb', ec, lb', lc, heb', hec, hlb', hlc, h₂⟩ := hbc
-  rw [heb] at heb'; cases heb'
-  rw [hlb] at hlb'; cases hlb'
-  exact ⟨ea, ec, la, lc, hea, hec, hla, hlc,
-    EquivUnder.trans h₁ h₂ (fun f hf => hb f hf eb lb heb hlb)⟩
-
-/-- `sameLoc` is transitive through the events of `S`, where their locations
-    evaluate under every model of `P`. -/
-theorem sameLoc_trans_of_locsEval {S : EvSet} (hS : LocsEval es x S) {a b c : EventId} (hSb : S b)
-    (hab : x.sameLoc es a b) (hbc : x.sameLoc es b c) : x.sameLoc es a c :=
-  sameLoc_trans (fun f hf e l he hl => hS f hf b e l hSb he hl) hab hbc
-
-/-- `sameLoc` is transitive where every location evaluates under every model
-    of `P`: the shape of `SoundHyps.locTrans`. -/
-theorem sameLoc_trans_all (hS : LocsEval es x (fun _ => True)) :
-    ∀ a b c, x.sameLoc es a b → x.sameLoc es b c → x.sameLoc es a c :=
-  fun _ _ _ => sameLoc_trans_of_locsEval hS trivial
+/-- `sameLoc` is transitive: the shape of `SoundHyps.locTrans`. -/
+theorem sameLoc_trans_all : ∀ a b c, x.sameLoc es a b → x.sameLoc es b c → x.sameLoc es a c :=
+  fun _ _ _ => x.sameLoc_trans es
 
 /-! ## `rf` and locations -/
-
-theorem isWrite_loc {e : Event} (h : e.isWrite = true) : ∃ l, e.loc = some l := by
-  obtain ⟨id, kind, label, guards⟩ := e
-  cases kind <;> simp_all [Event.isWrite, Event.loc]
-
-theorem isRead_loc {e : Event} (h : e.isRead = true) : ∃ l, e.loc = some l := by
-  obtain ⟨id, kind, label, guards⟩ := e
-  cases kind <;> simp_all [Event.isRead, Event.loc]
 
 /-- Under `P ∧ φ_rf` the locations along `rf` are equivalent: `φ_rf` equates
     them. -/
@@ -272,50 +278,223 @@ theorem rf_equivUnder_phiRf {w r : EventId} (h : x.rf w r) {ew er : Event} {lw l
   have := (hf.2.1 w r ew er h hw hr).1 lw lr hlw hlr
   rw [h₁, h₂] at this; exact Option.some.inj this
 
-/-- `rf ⊆ sameLoc` where `P` entails `φ_rf`, for an `rf` from writes to reads
-    (`IsExecution.rf_wr`). -/
-theorem rfLoc_of_entails (hE : ∀ f, x.P es f → x.phiRf es f)
-    (hrfw : ∀ w r, x.rf w r → es.cls Event.isWrite w ∧ es.cls Event.isRead r)
-    {w r : EventId} (h : x.rf w r) : x.sameLoc es w r := by
-  obtain ⟨⟨ew, hw, hW⟩, ⟨er, hr, hR⟩⟩ := hrfw w r h
-  obtain ⟨lw, hlw⟩ := isWrite_loc hW
-  obtain ⟨lr, hlr⟩ := isRead_loc hR
-  exact ⟨ew, er, lw, lr, hw, hr, hlw, hlr, fun f hf =>
-    rf_equivUnder_phiRf h hw hr hlw hlr f ⟨hf, hE f hf⟩⟩
-
-/-- `rf ⊆ sameLoc` from `φ` where the locations along `rf` are closed: the
-    witness of `P ∧ φ_rf` equates them, and closed expressions evaluate alike
-    everywhere. -/
-theorem rfLoc_of_phi_closed (hφ : x.phi es)
-    (hrfw : ∀ w r, x.rf w r → es.cls Event.isWrite w ∧ es.cls Event.isRead r)
-    (hcl : ∀ w r ew er lw lr, x.rf w r → es.ev w = some ew → es.ev r = some er →
-      ew.loc = some lw → er.loc = some lr → lw.syms = [] ∧ lr.syms = [])
-    {w r : EventId} (h : x.rf w r) : x.sameLoc es w r := by
-  obtain ⟨⟨ew, hw, hW⟩, ⟨er, hr, hR⟩⟩ := hrfw w r h
-  obtain ⟨lw, hlw⟩ := isWrite_loc hW
-  obtain ⟨lr, hlr⟩ := isRead_loc hR
-  obtain ⟨g, -, hg⟩ := hφ.2.2
-  have heq := (hg.1 w r ew er h hw hr).1 lw lr hlw hlr
-  obtain ⟨hsw, hsr⟩ := hcl w r ew er lw lr h hw hr hlw hlr
-  refine ⟨ew, er, lw, lr, hw, hr, hlw, hlr, fun f _ v₁ v₂ h₁ h₂ => ?_⟩
-  rw [Expr.eval_closed hsw f g, heq, ← Expr.eval_closed hsr f g, h₂] at h₁
-  exact (Option.some.inj h₁).symm
-
 /-! ## A location model -/
 
-/-- A model of `P` and the value restrictions of `X`, with the locations of
-    `X` evaluating under every model of `P`, is a location model. -/
-theorem locModel_of_sat (hs : Sat (Pred.and (x.P es) (x.valresX es))) (hloc : LocsEval es x x.X) :
+/-- A model of `P`, of the value restrictions of `X` and of `φ_rf`, under
+    which the locations of `X` evaluate, is a location model. -/
+theorem locModel_of_sat
+    (hs : ∃ f, x.P es f ∧ x.valresX es f ∧ x.phiRf es f ∧ LocsEvalAt es x.X f) :
     LocModel es x := by
-  obtain ⟨f, hP, hv⟩ := hs
-  exact ⟨f, Pm_of_P hP hv, fun a e l ha he hl => hloc f hP a e l ha he hl⟩
+  obtain ⟨f, hP, hv, hrf, hloc⟩ := hs
+  exact ⟨f, Pm_of_P hP hv, hrf, hloc⟩
+
+/-- **A location model where the locations are `Total`**: any model of
+    `P ∧ valres_X ∧ φ_rf`. -/
+theorem locModel_of_totalLocs (ht : es.TotalLocs)
+    (hs : Sat (fun f => x.P es f ∧ x.valresX es f ∧ x.phiRf es f)) : LocModel es x := by
+  obtain ⟨f, hP, hv, hrf⟩ := hs
+  exact locModel_of_sat ⟨f, hP, hv, hrf, locsEvalAt_of_totalLocs ht _ f⟩
 
 /-- **A location model from `φ`**, where the value restrictions of `X` hold
-    under `P ∧ φ_rf` and the locations of `X` evaluate under `P`. -/
+    under `P ∧ φ_rf` and the locations are `Total`. -/
 theorem locModel_of_phi (hφ : x.phi es) (hval : ∀ f, x.P es f → x.phiRf es f → x.valresX es f)
-    (hloc : LocsEval es x x.X) : LocModel es x := by
+    (ht : es.TotalLocs) : LocModel es x := by
   obtain ⟨f, hP, hrf⟩ := hφ.2.2
-  exact locModel_of_sat ⟨f, hP, hval f hP hrf⟩ hloc
+  exact locModel_of_totalLocs ht ⟨f, hP, hval f hP hrf, hrf⟩
+
+end Execution
+
+/-! ## Programs whose locations are `Total`
+
+A location of `⟨P⟩_n` is a global `&x`, the symbol of an allocation, or a
+program expression over the registers (`*e`, `free(r)`). It is `Total` when
+the registers it reads hold values or symbols: pointers are loaded, allocated,
+taken by `&x` or copied, never computed. `Stmt.PtrWF R` asks this of the
+pointer registers `R`. -/
+
+/-- A pointer expression: a register of `R`, or a constant. -/
+def PExpr.Ptr (R : Reg → Prop) : PExpr → Prop
+  | .reg r => R r
+  | .num _ => True
+  | _ => False
+
+/-- Pointers are not computed: dereferences and `free` take a register of `R`
+    (or a constant), and a register of `R` is assigned only another register of
+    `R` or a constant. Loads, `malloc`, `&x`, `FADD` and `CAS` may target any
+    register. -/
+def Stmt.PtrWF (R : Reg → Prop) : Stmt → Prop
+  | .seq s₁ s₂ | .par s₁ s₂ | .ite _ s₁ s₂ => s₁.PtrWF R ∧ s₂.PtrWF R
+  | .while _ _ body => body.PtrWF R
+  | .assign r e => R r → e.Ptr R
+  | .loadPtr _ _ p _ => p.Ptr R
+  | .storePtr _ p _ _ => p.Ptr R
+  | .free r => R r
+  | _ => True
+
+namespace TotalLocsDenote
+
+open EventStructure
+
+/-- The registers of `R` hold values or symbols. -/
+def RegsOK (R : Reg → Prop) (ρ : RegState) : Prop := ∀ r, R r → (ρ.get r).Total
+
+theorem get_set (ρ : RegState) (r r' : Reg) (v : Expr) :
+    (ρ.set r v).get r' = if r' = r then v else ρ.get r' := by
+  by_cases h : r' = r
+  · subst h; simp [RegState.get, RegState.set]
+  · have : (r' == r) = false := by simp [h]
+    simp [RegState.get, RegState.set, List.lookup, this, h]
+
+theorem RegsOK.set {R : Reg → Prop} {ρ : RegState} (h : RegsOK R ρ) (r : Reg) {v : Expr}
+    (hv : R r → v.Total) : RegsOK R (ρ.set r v) := by
+  intro r' hr'
+  rw [get_set]
+  split
+  · rename_i heq; subst heq; exact hv hr'
+  · exact h r' hr'
+
+theorem RegsOK.den {R : Reg → Prop} {ρ : RegState} (h : RegsOK R ρ) {p : PExpr} (hp : p.Ptr R) :
+    (p.den ρ).Total := by
+  cases p <;> simp_all [PExpr.Ptr, PExpr.den, Expr.num, Expr.Total]
+  exact h _ hp
+
+theorem totalLocs_empty : TotalLocs .empty := fun _ he => by cases he
+
+theorem totalLocs_prefix {e : Event} {k : EventStructure} (he : e.kind.LocTotal)
+    (hk : TotalLocs k) : TotalLocs («prefix» e k) := by
+  intro e' he' l hl
+  rcases List.mem_cons.1 he' with rfl | he'
+  · exact Event.loc_total he hl
+  · exact hk e' he' l hl
+
+theorem totalLocs_plus {k k' : EventStructure} (h : TotalLocs k) (h' : TotalLocs k') :
+    TotalLocs (k.plus k') := by
+  intro e he
+  rcases List.mem_append.1 he with he | he
+  · exact h e he
+  · exact h' e he
+
+theorem totalLocs_join {k k' : EventStructure} (h : TotalLocs k) (h' : TotalLocs k') :
+    TotalLocs (k.join k') := by
+  intro e he
+  rcases List.mem_append.1 he with he | he
+  · exact h e he
+  · exact h' e he
+
+theorem totalLocs_addRMW {k : EventStructure} (h : TotalLocs k) (r : EventId) (c : Expr)
+    (w : EventId) : TotalLocs (k.addRMW r c w) := h
+
+theorem glob_total (x : Var) : (Expr.glob x).Total := trivial
+
+open EventStructure in
+/-- The structures `⟨s⟩` generates have `Total` locations, for a program whose
+    pointers are not computed, from registers whose pointers hold values or
+    symbols. -/
+theorem interp_totalLocs {R : Reg → Prop} :
+    ∀ (N : Nat) (n : Bounds) (ctx : Ctx) (pc : List Nat) (s : Stmt)
+    (ρ : RegState) (κ : Cont) (φ : List Guard),
+    sumB s.loops n + sizeOf s < N → s.PtrWF R → RegsOK R ρ →
+    (∀ ρ φ, RegsOK R ρ → Gen.Holds TotalLocs (κ ρ φ)) →
+    Gen.Holds TotalLocs (interp n ctx pc s ρ κ φ)
+  | 0, _, _, _, _, _, _, _, hN, _, _, _ => absurd hN (Nat.not_lt_zero _)
+  | N + 1, n, ctx, pc, s, ρ, κ, φ, hN, hwf, hρ, hκ => by
+    have pre1 : ∀ (kind : EventId → EventKind) (m : Event → Gen EventStructure),
+        (∀ i, (kind i).LocTotal) → (∀ e, Gen.Holds TotalLocs (m e)) →
+        Gen.Holds TotalLocs (do let e ← mkEvent ctx pc φ kind; let k ← m e; pure («prefix» e k)) :=
+      fun kind m hk hm σ => totalLocs_prefix (hk σ.nextId) (hm _ _)
+    cases s with
+    | skip => rw [interp.eq_def]; exact hκ _ _ hρ
+    | assign r e => rw [interp.eq_def]; exact hκ _ _ (hρ.set r (fun h => hρ.den (hwf h)))
+    | addrOf r x => rw [interp.eq_def]; exact hκ _ _ (hρ.set r (fun _ => glob_total x))
+    | load o r x =>
+        rw [interp.eq_def]
+        exact pre1 _ _ (fun _ => glob_total x) (fun _ => hκ _ _ (hρ.set r (fun _ => trivial)))
+    | loadPtr o r p =>
+        rw [interp.eq_def]
+        exact pre1 _ _ (fun _ => hρ.den hwf) (fun _ => hκ _ _ (hρ.set r (fun _ => trivial)))
+    | store o x v => rw [interp.eq_def]; exact pre1 _ _ (fun _ => glob_total x) (fun _ => hκ _ _ hρ)
+    | storePtr o p v =>
+        rw [interp.eq_def]; exact pre1 _ _ (fun _ => hρ.den hwf) (fun _ => hκ _ _ hρ)
+    | fence o => rw [interp.eq_def]; exact pre1 _ _ (fun _ => trivial) (fun _ => hκ _ _ hρ)
+    | malloc r sz =>
+        rw [interp.eq_def]
+        exact pre1 _ _ (fun _ => trivial) (fun _ => hκ _ _ (hρ.set r (fun _ => trivial)))
+    | free r => rw [interp.eq_def]; exact pre1 _ _ (fun _ => hρ r hwf) (fun _ => hκ _ _ hρ)
+    | fadd or ow r x v =>
+        rw [interp.eq_def]
+        intro σ
+        refine totalLocs_addRMW (totalLocs_prefix ?_ (totalLocs_prefix ?_
+          (hκ _ _ (hρ.set r ?_) _))) _ _ _
+        · exact glob_total x
+        · exact glob_total x
+        · exact fun _ => trivial
+    | cas or ow r x e₁ e₂ =>
+        rw [interp.eq_def]
+        intro σ
+        refine totalLocs_addRMW (totalLocs_prefix ?_ (totalLocs_prefix ?_
+          (totalLocs_plus (totalLocs_prefix ?_ (hκ _ _ (hρ.set r ?_) _))
+            (hκ _ _ (hρ.set r ?_) _)))) _ _ _
+        · exact glob_total x
+        · trivial
+        · exact glob_total x
+        · exact fun _ => trivial
+        · exact fun _ => trivial
+    | seq s₁ s₂ =>
+        rw [interp.eq_def]
+        simp only [Stmt.loops, sumB_append, Stmt.seq.sizeOf_spec] at hN
+        exact interp_totalLocs N n ctx (pc ++ [0]) s₁ ρ _ φ (by omega) hwf.1 hρ
+          (fun ρ' φ' hρ' => interp_totalLocs N n ctx (pc ++ [1]) s₂ ρ' κ φ' (by omega) hwf.2 hρ' hκ)
+    | par s₁ s₂ =>
+        rw [interp.eq_def]
+        simp only [Stmt.loops, sumB_append, Stmt.par.sizeOf_spec] at hN
+        intro σ
+        exact totalLocs_join (totalLocs_plus
+          (interp_totalLocs N n ctx (pc ++ [0]) s₁ ρ (fun _ _ => pure .empty) φ (by omega) hwf.1 hρ
+            (fun _ _ _ _ => totalLocs_empty) _)
+          (interp_totalLocs N n _ (pc ++ [1]) s₂ ρ (fun _ _ => pure .empty) φ (by omega) hwf.2 hρ
+            (fun _ _ _ _ => totalLocs_empty) _))
+          (hκ _ _ hρ _)
+    | ite b s₁ s₂ =>
+        rw [interp.eq_def]
+        simp only [Stmt.loops, sumB_append, Stmt.ite.sizeOf_spec] at hN
+        intro σ
+        exact totalLocs_prefix trivial (totalLocs_plus
+          (interp_totalLocs N n ctx _ s₁ ρ κ _ (by omega) hwf.1 hρ hκ _)
+          (interp_totalLocs N n ctx _ s₂ ρ κ _ (by omega) hwf.2 hρ hκ _))
+    | «while» ℓ b body =>
+        rw [interp.eq_def]
+        dsimp only
+        split
+        · exact fun _ => totalLocs_empty
+        · simp only [Stmt.loops, sumB_cons, Stmt.while.sizeOf_spec] at hN
+          have h₁ := sumB_dec_le body.loops n ℓ
+          have h₂ := Bounds.dec_self n ℓ
+          intro σ
+          exact totalLocs_prefix trivial (totalLocs_plus
+            (interp_totalLocs N (n.dec ℓ) _ _ body ρ _ _ (by omega) hwf hρ
+              (fun ρ' φ' hρ' => interp_totalLocs N (n.dec ℓ) _ pc (.while ℓ b body) ρ' κ φ'
+                (by simp only [Stmt.loops, sumB_cons, Stmt.while.sizeOf_spec]; omega) hwf hρ' hκ) _)
+            (hκ _ _ hρ _))
+
+end TotalLocsDenote
+
+/-- **The locations of `⟨P⟩_n` are `Total`** for a program whose pointers are
+    not computed (`Stmt.PtrWF`): they evaluate under every valuation. -/
+theorem denote_totalLocs {R : Reg → Prop} (n : Bounds) {P : Stmt} (hwf : P.PtrWF R) :
+    (denote n P).TotalLocs :=
+  TotalLocsDenote.interp_totalLocs _ n ⟨0, []⟩ [] P [] (fun _ _ => pure .empty) []
+    (Nat.lt_succ_self _) hwf (fun r _ => by simp [RegState.get, List.lookup, Expr.num, Expr.Total])
+    (fun _ _ _ _ => TotalLocsDenote.totalLocs_empty) {}
+
+namespace Execution
+
+/-- **A location model in `⟨P⟩_n`** for a program whose pointers are not
+    computed: any model of `P ∧ valres_X ∧ φ_rf`. -/
+theorem locModel_of_denote {R : Reg → Prop} {n : Bounds} {P : Stmt} (hwf : P.PtrWF R)
+    {x : Execution}
+    (hs : Sat (fun f => x.P (denote n P) f ∧ x.valresX (denote n P) f ∧ x.phiRf (denote n P) f)) :
+    LocModel (denote n P) x :=
+  locModel_of_totalLocs (denote_totalLocs n hwf) hs
 
 end Execution
 
@@ -325,58 +504,10 @@ namespace RoutineHyps
 
 open Execution
 
-private def rd (i : EventId) (x : Var) (pc : List Nat) : Event :=
-  ⟨i, .read .rlx (Expr.glob x) i false, ⟨0, pc, []⟩, []⟩
 private def wr (i : EventId) (l v : Expr) (pc : List Nat) (g : List Guard := []) : Event :=
   ⟨i, .write .rlx l v false, ⟨0, pc, []⟩, g⟩
 
-/-! ### `rf ⊆ sameLoc` does not follow from `φ` -/
-
-/-- `r := y; *r := 1; s := x` -/
-def progRf : Stmt := .seq (.load .rlx "r" "y" false)
-  (.seq (.storePtr .rlx (.reg "r") (.num 1) false) (.load .rlx "s" "x" false))
-
-def esRf : EventStructure :=
-  ⟨[rd 0 "y" [0], wr 1 (.sym 0) (.num 1) [1, 0], rd 2 "x" [1, 1]], [(0, 1), (0, 2), (1, 2)], []⟩
-
-unseal interp in
-theorem denote_progRf : denote (fun _ => 0) progRf = esRf := rfl
-
-/-- `*r := 1` read by `s := x`, without justifications: `P = ⊤`. -/
-def xRf : Execution := ⟨fun a => a = 1 ∨ a = 2, [], fun w r => w = 1 ∧ r = 2⟩
-
-theorem xRf_phi : xRf.phi esRf := by
-  refine ⟨fun e _ ⟨p, hp, _⟩ => ?_, fun r => ⟨?_, ?_⟩, ?_⟩
-  · simp [xRf, Execution.δ, FwdCtx.empty] at hp
-  · rintro ⟨w, rfl, rfl⟩
-    exact ⟨.inr rfl, _, rfl, rfl⟩
-  · rintro ⟨hX | hX, e, he, hR⟩ <;> subst hX
-    · cases he; cases hR
-    · exact ⟨1, rfl, rfl⟩
-  · refine ⟨fun α => if α = 0 then .loc ⟨.global "x", 0⟩ else .num 1, ?_⟩
-    refine And.intro (fun j hj => by cases hj) (And.intro ?_ (And.intro ?_ ?_))
-    · rintro w r ew er ⟨rfl, rfl⟩ hw hr
-      cases hw; cases hr
-      refine ⟨fun lw lr hlw hlr => ?_, fun vw vr hvw hvr => ?_⟩
-      · cases hlw; cases hlr; rfl
-      · cases hvw; cases hvr; rfl
-    · rintro a e α sz (rfl | rfl) he hk <;> cases he <;> cases hk
-    · rintro a₁ a₂ e₁ e₂ α₁ α₂ s₁ s₂ (rfl | rfl) _ _ he₁ _ hk₁ <;> cases he₁ <;> cases hk₁
-
-/-- The write and the read are not `sameLoc`: `P = ⊤` leaves `r` free. -/
-theorem xRf_not_sameLoc : ¬ xRf.sameLoc esRf 1 2 := by
-  rintro ⟨ea, eb, la, lb, ha, hb, hla, hlb, h⟩
-  cases ha; cases hb; cases hla; cases hlb
-  have := h (fun _ => .num 0) (fun j hj => by cases hj) _ _ rfl rfl
-  cases this
-
-/-- **`rf ⊆ sameLoc` does not follow from `φ`**, in `⟨P⟩_n`. -/
-theorem rfLoc_of_phi_false : ∃ (P : Stmt) (n : Bounds) (x : Execution),
-    x.phi (denote n P) ∧ ∃ w r, x.rf w r ∧ ¬ x.sameLoc (denote n P) w r :=
-  ⟨progRf, _, xRf, denote_progRf ▸ xRf_phi, 1, 2, ⟨rfl, rfl⟩,
-    denote_progRf ▸ xRf_not_sameLoc⟩
-
-/-! ### `sameLoc` is not transitive, and `φ` gives no location model -/
+/-! ### `φ` gives no location model -/
 
 /-- `x := 1; *(1 / 0) := 2; y := 3` -/
 def progDiv : Stmt := .seq (.store .rlx "x" (.num 1) false)
@@ -392,24 +523,6 @@ theorem denote_progDiv : denote (fun _ => 0) progDiv = esDiv := rfl
 /-- All three writes, without justifications or `rf`. -/
 def xDiv : Execution := ⟨fun a => a = 0 ∨ a = 1 ∨ a = 2, [], fun _ _ => False⟩
 
-theorem xDiv_sameLoc_01 : xDiv.sameLoc esDiv 0 1 :=
-  ⟨_, _, _, _, rfl, rfl, rfl, rfl, fun _ _ _ _ _ h => by cases h⟩
-
-theorem xDiv_sameLoc_12 : xDiv.sameLoc esDiv 1 2 :=
-  ⟨_, _, _, _, rfl, rfl, rfl, rfl, fun _ _ _ _ h _ => by cases h⟩
-
-theorem xDiv_not_sameLoc_02 : ¬ xDiv.sameLoc esDiv 0 2 := by
-  rintro ⟨ea, eb, la, lb, ha, hb, hla, hlb, h⟩
-  cases ha; cases hb; cases hla; cases hlb
-  have := h (fun _ => .num 0) (fun j hj => by cases hj) _ _ rfl rfl
-  exact absurd this (by decide)
-
-/-- **`sameLoc` is not transitive** in `⟨P⟩_n`: `1 / 0` evaluates nowhere. -/
-theorem sameLoc_trans_false : ∃ (P : Stmt) (n : Bounds) (x : Execution) (a b c : EventId),
-    x.sameLoc (denote n P) a b ∧ x.sameLoc (denote n P) b c ∧ ¬ x.sameLoc (denote n P) a c :=
-  ⟨progDiv, _, xDiv, 0, 1, 2, denote_progDiv ▸ xDiv_sameLoc_01, denote_progDiv ▸ xDiv_sameLoc_12,
-    denote_progDiv ▸ xDiv_not_sameLoc_02⟩
-
 theorem xDiv_phi : xDiv.phi esDiv := by
   refine ⟨fun e _ ⟨p, hp, _⟩ => ?_, fun r => ⟨fun ⟨_, h⟩ => h.elim, ?_⟩, ?_⟩
   · simp [xDiv, Execution.δ, FwdCtx.empty] at hp
@@ -421,12 +534,12 @@ theorem xDiv_phi : xDiv.phi esDiv := by
     · rintro a₁ a₂ e₁ e₂ α₁ α₂ s₁ s₂ (rfl | rfl | rfl) _ _ he₁ _ hk₁ <;> cases he₁ <;> cases hk₁
 
 theorem xDiv_not_locModel : ¬ LocModel esDiv xDiv := by
-  rintro ⟨f, -, h⟩
+  rintro ⟨f, -, -, h⟩
   have := h 1 _ _ (.inr (.inl rfl)) rfl rfl
   simp [Expr.num, Expr.eval, ArithOp.applyVal, ArithOp.apply] at this
 
 /-- **`φ` gives no location model** in `⟨P⟩_n`: a location of `X` may
-    evaluate under no valuation. -/
+    evaluate under no valuation (`*(1 / 0)` is not `Stmt.PtrWF`). -/
 theorem locModel_of_phi_false_loc : ∃ (P : Stmt) (n : Bounds) (x : Execution),
     x.phi (denote n P) ∧ ¬ LocModel (denote n P) x :=
   ⟨progDiv, _, xDiv, denote_progDiv ▸ xDiv_phi, denote_progDiv ▸ xDiv_not_locModel⟩
@@ -457,7 +570,7 @@ theorem xIte_phi : xIte.phi esIte := by
     · rintro a₁ a₂ e₁ e₂ α₁ α₂ s₁ s₂ rfl _ _ he₁ _ hk₁; cases he₁; cases hk₁
 
 theorem xIte_not_locModel : ¬ LocModel esIte xIte := by
-  rintro ⟨f, ⟨-, -, hv⟩, -⟩
+  rintro ⟨f, ⟨-, -, hv⟩, -, -⟩
   have := hv 1 _ rfl rfl
   simp [Event.valres, Expr.conj, Guard.expr, gIte, wr, Expr.holds, Expr.num, Expr.eval, Expr.tt] at this
 
