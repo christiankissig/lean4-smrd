@@ -49,9 +49,12 @@ Elision therefore carries MoRDor's release restriction
   reverses no `⊑`-pair of events that may alias or of which one is an RMW
   access (`NoRevLoc`), and RMWs are tight (`RMWTightR`). `NoRevLoc` is what
   MoRDor's `pred` condition (the source is the immediate `ppo_loc`-predecessor)
-  is meant to give; it is not derived here. Without forwarding it follows from
-  `NoCrossLoc` (`noRevLoc_of_noCrossLoc`), the hypothesis this replaces. No
-  `WEForward`, no hypothesis that there is no forwarding.
+  is meant to give, but it does not follow from the restrictions: in a
+  consistent execution, a justification that never distinguished two pointers
+  orders an event before a forwarded read that another justification forwarded
+  across it, and `≼ ⊄ ⊑` (`Smrd.FwdAcrossAlias`). Without forwarding it follows
+  from `NoCrossLoc` (`noRevLoc_of_noCrossLoc`), the hypothesis this replaces.
+  No `WEForward`, no hypothesis that there is no forwarding.
 * `coherenceV_of_coherenceT`, `coherenceT_of_coherenceV`,
   `coherenceT_iff_coherenceV`: `HB_v`-coherence (`HB_v = (DP ∪ ≼ ∪ SW)⁺`, the
   operational semantics' happens-before) and `CoherenceT` coincide for one
@@ -624,11 +627,16 @@ def LocLinked (es : EventStructure) (x : Execution) (a b : EventId) : Prop :=
 
 /-- `remap_δ` reverses no `⊑`-ordered pair of `LocLinked` events. This is what
     MoRDor's `pred` condition (the source is an immediate `ppo_loc`-predecessor
-    of the forwarded or eliding event) is meant to give, and is not derived
-    here, for the reasons given at `NoCrossLoc` (`pred` is taken under the
-    generating justification's `P` and `δ`, not the execution's). It covers
-    Forwarding, which `NoCrossLoc` does not; without forwarding `NoCrossLoc`
-    implies it (`noRevLoc_of_noCrossLoc`). -/
+    of the forwarded or eliding event) is meant to give. It does not follow
+    from it, for the reason given at `NoCrossLoc`: `pred` is taken under the
+    generating justification's `P` and `δ`, `LocLinked` under every
+    justification's. `Smrd.FwdAcrossAlias` forwards `r2 := x` from
+    `r0 := *p2` across `r1 := *p` under `p2 = &x ∧ p ≠ &x`, while another
+    justification, strengthened by `p ≠ p2` only, lets `r1` and `r2` alias; the
+    execution is consistent, satisfies every other hypothesis of `dep_po_T`,
+    and violates `NoRevLoc` and `DP ∪ ≼ ⊆ ⊑`. It covers Forwarding, which
+    `NoCrossLoc` does not; without forwarding `NoCrossLoc` implies it
+    (`noRevLoc_of_noCrossLoc`). -/
 def NoRevLoc (es : EventStructure) (x : Execution) : Prop :=
   ∀ a b a' b', es.poR a b → x.δ.Remap a a' → x.δ.Remap b b' → LocLinked es x a b →
     ¬ es.poR b' a'
