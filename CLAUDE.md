@@ -57,10 +57,12 @@ Smrd.Types                        expressions, values, events, event structures,
                                     ├── Smrd.PpoEval  ≼ computed for global-location executions (`ppoEval_iff`), for `smrd-es` / scripts/ppo_diff.py
                                     └── Smrd.PpoKit  (+ Monotonicity) concrete executions, list bounds on ≼, sw, eco
                                           └── Smrd.PpoStability  truncated ≼ unstable (A), untruncated local/stable (B), no NTA change (C)
-                                                └── Smrd.PpoNecessity  untruncated ≼ needed for HB_v = RC11 (N1: CoRR, CoWR, MP); no cross-thread ≼ under elision (N2), HB_v ⇏ RC11 at an elided write (N3)
-                                                      └── Smrd.WEAcrossRelease  (+ CoherenceT) MoRDor's WE-across-release.lit: RC11 forbids, CoherenceT admits under blind elision, the release restriction forbids; `coww_elided` over X ∖ †
-                                                            ├── Smrd.FwdAcrossAcquire  MoRDor's RSE-across-acquire.lit: Forwarding across an acquire, CoherenceT admits what RC11 and HB_v-coherence forbid
-                                                            └── Smrd.RMWElision  lost update `x := 0; (FADD; x := 5 ∥ FADD)`: RC11 forbids, CoherenceT admits when the FADD's write is elided, the RMW rule forbids
+                                                ├── Smrd.PpoNecessity  untruncated ≼ needed for HB_v = RC11 (N1: CoRR, CoWR, MP); no cross-thread ≼ under elision (N2), HB_v ⇏ RC11 at an elided write (N3)
+                                                │     └── Smrd.WEAcrossRelease  (+ CoherenceT) MoRDor's WE-across-release.lit: RC11 forbids, CoherenceT admits under blind elision, the release restriction forbids; `coww_elided` over X ∖ †
+                                                │           ├── Smrd.FwdAcrossAcquire  MoRDor's RSE-across-acquire.lit: Forwarding across an acquire, CoherenceT admits what RC11 and HB_v-coherence forbid
+                                                │           └── Smrd.RMWElision  lost update `x := 0; (FADD; x := 5 ∥ FADD)`: RC11 forbids, CoherenceT admits when the FADD's write is elided, the RMW rule forbids
+                                                └── Smrd.DPPast  (+ CoherenceT) DP ⊆ ⊑ (`Generated.past`, `Execution.dp_po`) from Strengthening's origins before the write, given `SymWF`, the store-store forwarding window (`FwdWin`) and `LiftPast`; the `DP ⊆ ⊑` hypotheses of `noThinAir_iff_*`, `dep_po_T` derived (`*_past`)
+                                                      └── Smrd.SymWFDenote  (+ Fresh) ⟨P⟩_n introduces symbols ⊑-before their uses (`denote_symWF`)
 Smrd.Labels  (Fresh + Monotonicity + Executions) labels are unique in P̄: distinct events of ⟨P⟩_n with one label conflict (`labels_unique`, `conflictFree_label_inj`), for distinct loop ids
 ```
 
