@@ -636,7 +636,10 @@ def LocLinked (es : EventStructure) (x : Execution) (a b : EventId) : Prop :=
     execution is consistent, satisfies every other hypothesis of `dep_po_T`,
     and violates `NoRevLoc` and `DP ∪ ≼ ⊆ ⊑`. It covers Forwarding, which
     `NoCrossLoc` does not; without forwarding `NoCrossLoc` implies it
-    (`noRevLoc_of_noCrossLoc`). -/
+    (`noRevLoc_of_noCrossLoc`). `Smrd.FwdEntails` replaces it by an
+    entailment between the predicates (`FwdEntailsImg`, `dep_po_E`), and
+    derives it where every justification entails the forwarding predicates
+    (`noRevLoc_of_fwdEntailsAll`). -/
 def NoRevLoc (es : EventStructure) (x : Execution) : Prop :=
   ∀ a b a' b', es.poR a b → x.δ.Remap a a' → x.δ.Remap b b' → LocLinked es x a b →
     ¬ es.poR b' a'

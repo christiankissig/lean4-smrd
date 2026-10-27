@@ -44,8 +44,11 @@ own predicate with the shared context. A condition that rules the example out
 is that the alias queries of `≼` are no weaker than the one `pred` answered:
 for each edge `(e₁, e₂)` of `F ∪ WE` generated against `j₀`, every `j ∈ J`
 whose window contains `e₂` has `P_j ∧ ψ_δ ⊨ P_{j₀} ∧ ψ_{δ_{j₀}}`, and so does
-`p_combined`. Here `jZ` violates it. Whether it implies `NoRevLoc` in general
-is not shown.
+`p_combined`. Here `jZ` violates it (`Smrd.FwdEntailsCheck`). That condition
+(`FwdEntails`) is not sufficient (`Smrd.FwdPastWindow`), nor is its extension
+to windows containing `e₁` (`Smrd.FwdChain`); asked of every `j` whose window
+contains the image `remap_δ(e₂)`, it gives `DP ∪ ≼ ⊆ ⊑` (`Smrd.FwdEntails`,
+`dep_po_E`).
 -/
 
 namespace FwdAcrossAlias
