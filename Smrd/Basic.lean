@@ -20,6 +20,7 @@ import Smrd.FwdAcrossAcquire
 import Smrd.RMWElision
 import Smrd.DPPast
 import Smrd.LiftCross
+import Smrd.FwdAcrossAlias
 import Smrd.SymWFDenote
 import Smrd.Labels
 import Smrd.RoutineHyps
