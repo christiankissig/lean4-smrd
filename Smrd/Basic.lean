@@ -20,5 +20,6 @@ import Smrd.FwdAcrossAcquire
 import Smrd.RMWElision
 import Smrd.DPPast
 import Smrd.SymWFDenote
+import Smrd.Labels
 
 def hello := "world"

@@ -9,7 +9,9 @@ ids and symbols:
 
 * MoRDor's ``Init`` and ``Terminal`` events have no counterpart and are dropped;
 * program order is read as a forest, each event under its immediate
-  po-predecessor, and children are compared as a multiset;
+  po-predecessor, and children are compared as a multiset; an event after a
+  parallel block (the join) hangs under the fork and carries the labels of its
+  maximal po-predecessors, one per thread;
 * an event's label is its action -- type, memory order, location, value,
   condition -- with each symbol replaced by the distance, up the forest, to the
   event introducing it, so that neither ids nor symbol names matter;
@@ -169,9 +171,6 @@ class Translator:
         raise Unsupported(f"{what} on a location other than a global variable")
 
     def body(self, instrs):
-        ops = [i["command"]["op"] for i in instrs]
-        if "Par" in ops[:-1]:
-            raise Unsupported("statements after a parallel block")
         return seq([self.instr(i) for i in instrs])
 
     def instr(self, i):
@@ -274,20 +273,27 @@ class Translator:
         return assigned
 
     def program(self):
-        # The isa document has no place for statements after a parallel block
-        # and lists them under `init`; their source lines give them away.
-        first = min((i["loc"][0] for t in self.doc["threads"] for i in t["body"]
-                     if i.get("loc")), default=None)
-        if first is not None and any(i.get("loc") and i["loc"][0] > first
-                                     for i in self.doc["init"]):
-            raise Unsupported("statements after a parallel block")
-        assigned = self.check_regs(self.doc["init"], set())
+        # The isa document has no place for statements after the top-level
+        # parallel block and lists them under `init`; their source positions
+        # give them away. They run once, after the block (its join), in the
+        # register state the block was entered with.
+        locs = [tuple(i["loc"]) for t in self.doc["threads"] for i in t["body"] if i.get("loc")]
+        before, after = self.doc["init"], []
+        if locs:
+            lo, hi = min(locs), max(locs)
+            if any(not i.get("loc") or lo <= tuple(i["loc"]) <= hi for i in self.doc["init"]):
+                raise Unsupported("init statements not placed before or after the threads")
+            before = [i for i in self.doc["init"] if tuple(i["loc"]) < lo]
+            after = [i for i in self.doc["init"] if tuple(i["loc"]) > hi]
+        assigned = self.check_regs(before, set())
         for t in self.doc["threads"]:
             self.check_regs(t["body"], set(assigned))
-        init = [self.instr(i) for i in self.doc["init"]]
+        self.check_regs(after, set(assigned))
+        init = [self.instr(i) for i in before]
         threads = [self.body(t["body"]) for t in self.doc["threads"]]
         if threads:
             init.append(par(threads))
+        init += [self.instr(i) for i in after]
         # MoRDor's bound n runs a loop's body at most n times and then checks
         # the condition once more (its `Blocked` check): the run stops if it
         # holds and leaves the loop if not. In denote's terms that is the bound
@@ -305,14 +311,22 @@ class Translator:
 # ---------------------------------------------------------------------------
 
 def forest(events, po):
-    """Children of each event under its immediate po-predecessor, and the roots."""
+    """Children of each event under its immediate po-predecessor, and the roots.
+
+    An event after a parallel block has one maximal po-predecessor per thread
+    (the join): it hangs under the fork, the last predecessor all of them
+    follow, and `joins` records its maximal predecessors."""
     ids = set(events)
     preds = {e: set() for e in ids}
     for a, b in po:
         if a in ids and b in ids:
             preds[b].add(a)
-    parent = {}
+    parent, joins = {}, {}
     for e, ps in preds.items():
+        maximal = [p for p in ps if not any(p in preds[q] for q in ps if q != p)]
+        if len(maximal) > 1:
+            joins[e] = maximal
+            ps = {p for p in ps if all(p in preds[m] for m in maximal)}
         # the immediate predecessor is the one every other predecessor precedes
         imm = [p for p in ps if all(q == p or q in preds[p] for q in ps)]
         parent[e] = imm[0] if imm else None
@@ -320,7 +334,17 @@ def forest(events, po):
     roots = []
     for e in ids:
         (children[parent[e]] if parent[e] is not None else roots).append(e)
-    return parent, children, roots
+    return parent, children, roots, joins
+
+
+def with_joins(label, joins):
+    """Extend `label` with the labels of a join's maximal predecessors."""
+    def go(i):
+        body = label(i)
+        if i not in joins:
+            return body
+        return repr(eval(body) + ("join " + " | ".join(sorted(go(m) for m in joins[i])),))
+    return go
 
 
 def ancestry(parent, e):
@@ -557,7 +581,7 @@ def prune(es, decided="path"):
 
 def lean_canon(es, pruned=frozenset()):
     events = {e["id"]: e for e in es["events"] if e["id"] not in pruned}
-    parent, children, roots = forest(events, es["po"])
+    parent, children, roots, joins = forest(events, es["po"])
 
     def label(i):
         e, k = events[i], events[i]["kind"]
@@ -577,7 +601,7 @@ def lean_canon(es, pruned=frozenset()):
         else:
             body = (t, x(k["loc"]))
         return repr(body)
-    return children, roots, label
+    return children, roots, with_joins(label, joins)
 
 
 def norm_cond(c):
@@ -591,7 +615,7 @@ def mordor_canon(doc, branches=True):
     s = doc["structure"]
     drop = ("Init", "Terminal") if branches else ("Init", "Terminal", "Branch")
     keep = {e["id"]: e for e in s["events"] if e["type"] not in drop}
-    parent, children, roots = forest(keep, s["po"])
+    parent, children, roots, joins = forest(keep, s["po"])
     origin_of = s["origin"]
 
     def label(i):
@@ -612,7 +636,7 @@ def mordor_canon(doc, branches=True):
         else:
             body = (t, x(e["loc"]) if e["loc"] else None)
         return repr(body)
-    return children, roots, label
+    return children, roots, with_joins(label, joins)
 
 
 # ---------------------------------------------------------------------------

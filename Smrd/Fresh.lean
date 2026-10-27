@@ -60,6 +60,9 @@ namespace EventStructure
 @[simp] theorem ids_plus (k₁ k₂ : EventStructure) : (k₁.plus k₂).ids = k₁.ids ++ k₂.ids := by
   simp [plus, ids]
 
+@[simp] theorem ids_join (k₁ k₂ : EventStructure) : (k₁.join k₂).ids = k₁.ids ++ k₂.ids := by
+  simp [join, ids]
+
 @[simp] theorem ids_addRMW (k : EventStructure) (r : EventId) (b : Expr) (w : EventId) :
     (k.addRMW r b w).ids = k.ids := rfl
 
@@ -227,23 +230,32 @@ theorem mk_cas (ctx : Ctx) (pc₀ pc₁ pc₂ : List Nat) (φ : List Guard) (kin
   refine ⟨?_, InRange.cons (InRange.cons (InRange.cons (InRange.append a₂ b₂ a₁ b₁) ?_) ?_) ?_⟩
   all_goals (unfold EventId at *; omega)
 
-/-- Parallel composition: a fresh thread, and the coproduct of two generators. -/
+/-- Parallel composition: a fresh thread, the coproduct of two generators, and
+    the join with a third, the continuation. -/
 theorem par (m₁ : Gen EventStructure) (m₂ : ThreadId → Gen EventStructure)
-    (h₁ : Gen.Fresh m₁) (h₂ : ∀ t, Gen.Fresh (m₂ t)) :
+    (m₃ : Gen EventStructure)
+    (h₁ : Gen.Fresh m₁) (h₂ : ∀ t, Gen.Fresh (m₂ t)) (h₃ : Gen.Fresh m₃) :
     Gen.Fresh (do
       let t ← freshThread
-      let k₁ ← m₁
-      let k₂ ← m₂ t
-      pure (k₁.plus k₂)) := by
+      let ks ← do
+        let k₁ ← m₁
+        let k₂ ← m₂ t
+        pure (k₁.plus k₂)
+      let k ← m₃
+      pure (ks.join k)) := by
   intro s
   have hr : StateT.run (do
       let t ← freshThread
-      let k₁ ← m₁
-      let k₂ ← m₂ t
-      pure (k₁.plus k₂) : Gen EventStructure) s
-      = ((m₁.run ⟨s.nextId, s.nextThread + 1⟩).1.plus
-          ((m₂ s.nextThread).run (m₁.run ⟨s.nextId, s.nextThread + 1⟩).2).1,
-         ((m₂ s.nextThread).run (m₁.run ⟨s.nextId, s.nextThread + 1⟩).2).2) := rfl
+      let ks ← do
+        let k₁ ← m₁
+        let k₂ ← m₂ t
+        pure (k₁.plus k₂)
+      let k ← m₃
+      pure (ks.join k) : Gen EventStructure) s
+      = (((m₁.run ⟨s.nextId, s.nextThread + 1⟩).1.plus
+          ((m₂ s.nextThread).run (m₁.run ⟨s.nextId, s.nextThread + 1⟩).2).1).join
+          (m₃.run ((m₂ s.nextThread).run (m₁.run ⟨s.nextId, s.nextThread + 1⟩).2).2).1,
+         (m₃.run ((m₂ s.nextThread).run (m₁.run ⟨s.nextId, s.nextThread + 1⟩).2).2).2) := rfl
   rw [hr]
   obtain ⟨a₁, a₂⟩ := h₁ ⟨s.nextId, s.nextThread + 1⟩
   generalize m₁.run ⟨s.nextId, s.nextThread + 1⟩ = r₁ at a₁ a₂ ⊢
@@ -251,8 +263,12 @@ theorem par (m₁ : Gen EventStructure) (m₂ : ThreadId → Gen EventStructure)
   obtain ⟨b₁, b₂⟩ := h₂ s.nextThread s₁
   generalize (m₂ s.nextThread).run s₁ = r₂ at b₁ b₂ ⊢
   obtain ⟨k₂, s₂⟩ := r₂
-  simp only [ids_plus] at a₁ a₂ b₁ b₂ ⊢
-  exact ⟨Nat.le_trans a₁ b₁, InRange.append a₂ b₂ a₁ b₁⟩
+  obtain ⟨c₁, c₂⟩ := h₃ s₂
+  generalize m₃.run s₂ = r₃ at c₁ c₂ ⊢
+  obtain ⟨k₃, s₃⟩ := r₃
+  simp only [ids_plus, ids_join] at a₁ a₂ b₁ b₂ c₁ c₂ ⊢
+  exact ⟨Nat.le_trans (Nat.le_trans a₁ b₁) c₁,
+    InRange.append (InRange.append a₂ b₂ a₁ b₁) c₂ (Nat.le_trans a₁ b₁) c₁⟩
 
 end Gen.Fresh
 
@@ -299,10 +315,12 @@ theorem interp_fresh : ∀ (N : Nat) (n : Bounds) (ctx : Ctx) (pc : List Nat) (s
           (fun ρ' φ' => interp_fresh N n ctx (pc ++ [1]) s₂ ρ' κ φ' (by omega) hκ)
     | par s₁ s₂ =>
         simp only [Stmt.loops, sumB_append, Stmt.par.sizeOf_spec] at hN
-        exact par (interp n ctx (pc ++ [0]) s₁ ρ κ φ)
-          (fun t => interp n { ctx with thread := t } (pc ++ [1]) s₂ ρ κ φ)
-          (interp_fresh N n ctx (pc ++ [0]) s₁ ρ κ φ (by omega) hκ)
-          (fun t => interp_fresh N n _ (pc ++ [1]) s₂ ρ κ φ (by omega) hκ)
+        exact par (interp n ctx (pc ++ [0]) s₁ ρ (fun _ _ => pure .empty) φ)
+          (fun t => interp n { ctx with thread := t } (pc ++ [1]) s₂ ρ (fun _ _ => pure .empty) φ)
+          (κ ρ φ)
+          (interp_fresh N n ctx (pc ++ [0]) s₁ ρ _ φ (by omega) (fun _ _ => pure_empty))
+          (fun t => interp_fresh N n _ (pc ++ [1]) s₂ ρ _ φ (by omega) (fun _ _ => pure_empty))
+          (hκ _ _)
     | ite b s₁ s₂ =>
         simp only [Stmt.loops, sumB_append, Stmt.ite.sizeOf_spec] at hN
         exact mk_branch ctx pc φ _
@@ -348,6 +366,7 @@ structure ESInv (Q : EventStructure → Prop) : Prop where
   empty  : Q EventStructure.empty
   «prefix» : ∀ e k, Q k → Q (EventStructure.prefix e k)
   plus   : ∀ k k', Q k → Q k' → Q (k.plus k')
+  join   : ∀ k k', Q k → Q k' → Q (k.join k')
   addRMW : ∀ k r c w, Q k → RMWShape k r w → Q (k.addRMW r c w)
 
 /-- Every structure `m` generates has the property `Q`. -/
@@ -400,8 +419,12 @@ theorem interp_inv {Q : EventStructure → Prop} (hQ : ESInv Q) :
         rw [interp.eq_def]
         simp only [Stmt.loops, sumB_append, Stmt.par.sizeOf_spec] at hN
         intro σ
-        exact hQ.plus _ _ (interp_inv hQ N n ctx (pc ++ [0]) s₁ ρ κ φ (by omega) hκ _)
-          (interp_inv hQ N n _ (pc ++ [1]) s₂ ρ κ φ (by omega) hκ _)
+        exact hQ.join _ _ (hQ.plus _ _
+          (interp_inv hQ N n ctx (pc ++ [0]) s₁ ρ (fun _ _ => pure .empty) φ (by omega)
+            (fun _ _ _ => hQ.empty) _)
+          (interp_inv hQ N n _ (pc ++ [1]) s₂ ρ (fun _ _ => pure .empty) φ (by omega)
+            (fun _ _ _ => hQ.empty) _))
+          (hκ _ _ _)
     | ite b s₁ s₂ =>
         rw [interp.eq_def]
         simp only [Stmt.loops, sumB_append, Stmt.ite.sizeOf_spec] at hN
@@ -555,26 +578,36 @@ theorem mk_cas (ctx : Ctx) (pc₀ pc₁ pc₂ : List Nat) (φ : List Guard) (kin
         · exact Or.inr (Or.inr (Or.inr (hF φF _ i (by (try dsimp only); unfold EventId at *; omega) hi₂)))
 
 theorem par (m₁ : Gen EventStructure) (m₂ : ThreadId → Gen EventStructure)
-    (h₁ : Gen.Covers m₁) (h₂ : ∀ t, Gen.Covers (m₂ t)) :
+    (m₃ : Gen EventStructure)
+    (h₁ : Gen.Covers m₁) (h₂ : ∀ t, Gen.Covers (m₂ t)) (h₃ : Gen.Covers m₃) :
     Gen.Covers (do
       let t ← freshThread
-      let k₁ ← m₁
-      let k₂ ← m₂ t
-      pure (k₁.plus k₂)) := by
+      let ks ← do
+        let k₁ ← m₁
+        let k₂ ← m₂ t
+        pure (k₁.plus k₂)
+      let k ← m₃
+      pure (ks.join k)) := by
   intro s i hi₁ hi₂
   have hr : StateT.run (do
       let t ← freshThread
-      let k₁ ← m₁
-      let k₂ ← m₂ t
-      pure (k₁.plus k₂) : Gen EventStructure) s
-      = ((m₁.run ⟨s.nextId, s.nextThread + 1⟩).1.plus
-          ((m₂ s.nextThread).run (m₁.run ⟨s.nextId, s.nextThread + 1⟩).2).1,
-         ((m₂ s.nextThread).run (m₁.run ⟨s.nextId, s.nextThread + 1⟩).2).2) := rfl
+      let ks ← do
+        let k₁ ← m₁
+        let k₂ ← m₂ t
+        pure (k₁.plus k₂)
+      let k ← m₃
+      pure (ks.join k) : Gen EventStructure) s
+      = (((m₁.run ⟨s.nextId, s.nextThread + 1⟩).1.plus
+          ((m₂ s.nextThread).run (m₁.run ⟨s.nextId, s.nextThread + 1⟩).2).1).join
+          (m₃.run ((m₂ s.nextThread).run (m₁.run ⟨s.nextId, s.nextThread + 1⟩).2).2).1,
+         (m₃.run ((m₂ s.nextThread).run (m₁.run ⟨s.nextId, s.nextThread + 1⟩).2).2).2) := rfl
   rw [hr] at hi₂ ⊢
-  simp only [ids_plus, List.mem_append]
+  simp only [ids_plus, ids_join, List.mem_append]
   by_cases hk : i < (m₁.run ⟨s.nextId, s.nextThread + 1⟩).2.nextId
-  · exact Or.inl (h₁ _ i hi₁ hk)
-  · exact Or.inr (h₂ _ _ i (by unfold EventId at *; omega) hi₂)
+  · exact Or.inl (Or.inl (h₁ _ i hi₁ hk))
+  · by_cases hk₂ : i < ((m₂ s.nextThread).run (m₁.run ⟨s.nextId, s.nextThread + 1⟩).2).2.nextId
+    · exact Or.inl (Or.inr (h₂ _ _ i (by unfold EventId at *; omega) hk₂))
+    · exact Or.inr (h₃ _ i (by unfold EventId at *; omega) hi₂)
 
 end Gen.Covers
 
@@ -617,10 +650,12 @@ theorem interp_covers : ∀ (N : Nat) (n : Bounds) (ctx : Ctx) (pc : List Nat) (
           (fun ρ' φ' => interp_covers N n ctx (pc ++ [1]) s₂ ρ' κ φ' (by omega) hκ)
     | par s₁ s₂ =>
         simp only [Stmt.loops, sumB_append, Stmt.par.sizeOf_spec] at hN
-        exact par (interp n ctx (pc ++ [0]) s₁ ρ κ φ)
-          (fun t => interp n { ctx with thread := t } (pc ++ [1]) s₂ ρ κ φ)
-          (interp_covers N n ctx (pc ++ [0]) s₁ ρ κ φ (by omega) hκ)
-          (fun t => interp_covers N n _ (pc ++ [1]) s₂ ρ κ φ (by omega) hκ)
+        exact par (interp n ctx (pc ++ [0]) s₁ ρ (fun _ _ => pure .empty) φ)
+          (fun t => interp n { ctx with thread := t } (pc ++ [1]) s₂ ρ (fun _ _ => pure .empty) φ)
+          (κ ρ φ)
+          (interp_covers N n ctx (pc ++ [0]) s₁ ρ _ φ (by omega) (fun _ _ => pure_empty))
+          (fun t => interp_covers N n _ (pc ++ [1]) s₂ ρ _ φ (by omega) (fun _ _ => pure_empty))
+          (hκ _ _)
     | ite b s₁ s₂ =>
         simp only [Stmt.loops, sumB_append, Stmt.ite.sizeOf_spec] at hN
         exact mk_branch ctx pc φ _

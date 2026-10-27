@@ -22,11 +22,23 @@ continuation, so events after a join are generated once per path, with
 distinct ids and value restrictions, as the paper requires for conflict to be
 carried by `valres` alone.
 
+A parallel composition `P₁ ∥ P₂` forks and joins: each thread ends in the
+empty continuation, and `κ` runs once, after both, in the parent's thread (the
+left one), with the register state and value restriction the block was entered
+with; every event of the block is ordered before every event of `κ`
+(`EventStructure.join`). This is MoRDor's semantics of code after `|||`
+(`EventStructure.seq ~join:true`, its fork-join relation `fj`). With it,
+labels are unique in `P̄`: a conflict-free set of events contains at most one
+event per label (`Smrd.Labels`, `labels_unique`, `conflictFree_label_inj`).
+
 ## Deviations from the paper
 
 * **Loop identifiers** are part of the `while` syntax, as the paper assumes
   in Section 3.1.
 * An unassigned register reads as `0`.
+* `⟨P₁ ∥ P₂⟩_{n ρ κ φ}` joins: Definition `def:gen-es` runs `κ` after each
+  thread, so that code after a parallel composition is generated twice, with
+  one label and no conflicting guards; here it runs once, after both threads.
 -/
 
 /-! ## Program expressions and syntax -/
@@ -115,6 +127,23 @@ def «prefix» (e : Event) (k : EventStructure) : EventStructure :=
     fresh-id generator. -/
 def plus (s₁ s₂ : EventStructure) : EventStructure :=
   ⟨s₁.events ++ s₂.events, s₁.po ++ s₂.po, s₁.rmw ++ s₂.rmw⟩
+
+/-- The join `𝔼₁ ; 𝔼₂` after a parallel composition: every event of `𝔼₁` is
+    ordered before every event of `𝔼₂`, `E₁ × E₂` (MoRDor's
+    `EventStructure.seq ~join:true`, whose pairs it also records as its
+    fork-join relation `fj`). -/
+def join (s₁ s₂ : EventStructure) : EventStructure :=
+  { events := s₁.events ++ s₂.events
+    po     := s₁.po ++ s₂.po ++ s₁.ids.flatMap (fun a => s₂.ids.map (fun b => (a, b)))
+    rmw    := s₁.rmw ++ s₂.rmw }
+
+/-- Joining with nothing after it adds nothing: a parallel composition in
+    tail position generates the coproduct of its sides. -/
+@[simp] theorem join_empty (s : EventStructure) : s.join empty = s := by
+  obtain ⟨evs, po, rmw⟩ := s
+  have h : ∀ l : List EventId, l.flatMap (fun _ => ([] : List (EventId × EventId))) = [] := by
+    intro l; induction l <;> simp_all
+  simp [join, empty, ids, h]
 
 /-- `rmw(𝔼, e_r, e_w, b)` -/
 def addRMW (es : EventStructure) (r : EventId) (b : Expr) (w : EventId) : EventStructure :=
@@ -258,10 +287,16 @@ def interp (n : Bounds) (ctx : Ctx) (pc : List Nat) (s : Stmt) (ρ : RegState)
   | .seq s₁ s₂ =>
       interp n ctx (pc ++ [0]) s₁ ρ (fun ρ' φ' => interp n ctx (pc ++ [1]) s₂ ρ' κ φ') φ
   | .par s₁ s₂ => do
+      -- Fork and join: each side ends in the empty continuation, and `κ` runs
+      -- once, after both, in the parent's thread (the left side's), with the
+      -- register state and value restriction the block was entered with.
       let t ← freshThread
-      let k₁ ← interp n ctx (pc ++ [0]) s₁ ρ κ φ
-      let k₂ ← interp n { ctx with thread := t } (pc ++ [1]) s₂ ρ κ φ
-      pure (k₁.plus k₂)
+      let ks ← do
+        let k₁ ← interp n ctx (pc ++ [0]) s₁ ρ (fun _ _ => pure .empty) φ
+        let k₂ ← interp n { ctx with thread := t } (pc ++ [1]) s₂ ρ (fun _ _ => pure .empty) φ
+        pure (k₁.plus k₂)
+      let k ← κ ρ φ
+      pure (ks.join k)
   | .ite b s₁ s₂ => do
       let c := b.den ρ
       let eb ← mkEvent ctx pc φ (fun _ => .branch c)

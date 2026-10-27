@@ -45,6 +45,15 @@ theorem Good.plus {A : Sym → Prop} {k₁ k₂ : EventStructure} (h₁ : Good A
   · exact ⟨fun α hα => ((h₁ e he).1 α hα).imp id (fun h => List.mem_append_left _ h), (h₁ e he).2⟩
   · exact ⟨fun α hα => ((h₂ e he).1 α hα).imp id (fun h => List.mem_append_right _ h), (h₂ e he).2⟩
 
+theorem Good.join {A : Sym → Prop} {k₁ k₂ : EventStructure} (h₁ : Good A k₁) (h₂ : Good A k₂) :
+    Good A (k₁.join k₂) := by
+  intro e he
+  rcases List.mem_append.1 he with he | he
+  · exact ⟨fun α hα => ((h₁ e he).1 α hα).imp id
+      (fun h => List.mem_append_left _ (List.mem_append_left _ h)), (h₁ e he).2⟩
+  · exact ⟨fun α hα => ((h₂ e he).1 α hα).imp id
+      (fun h => List.mem_append_left _ (List.mem_append_right _ h)), (h₂ e he).2⟩
+
 theorem Good.addRMW {A : Sym → Prop} {k : EventStructure} (h : Good A k) (r : EventId) (c : Expr)
     (w : EventId) : Good A (k.addRMW r c w) := h
 
@@ -270,8 +279,13 @@ theorem interp_good :
         rw [interp.eq_def]
         simp only [Stmt.loops, sumB_append, Stmt.par.sizeOf_spec] at hN
         intro σ
-        exact Good.plus (interp_good N n ctx (pc ++ [0]) s₁ ρ κ φ A (by omega) hS hκ _)
-          (interp_good N n _ (pc ++ [1]) s₂ ρ κ φ A (by omega) hS hκ _)
+        -- the threads end in the empty continuation; `κ` runs once, after both
+        exact Good.join (Good.plus
+          (interp_good N n ctx (pc ++ [0]) s₁ ρ _ φ A (by omega) hS
+            (fun _ _ _ _ _ _ => good_empty _) _)
+          (interp_good N n _ (pc ++ [1]) s₂ ρ _ φ A (by omega) hS
+            (fun _ _ _ _ _ _ => good_empty _) _))
+          (hκ A (fun _ h => h) ρ φ hS _)
     | ite b s₁ s₂ =>
         rw [interp.eq_def]
         simp only [Stmt.loops, sumB_append, Stmt.ite.sizeOf_spec] at hN
