@@ -21,6 +21,10 @@ import Smrd.RMWElision
 import Smrd.DPPast
 import Smrd.LiftCross
 import Smrd.FwdAcrossAlias
+import Smrd.FwdEntails
+import Smrd.FwdEntailsCheck
+import Smrd.FwdPastWindow
+import Smrd.FwdChain
 import Smrd.SymWFDenote
 import Smrd.Labels
 import Smrd.RoutineHyps
