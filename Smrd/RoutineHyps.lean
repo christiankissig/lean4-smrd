@@ -23,6 +23,14 @@ where they hold; where they do not, a counterexample.
   Arithmetic may fail, on a division by zero or an ill-typed operand, under
   every model of `P ∧ φ_rf` (`*(1 / 0)`); `⟨P⟩_n` has `Total` locations where
   the program copies pointers rather than computing them (`Stmt.PtrWF`).
+* **Pointers with a constant offset** (`denote_offLocs`,
+  `locModel_of_denote_off`): `Stmt.PtrOffWF R C` also allows `*(r + c)` and
+  `*(r + rc)`, for a pointer register `r`, a numeral `c` and a register `rc` of
+  constants, as RCU's `*(rrcu + rtid)` (`rcu1_ptrOffWF`). Such a location
+  evaluates where its base is an address or an integer, which `P ∧ φ_rf` does
+  not force (`locModel_of_offset_false`); the location model asks for a model
+  typing the bases (`AddrTypedAt`). `Stmt.PtrWF` is the special case
+  (`Stmt.PtrWF.ptrOffWF`).
 * **A location model** (`locModel_of_sat`, `locModel_of_totalLocs`,
   `locModel_of_denote`): the frozen `P` entails the justifications'
   predicates and `ψ_δ` of the shared context (`Pm_of_P`); a model of it, of
@@ -498,6 +506,325 @@ theorem locModel_of_denote {R : Reg → Prop} {n : Bounds} {P : Stmt} (hwf : P.P
 
 end Execution
 
+/-! ## Pointers with a constant offset
+
+`Stmt.PtrWF` forbids `*(r + c)`, which the RCU programs use to address a
+thread's slot in an array (`*(rrcu + rtid)`, `*(rrcu + 0)`).
+`Stmt.PtrOffWF R C` allows a dereference of a pointer register of `R` plus a
+numeral or plus a register of `C`, the *constant registers*, which hold
+numerals. The location `b + c` this generates evaluates exactly when the base
+`b` takes an address or an integer, not a boolean (`Expr.OffLoc.eval_isSome`).
+That is a typing condition no constraint of the execution supplies: a pointer
+register loaded from a location written a boolean gets a symbol that `φ_rf`
+makes boolean (`locModel_of_offset_false`). The location model
+(`locModel_of_denote_off`) therefore asks for a model of
+`P ∧ valres_X ∧ φ_rf` under which the bases of the offset locations of `X`
+are not booleans (`AddrTypedAt`). `Stmt.PtrWF R` is the special case without
+offsets and constant registers (`Stmt.PtrWF.ptrOffWF`), where
+`locModel_of_denote` needs no typing condition. -/
+
+/-- A location with a constant offset: a value, a symbol, or one of these plus
+    a numeral, `b + c`. -/
+def Expr.OffLoc : Expr → Prop
+  | .val _ | .sym _ => True
+  | .bin .add b (.val (.num _)) => b.Total
+  | _ => False
+
+theorem Expr.Total.offLoc {e : Expr} (h : e.Total) : e.OffLoc := by
+  cases e <;> simp_all [Expr.Total, Expr.OffLoc]
+
+/-- The base of an offset location `b + c` takes an address or an integer
+    under `f`, not a boolean. Other locations ask nothing. -/
+def Expr.AddrAt (f : Valuation) : Expr → Prop
+  | .bin .add b _ => ∀ x, b.eval f ≠ some (.bool x)
+  | _ => True
+
+/-- An offset location evaluates where its base is not a boolean. -/
+theorem Expr.OffLoc.eval_isSome {l : Expr} (h : l.OffLoc) {f : Valuation} (ha : l.AddrAt f) :
+    (l.eval f).isSome := by
+  cases l with
+  | val _ => rfl
+  | sym _ => rfl
+  | bin op b c =>
+      cases op <;> simp only [Expr.OffLoc] at h
+      cases c with
+      | val v =>
+          cases v with
+          | num n =>
+              simp only [Expr.AddrAt] at ha
+              obtain ⟨v, hv⟩ := Option.isSome_iff_exists.1 (h.eval_isSome f)
+              cases v with
+              | num m => simp [Expr.eval, hv, ArithOp.applyVal, ArithOp.apply]
+              | loc l => simp [Expr.eval, hv, ArithOp.applyVal]
+              | bool x => exact absurd hv (ha x)
+          | loc _ => exact h.elim
+          | bool _ => exact h.elim
+      | _ => exact h.elim
+  | _ => exact h.elim
+
+/-- The location of an event of this kind, if any, is an `OffLoc`. -/
+def EventKind.LocOff : EventKind → Prop
+  | .read _ l _ _ | .write _ l _ _ | .dealloc l => l.OffLoc
+  | _ => True
+
+theorem Event.loc_off {e : Event} (h : e.kind.LocOff) {l : Expr} (hl : e.loc = some l) :
+    l.OffLoc := by
+  obtain ⟨id, kind, label, guards⟩ := e
+  cases kind <;> simp_all [Event.loc, EventKind.LocOff] <;> subst hl <;> trivial
+
+/-- Every location of `k` is an `OffLoc`. -/
+def EventStructure.OffLocs (k : EventStructure) : Prop :=
+  ∀ e ∈ k.events, ∀ l, e.loc = some l → l.OffLoc
+
+theorem EventStructure.TotalLocs.offLocs {k : EventStructure} (h : k.TotalLocs) : k.OffLocs :=
+  fun e he l hl => (h e he l hl).offLoc
+
+/-- The bases of the offset locations of the events of `S` take addresses or
+    integers under `f`. -/
+def AddrTypedAt (es : EventStructure) (S : EvSet) (f : Valuation) : Prop :=
+  ∀ a e l, S a → es.ev a = some e → e.loc = some l → l.AddrAt f
+
+/-- `OffLoc` locations evaluate under a valuation that types their bases. -/
+theorem locsEvalAt_of_offLocs {es : EventStructure} (ht : es.OffLocs) {S : EvSet}
+    {f : Valuation} (ha : AddrTypedAt es S f) : Execution.LocsEvalAt es S f := fun a e l hS he hl => by
+  have he' := he
+  unfold EventStructure.ev at he'
+  exact (ht e (List.mem_of_find?_eq_some he') l hl).eval_isSome (ha a e l hS he hl)
+
+/-- A constant-valued program expression: a numeral or a register of `C`. -/
+def PExpr.Const (C : Reg → Prop) : PExpr → Prop
+  | .num _ => True
+  | .reg c => C c
+  | _ => False
+
+/-- A pointer expression with a constant offset: a register of `R`, a
+    numeral, or a register of `R` plus a numeral or plus a register of `C`. -/
+def PExpr.PtrOff (R C : Reg → Prop) : PExpr → Prop
+  | .reg r => R r
+  | .num _ => True
+  | .bin .add (.reg r) (.num _) => R r
+  | .bin .add (.reg r) (.reg c) => R r ∧ C c
+  | _ => False
+
+theorem PExpr.Ptr.ptrOff {R C : Reg → Prop} {p : PExpr} (h : p.Ptr R) : p.PtrOff R C := by
+  cases p <;> simp_all [PExpr.Ptr, PExpr.PtrOff]
+
+/-- Pointers are computed by constant offsets only: dereferences take a
+    `PExpr.PtrOff` (`*(r + c)`, `*(r + rc)` for `r ∈ R`, `rc ∈ C`) and `free`
+    a register of `R`; a register of `R` is assigned only another register of
+    `R` or a numeral, and a register of `C` only a numeral or another register
+    of `C`, and never the result of a load, `malloc`, `&x`, `FADD` or `CAS`. -/
+def Stmt.PtrOffWF (R C : Reg → Prop) : Stmt → Prop
+  | .seq s₁ s₂ | .par s₁ s₂ | .ite _ s₁ s₂ => s₁.PtrOffWF R C ∧ s₂.PtrOffWF R C
+  | .while _ _ body => body.PtrOffWF R C
+  | .assign r e => (R r → e.Ptr R) ∧ (C r → e.Const C)
+  | .load _ r _ _ | .addrOf r _ | .malloc r _ | .fadd _ _ r _ _ | .cas _ _ r _ _ _ => ¬ C r
+  | .loadPtr _ r p _ => p.PtrOff R C ∧ ¬ C r
+  | .storePtr _ p _ _ => p.PtrOff R C
+  | .free r => R r
+  | _ => True
+
+/-- **`Stmt.PtrWF` is the special case** of `Stmt.PtrOffWF` without constant
+    registers. -/
+theorem Stmt.PtrWF.ptrOffWF {R : Reg → Prop} {s : Stmt} (h : s.PtrWF R) :
+    s.PtrOffWF R (fun _ => False) := by
+  induction s with
+  | seq _ _ ih₁ ih₂ | par _ _ ih₁ ih₂ | ite _ _ _ ih₁ ih₂ => exact ⟨ih₁ h.1, ih₂ h.2⟩
+  | «while» _ _ _ ih => exact ih h
+  | assign _ _ => exact ⟨h, fun h => h.elim⟩
+  | loadPtr _ _ _ _ => exact ⟨PExpr.Ptr.ptrOff h, fun h => h⟩
+  | storePtr _ _ _ _ => exact PExpr.Ptr.ptrOff h
+  | free _ => exact h
+  | _ => simp [Stmt.PtrOffWF]
+
+namespace OffLocsDenote
+
+open EventStructure TotalLocsDenote
+
+/-- The registers of `R` hold values or symbols, those of `C` numerals. -/
+def RegsOK (R C : Reg → Prop) (ρ : RegState) : Prop :=
+  TotalLocsDenote.RegsOK R ρ ∧ ∀ r, C r → ∃ n, ρ.get r = .val (.num n)
+
+theorem RegsOK.set {R C : Reg → Prop} {ρ : RegState} (h : RegsOK R C ρ) (r : Reg) {v : Expr}
+    (hv : R r → v.Total) (hc : C r → ∃ n, v = .val (.num n)) : RegsOK R C (ρ.set r v) := by
+  refine ⟨h.1.set r hv, fun r' hr' => ?_⟩
+  rw [get_set]
+  split
+  · rename_i heq; subst heq; exact hc hr'
+  · exact h.2 r' hr'
+
+/-- `r := v` for a register `r ∉ C` that `v` need not keep in `R`. -/
+theorem RegsOK.set_sym {R C : Reg → Prop} {ρ : RegState} (h : RegsOK R C ρ) (r : Reg)
+    (hr : ¬ C r) (α : Sym) : RegsOK R C (ρ.set r (.sym α)) :=
+  h.set r (fun _ => trivial) (fun hc => absurd hc hr)
+
+theorem RegsOK.const {R C : Reg → Prop} {ρ : RegState} (h : RegsOK R C ρ) {p : PExpr}
+    (hp : p.Const C) : ∃ n, p.den ρ = .val (.num n) := by
+  cases p <;> simp only [PExpr.Const] at hp
+  · exact h.2 _ hp
+  · exact ⟨_, rfl⟩
+
+theorem RegsOK.den {R C : Reg → Prop} {ρ : RegState} (h : RegsOK R C ρ) {p : PExpr}
+    (hp : p.PtrOff R C) : (p.den ρ).OffLoc := by
+  match p, hp with
+  | .reg r, hp => exact (h.1 r hp).offLoc
+  | .num _, _ => trivial
+  | .bin .add (.reg r) (.num _), hp => exact h.1 r hp
+  | .bin .add (.reg r) (.reg c), hp =>
+      obtain ⟨n, hn⟩ := h.2 c hp.2
+      simp only [PExpr.den, hn]
+      exact h.1 r hp.1
+
+theorem offLocs_empty : OffLocs .empty := fun _ he => by cases he
+
+theorem offLocs_prefix {e : Event} {k : EventStructure} (he : e.kind.LocOff)
+    (hk : OffLocs k) : OffLocs («prefix» e k) := by
+  intro e' he' l hl
+  rcases List.mem_cons.1 he' with rfl | he'
+  · exact Event.loc_off he hl
+  · exact hk e' he' l hl
+
+theorem offLocs_plus {k k' : EventStructure} (h : OffLocs k) (h' : OffLocs k') :
+    OffLocs (k.plus k') := by
+  intro e he
+  rcases List.mem_append.1 he with he | he
+  · exact h e he
+  · exact h' e he
+
+theorem offLocs_join {k k' : EventStructure} (h : OffLocs k) (h' : OffLocs k') :
+    OffLocs (k.join k') := by
+  intro e he
+  rcases List.mem_append.1 he with he | he
+  · exact h e he
+  · exact h' e he
+
+theorem offLocs_addRMW {k : EventStructure} (h : OffLocs k) (r : EventId) (c : Expr)
+    (w : EventId) : OffLocs (k.addRMW r c w) := h
+
+theorem glob_off (x : Var) : (Expr.glob x).OffLoc := trivial
+
+open EventStructure in
+/-- The structures `⟨s⟩` generates have `OffLoc` locations, for a program whose
+    pointers are computed by constant offsets only. -/
+theorem interp_offLocs {R C : Reg → Prop} :
+    ∀ (N : Nat) (n : Bounds) (ctx : Ctx) (pc : List Nat) (s : Stmt)
+    (ρ : RegState) (κ : Cont) (φ : List Guard),
+    sumB s.loops n + sizeOf s < N → s.PtrOffWF R C → RegsOK R C ρ →
+    (∀ ρ φ, RegsOK R C ρ → Gen.Holds OffLocs (κ ρ φ)) →
+    Gen.Holds OffLocs (interp n ctx pc s ρ κ φ)
+  | 0, _, _, _, _, _, _, _, hN, _, _, _ => absurd hN (Nat.not_lt_zero _)
+  | N + 1, n, ctx, pc, s, ρ, κ, φ, hN, hwf, hρ, hκ => by
+    have pre1 : ∀ (kind : EventId → EventKind) (m : Event → Gen EventStructure),
+        (∀ i, (kind i).LocOff) → (∀ e, Gen.Holds OffLocs (m e)) →
+        Gen.Holds OffLocs (do let e ← mkEvent ctx pc φ kind; let k ← m e; pure («prefix» e k)) :=
+      fun kind m hk hm σ => offLocs_prefix (hk σ.nextId) (hm _ _)
+    cases s with
+    | skip => rw [interp.eq_def]; exact hκ _ _ hρ
+    | assign r e =>
+        rw [interp.eq_def]
+        exact hκ _ _ (hρ.set r (fun h => hρ.1.den (hwf.1 h)) (fun h => hρ.const (hwf.2 h)))
+    | addrOf r x =>
+        rw [interp.eq_def]
+        exact hκ _ _ (hρ.set r (fun _ => glob_total x) (fun h => absurd h hwf))
+    | load o r x =>
+        rw [interp.eq_def]
+        exact pre1 _ _ (fun _ => glob_off x) (fun _ => hκ _ _ (hρ.set_sym r hwf _))
+    | loadPtr o r p =>
+        rw [interp.eq_def]
+        exact pre1 _ _ (fun _ => hρ.den hwf.1) (fun _ => hκ _ _ (hρ.set_sym r hwf.2 _))
+    | store o x v => rw [interp.eq_def]; exact pre1 _ _ (fun _ => glob_off x) (fun _ => hκ _ _ hρ)
+    | storePtr o p v =>
+        rw [interp.eq_def]; exact pre1 _ _ (fun _ => hρ.den hwf) (fun _ => hκ _ _ hρ)
+    | fence o => rw [interp.eq_def]; exact pre1 _ _ (fun _ => trivial) (fun _ => hκ _ _ hρ)
+    | malloc r sz =>
+        rw [interp.eq_def]
+        exact pre1 _ _ (fun _ => trivial) (fun _ => hκ _ _ (hρ.set_sym r hwf _))
+    | free r =>
+        rw [interp.eq_def]; exact pre1 _ _ (fun _ => (hρ.1 r hwf).offLoc) (fun _ => hκ _ _ hρ)
+    | fadd or ow r x v =>
+        rw [interp.eq_def]
+        intro σ
+        refine offLocs_addRMW (offLocs_prefix ?_ (offLocs_prefix ?_
+          (hκ _ _ (hρ.set_sym r hwf _) _))) _ _ _
+        · exact glob_off x
+        · exact glob_off x
+    | cas or ow r x e₁ e₂ =>
+        rw [interp.eq_def]
+        intro σ
+        refine offLocs_addRMW (offLocs_prefix ?_ (offLocs_prefix ?_
+          (offLocs_plus (offLocs_prefix ?_ (hκ _ _ (hρ.set r ?_ ?_) _))
+            (hκ _ _ (hρ.set r ?_ ?_) _)))) _ _ _
+        · exact glob_off x
+        · trivial
+        · exact glob_off x
+        · exact fun _ => trivial
+        · exact fun h => absurd h hwf
+        · exact fun _ => trivial
+        · exact fun h => absurd h hwf
+    | seq s₁ s₂ =>
+        rw [interp.eq_def]
+        simp only [Stmt.loops, sumB_append, Stmt.seq.sizeOf_spec] at hN
+        exact interp_offLocs N n ctx (pc ++ [0]) s₁ ρ _ φ (by omega) hwf.1 hρ
+          (fun ρ' φ' hρ' => interp_offLocs N n ctx (pc ++ [1]) s₂ ρ' κ φ' (by omega) hwf.2 hρ' hκ)
+    | par s₁ s₂ =>
+        rw [interp.eq_def]
+        simp only [Stmt.loops, sumB_append, Stmt.par.sizeOf_spec] at hN
+        intro σ
+        exact offLocs_join (offLocs_plus
+          (interp_offLocs N n ctx (pc ++ [0]) s₁ ρ (fun _ _ => pure .empty) φ (by omega) hwf.1 hρ
+            (fun _ _ _ _ => offLocs_empty) _)
+          (interp_offLocs N n _ (pc ++ [1]) s₂ ρ (fun _ _ => pure .empty) φ (by omega) hwf.2 hρ
+            (fun _ _ _ _ => offLocs_empty) _))
+          (hκ _ _ hρ _)
+    | ite b s₁ s₂ =>
+        rw [interp.eq_def]
+        simp only [Stmt.loops, sumB_append, Stmt.ite.sizeOf_spec] at hN
+        intro σ
+        exact offLocs_prefix trivial (offLocs_plus
+          (interp_offLocs N n ctx _ s₁ ρ κ _ (by omega) hwf.1 hρ hκ _)
+          (interp_offLocs N n ctx _ s₂ ρ κ _ (by omega) hwf.2 hρ hκ _))
+    | «while» ℓ b body =>
+        rw [interp.eq_def]
+        dsimp only
+        split
+        · exact fun _ => offLocs_empty
+        · simp only [Stmt.loops, sumB_cons, Stmt.while.sizeOf_spec] at hN
+          have h₁ := sumB_dec_le body.loops n ℓ
+          have h₂ := Bounds.dec_self n ℓ
+          intro σ
+          exact offLocs_prefix trivial (offLocs_plus
+            (interp_offLocs N (n.dec ℓ) _ _ body ρ _ _ (by omega) hwf hρ
+              (fun ρ' φ' hρ' => interp_offLocs N (n.dec ℓ) _ pc (.while ℓ b body) ρ' κ φ'
+                (by simp only [Stmt.loops, sumB_cons, Stmt.while.sizeOf_spec]; omega) hwf hρ' hκ) _)
+            (hκ _ _ hρ _))
+
+end OffLocsDenote
+
+/-- **The locations of `⟨P⟩_n` are `OffLoc`s** for a program whose pointers are
+    computed by constant offsets only (`Stmt.PtrOffWF`). -/
+theorem denote_offLocs {R C : Reg → Prop} (n : Bounds) {P : Stmt} (hwf : P.PtrOffWF R C) :
+    (denote n P).OffLocs :=
+  OffLocsDenote.interp_offLocs _ n ⟨0, []⟩ [] P [] (fun _ _ => pure .empty) []
+    (Nat.lt_succ_self _) hwf
+    ⟨fun r _ => by simp [RegState.get, List.lookup, Expr.num, Expr.Total],
+     fun r _ => ⟨0, by simp [RegState.get, List.lookup, Expr.num]⟩⟩
+    (fun _ _ _ _ => OffLocsDenote.offLocs_empty) {}
+
+namespace Execution
+
+/-- **A location model in `⟨P⟩_n`** for a program whose pointers are computed
+    by constant offsets only: a model of `P ∧ valres_X ∧ φ_rf` under which the
+    bases of the offset locations of `X` take addresses or integers. -/
+theorem locModel_of_denote_off {R C : Reg → Prop} {n : Bounds} {P : Stmt}
+    (hwf : P.PtrOffWF R C) {x : Execution}
+    (hs : ∃ f, x.P (denote n P) f ∧ x.valresX (denote n P) f ∧ x.phiRf (denote n P) f ∧
+      AddrTypedAt (denote n P) x.X f) :
+    LocModel (denote n P) x := by
+  obtain ⟨f, hP, hv, hrf, ha⟩ := hs
+  exact locModel_of_sat ⟨f, hP, hv, hrf, locsEvalAt_of_offLocs (denote_offLocs n hwf) ha⟩
+
+end Execution
+
 /-! ## Counterexamples -/
 
 namespace RoutineHyps
@@ -580,5 +907,101 @@ theorem xIte_not_locModel : ¬ LocModel esIte xIte := by
 theorem locModel_of_phi_false_valres : ∃ (P : Stmt) (n : Bounds) (x : Execution),
     x.phi (denote n P) ∧ ¬ LocModel (denote n P) x :=
   ⟨progIte, _, xIte, denote_progIte ▸ xIte_phi, denote_progIte ▸ xIte_not_locModel⟩
+
+/-! ### An offset location needs a typed model -/
+
+/-- `x := (0 = 0); r := x; *(r + 0) := 1` -/
+def progBool : Stmt := .seq (.store .rlx "x" (.eq (.num 0) (.num 0)) false)
+  (.seq (.load .rlx "r" "x" false)
+    (.storePtr .rlx (.bin .add (.reg "r") (.num 0)) (.num 1) false))
+
+theorem progBool_ptrOffWF : progBool.PtrOffWF (· = "r") (fun _ => False) := by
+  simp [progBool, Stmt.PtrOffWF, PExpr.PtrOff]
+
+def esBool : EventStructure :=
+  ⟨[wr 0 (Expr.glob "x") (.eq (.num 0) (.num 0)) [0],
+    ⟨1, .read .rlx (Expr.glob "x") 1 false, ⟨0, [1, 0], []⟩, []⟩,
+    wr 2 (.bin .add (.sym 1) (.num 0)) (.num 1) [1, 1]], [(0, 1), (0, 2), (1, 2)], []⟩
+
+unseal interp in
+theorem denote_progBool : denote (fun _ => 0) progBool = esBool := rfl
+
+/-- All three events, the read from the write of `0 = 0`. -/
+def xBool : Execution := ⟨fun a => a = 0 ∨ a = 1 ∨ a = 2, [], fun w r => w = 0 ∧ r = 1⟩
+
+theorem xBool_sat :
+    Sat (fun f => xBool.P esBool f ∧ xBool.valresX esBool f ∧ xBool.phiRf esBool f) := by
+  refine ⟨fun _ => .bool true, ?_⟩
+  show xBool.P esBool _ ∧ xBool.valresX esBool _ ∧ (_ ∧ _ ∧ _)
+  refine ⟨fun j hj => (by cases hj), ?_, ?_, ?_, ?_⟩
+  · rintro a e (rfl | rfl | rfl) he <;> cases he <;>
+      simp [Event.valres, Expr.conj, Expr.holds, Expr.eval, Expr.tt, wr]
+  · rintro w r ew er ⟨rfl, rfl⟩ hw hr
+    cases hw; cases hr
+    refine ⟨fun lw lr hlw hlr => ?_, fun vw vr hvw hvr => ?_⟩
+    · simp [Event.loc, wr] at hlw hlr; subst hlw; subst hlr; rfl
+    · simp [Event.val, wr] at hvw hvr; subst hvw; subst hvr
+      simp [Expr.eval, Expr.num]
+  · rintro a e α sz (rfl | rfl | rfl) he hk <;> cases he <;> cases hk
+  · rintro a₁ a₂ e₁ e₂ α₁ α₂ s₁ s₂ (rfl | rfl | rfl) _ _ he₁ _ hk₁ <;> cases he₁ <;> cases hk₁
+
+theorem xBool_not_locModel : ¬ LocModel esBool xBool := by
+  rintro ⟨f, -, hrf, h⟩
+  have hv := (hrf.1 0 1 _ _ ⟨rfl, rfl⟩ rfl rfl).2 _ _ rfl rfl
+  have hl := h 2 _ _ (.inr (.inr rfl)) rfl rfl
+  simp [Expr.eval, Expr.num] at hv
+  simp [Expr.eval, Expr.num, ← hv, ArithOp.applyVal] at hl
+
+/-- **An offset location may evaluate under no model of `P ∧ valres_X ∧ φ_rf`**
+    in `⟨P⟩_n` for a program that is `Stmt.PtrOffWF`: the pointer register
+    reads a boolean, which `φ_rf` forces on its symbol, and `true + 0` does not
+    evaluate. `locModel_of_denote_off` asks for a model typing the bases
+    (`AddrTypedAt`). -/
+theorem locModel_of_offset_false : ∃ (P : Stmt) (R C : Reg → Prop) (n : Bounds)
+    (x : Execution), P.PtrOffWF R C ∧
+    Sat (fun f => x.P (denote n P) f ∧ x.valresX (denote n P) f ∧ x.phiRf (denote n P) f) ∧
+    ¬ LocModel (denote n P) x :=
+  ⟨progBool, _, _, _, xBool, progBool_ptrOffWF, denote_progBool ▸ xBool_sat,
+    denote_progBool ▸ xBool_not_locModel⟩
+
+/-! ### RCU meets `Stmt.PtrOffWF` -/
+
+/-- MoRDor's `programs/episodicity/rcu-1.lit`: a read-side critical section
+    flagged in the thread's slot `*(rrcu + rtid)` of an array, around an
+    increment of the node `C` points to. `FADD` and `CAS` act on `C` by name
+    (the program's `rC := &C`), and the `do`-`while` loop is unrolled once
+    ahead of a `while`; `rsucc` holds `CAS`'s boolean. -/
+def rcu1Body : Stmt :=
+  .seq (.storePtr .rlx (.bin .add (.reg "rrcu") (.reg "rtid")) (.num 0) false)
+  (.seq (.storePtr .rlx (.bin .add (.reg "rrcu") (.reg "rtid")) (.num 1) false)
+  (.seq (.fadd .acq .rel "rs" "C" (.num 0))
+  (.seq (.loadPtr .rlx "rv" (.reg "rs") false)
+  (.seq (.storePtr .rlx (.reg "rn") (.bin .add (.reg "rv") (.num 1)) false)
+    (.cas .acq .rel "rsucc" "C" (.reg "rs") (.reg "rn"))))))
+
+def rcu1 : Stmt :=
+  .seq (.assign "rN" (.num 1))
+  (.seq (.malloc "rrcu" (.reg "rN"))
+  (.seq (.storePtr .rlx (.bin .add (.reg "rrcu") (.num 0)) (.num 0) false)
+  (.seq (.malloc "rinit" (.num 1))
+  (.seq (.storePtr .rlx (.reg "rinit") (.num 0) false)
+  (.seq (.store .rlx "C" (.reg "rinit") false)
+  (.seq (.addrOf "rC" "C")
+  (.seq (.assign "rtid" (.num 0))
+  (.seq (.malloc "rn" (.num 1))
+  (.seq (.storePtr .rlx (.bin .add (.reg "rrcu") (.reg "rtid")) (.num 1) false)
+  (.seq rcu1Body
+  (.seq (.while 0 (.not (.reg "rsucc")) rcu1Body)
+    (.storePtr .rlx (.bin .add (.reg "rrcu") (.reg "rtid")) (.num 0) false))))))))))))
+
+/-- The pointer registers of `rcu1`. -/
+def rcu1R (r : Reg) : Prop := r = "rrcu" ∨ r = "rinit" ∨ r = "rn" ∨ r = "rs" ∨ r = "rC"
+
+theorem rcu1_ptrOffWF : rcu1.PtrOffWF rcu1R (· = "rtid") := by
+  simp [rcu1, rcu1Body, rcu1R, Stmt.PtrOffWF, PExpr.PtrOff, PExpr.Ptr, PExpr.Const]
+
+/-- `rcu1` does not meet `Stmt.PtrWF`, for any pointer registers. -/
+theorem rcu1_not_ptrWF (R : Reg → Prop) : ¬ rcu1.PtrWF R := by
+  simp [rcu1, Stmt.PtrWF, PExpr.Ptr]
 
 end RoutineHyps
