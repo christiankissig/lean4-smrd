@@ -261,10 +261,11 @@ theorem ppoStep_cmp (hinX : ∀ j ∈ x.J, x.X j.w.id) (hF : PoForest es) {a b :
 
 /-! ## Conditions (i) and (ii) -/
 
-/-- A model of MoRDor's combined predicate under which every location of `X`
-    evaluates. -/
+/-- A model of MoRDor's combined predicate and of `φ_rf` under which every
+    location of `X` evaluates. -/
 def LocModel (es : EventStructure) (x : Execution) : Prop :=
-  ∃ f, x.Pm es f ∧ ∀ a e l, x.X a → es.ev a = some e → e.loc = some l → (l.eval f).isSome
+  ∃ f, x.Pm es f ∧ x.phiRf es f ∧
+    ∀ a e l, x.X a → es.ev a = some e → e.loc = some l → (l.eval f).isSome
 
 theorem X_of_XwF (hnf : x.FenceFree es) {a : EventId} (h : x.XwF es a) : x.X a := by
   rcases h with h | h
@@ -284,10 +285,10 @@ theorem poloc_dep (hnf : x.FenceFree es) (hirr : ∀ a, ¬ es.poR a a)
   obtain ⟨⟨hXa, hXb, hpo⟩, ea, eb, la, lb, hea, heb, hla, hlb, heq⟩ := h
   have ha := X_of_XwF hnf hXa
   have hb := X_of_XwF hnf hXb
-  obtain ⟨f, hP, hdef⟩ := hm
+  obtain ⟨f, hP, hrf, hdef⟩ := hm
   obtain ⟨va, hva⟩ := Option.isSome_iff_exists.1 (hdef a ea la ha hea hla)
   obtain ⟨vb, hvb⟩ := Option.isSome_iff_exists.1 (hdef b eb lb hb heb hlb)
-  have hv : va = vb := heq f (P_of_Pm hP) va vb hva hvb
+  have hv : va = vb := Option.some.inj (hva ▸ hvb ▸ heq f (P_of_Pm hP) hrf)
   subst hv
   have hal : es.mayAlias (x.Pm es) a b :=
     ⟨ea, eb, la, lb, hea, heb, hla, hlb, f, hP, by
@@ -371,10 +372,10 @@ theorem poloc_dep_ne (hnf : x.FenceFree es) (hirr : ∀ a, ¬ es.poR a a) (hm : 
   obtain ⟨⟨hXa, hXb, hpo⟩, ea, eb, la, lb, hea, heb, hla, hlb, heq⟩ := h
   have ha := X_of_XwF hnf hXa
   have hb := X_of_XwF hnf hXb
-  obtain ⟨f, hP, hdef⟩ := hm
+  obtain ⟨f, hP, hrf, hdef⟩ := hm
   obtain ⟨va, hva⟩ := Option.isSome_iff_exists.1 (hdef a ea la ha hea hla)
   obtain ⟨vb, hvb⟩ := Option.isSome_iff_exists.1 (hdef b eb lb hb heb hlb)
-  have hv : va = vb := heq f (P_of_Pm hP) va vb hva hvb
+  have hv : va = vb := Option.some.inj (hva ▸ hvb ▸ heq f (P_of_Pm hP) hrf)
   subst hv
   have hal : es.mayAlias (x.Pm es) a b :=
     ⟨ea, eb, la, lb, hea, heb, hla, hlb, f, hP, by

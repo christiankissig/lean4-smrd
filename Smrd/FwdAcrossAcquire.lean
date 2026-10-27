@@ -375,7 +375,8 @@ theorem locOf_F {a b : EventId} (h : xF.sameLoc esA a b) : locOf esA a = locOf e
   obtain ⟨ea, eb, la, lb, ha, hb, hla, hlb, heq⟩ := h
   obtain ⟨x, rfl⟩ := gA ea (ev_inv ha).1 _ hla
   obtain ⟨y, rfl⟩ := gA eb (ev_inv hb).1 _ hlb
-  have := heq (fun _ => .num 0) (P_F _) _ _ rfl rfl
+  obtain ⟨f, hP, hrf⟩ := phi_F.2.2
+  have := heq f hP hrf
   cases this
   simp [locOf, ha, hb, hla, hlb]
 
