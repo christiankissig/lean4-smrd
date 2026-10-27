@@ -22,5 +22,6 @@ import Smrd.DPPast
 import Smrd.LiftCross
 import Smrd.SymWFDenote
 import Smrd.Labels
+import Smrd.RoutineHyps
 
 def hello := "world"
