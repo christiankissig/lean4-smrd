@@ -12,7 +12,7 @@ in `≼_rmw` before `Δ_E` is removed, and a read forwarded from a write
 `≼_alias`-before it is remapped onto that write.
 
 The predicate is semantic, so that the restricted predicates `⌈P⌉ᵢ` of
-Appendix B.2 (`EpisodicLoops.Restriction`, in `lean4-episodic-loops`) can be passed for `P`. The lemmas at the end
+Appendix B.2 can be passed for `P`. The lemmas at the end
 record how `≼` depends on `P`: only through the satisfiability of alias
 equations and the entailment of read-modify-write conditions.
 -/
