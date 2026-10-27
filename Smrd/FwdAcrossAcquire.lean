@@ -8,18 +8,20 @@ MoRDor's `litmus-tests/own/RSE-across-acquire.lit`. RC11 forbids `r0 = 1` with
 `x` ending at `2`: `x := 2 ⊑ flag := 1 →sw r0 ⊑ x := 1` (the second), so
 `x := 2` is coherence-before the second `x := 1` (`rc11_forbids`).
 
-Forwarding (store-store, redundant-store elimination) forwards the first
-`x := 1` into the second and drops the second, across the acquire; nothing
-restricts it. Write Elision's release restriction does not reach it, and
-`CoherenceT`, over `X ∖ †`, admits the outcome (`fwd_admitted`): `x := 2` is
-coherence-last, `φ` and No-Thin-Air hold, and the execution is one of sMRD's.
-`HB_v`-coherence forbids it (`fwd_not_coherenceV`), through the remapped
-backward pair `(r0, x := 1)` (the first) of `ppo_sync`, as MoRDor's sMRD does.
-
-So with coherence over `X ∖ †`, Forwarding needs the dual of Write Elision's
-release restriction: no acquiring read or fence (or `sc` access) `⊑`-between
-the forwarding and the forwarded event. Without it the remapped backward pair
-stays necessary.
+* `blind_admitted`: Forwarding blind to the memory order (`fwdRelBlind`, the
+  paper's) forwards the first `x := 1` into the second (store-store
+  forwarding, redundant-store elimination) and drops the second, across the
+  acquire. Write Elision's release restriction does not reach it, and
+  `CoherenceT`, over `X ∖ †`, admits the outcome: `x := 2` is coherence-last,
+  `φ` and No-Thin-Air hold, and everything else an execution asks holds.
+  `HB_v`-coherence forbids it (`fwd_not_coherenceV`), through the remapped
+  backward pair `(r0, x := 1)` (the first) of `ppo_sync`, as MoRDor's sMRD
+  did before #210.
+* `not_fwdNoAcq`, `not_fwdRel`, `not_generated`: under the acquire
+  restriction (`EventStructure.fwdNoAcq`, MoRDor #210) the forwarding is not
+  generated: `r0` acquires and lies `⊑`-between.
+* `forbidden_T`: with the restriction, no execution admits the outcome under
+  `CoherenceT`, with forwarding and write elision allowed.
 -/
 
 namespace FwdAcrossAcquire
@@ -164,10 +166,10 @@ theorem pre_A {w : Event} (hw : w ∈ esA.events) (hk : preJust w = some (pj w))
     esA.Generated (fun _ => True) (pj w) :=
   .pre hw hk ⟨fun _ => .num 0, SA.holds hw _⟩
 
-/-- Store-store forwarding of the first `x := 1` into the second: the first
-    is the immediate `≼`-predecessor of the second at its location, as the
-    acquire `r0` orders only events after it. -/
-theorem fwd_24 : esA.fwdRel jB 2 4 := by
+/-- Store-store forwarding of the first `x := 1` into the second, blind to
+    the memory order: the first is the immediate `≼`-predecessor of the second
+    at its location, as the acquire `r0` orders only events after it. -/
+theorem fwd_24_blind : esA.fwdRelBlind jB 2 4 := by
   have hδ0 : ∀ a b, ¬ jB.δ.edge a b := by
     intro a b h; rcases h with h | h <;> cases h
   have hppo : ∀ a b, esA.ppo jB.P.holds jB.δ a b → (a, b) ∈ syncL esA ++ aliasL esA :=
@@ -178,8 +180,7 @@ theorem fwd_24 : esA.fwdRel jB 2 4 := by
         by simp [Expr.holds, Expr.eval, Expr.glob]⟩), by decide⟩, ?_⟩,
       po_of (by decide), _, _, _, _, rfl, rfl, rfl, rfl, fun _ _ _ _ h₁ h₂ => by rw [h₁] at h₂; cases h₂; rfl⟩,
     .inr (.inl ⟨⟨_, rfl, rfl⟩, ⟨_, rfl, rfl⟩⟩),
-    fun ⟨e, he, hp⟩ => by cases he; simp [e4, W, Event.isVol] at hp,
-    EventStructure.not_rmwAcc_of_nil _ rfl _⟩
+    fun ⟨e, he, hp⟩ => by cases he; simp [e4, W, Event.isVol] at hp⟩
   rintro ⟨e'', h₁, h₂⟩
   have m₁ := hppo _ _ h₁
   have m₂ := hppo _ _ h₂
@@ -187,23 +188,46 @@ theorem fwd_24 : esA.fwdRel jB 2 4 := by
       p.1 = 2 → q.2 = 4 → p.2 = q.1 → False := by decide
   exact key _ m₁ _ m₂ rfl rfl rfl
 
-theorem gen_jF : esA.Generated (fun _ => True) jF := by
-  refine .fwd (o := .rlx) (x := Expr.glob "x") (e := Expr.num 1) (b := false)
-    (ev₁ := e2) (ev₂ := e4) (pre_A (by simp [esA, e2]) rfl) rfl fwd_24 rfl rfl rfl rfl ?_ ?_
-  · refine ⟨fun a ha => ?_, fun a b e ha hb => ?_⟩
-    · have : ∀ c d, Relation.TransGen
-          ({ jB.δ with f := jB.δ.f ++ [(2, 4)] } : FwdCtx).edge c d → c = 2 ∧ d = 4 := by
-        intro c d h
-        induction h with
-        | single h => rcases h with h | h <;> simp [jB, pj, FwdCtx.empty] at h; exact h
-        | tail _ h ih =>
-            rcases h with h | h <;> simp [jB, pj, FwdCtx.empty] at h
-            obtain ⟨-, rfl⟩ := ih; cases h.1
-      have := this a a ha
-      rw [this.1] at this; cases this.2
-    · rcases ha with h | h <;> simp [jB, pj, FwdCtx.empty] at h
-      rcases hb with h' | h' <;> simp [jB, pj, FwdCtx.empty] at h'
-      rw [h.1, h'.1]
+/-! ## Under the acquire restriction the forwarding is not generated -/
+
+/-- The first `x := 1` may not be forwarded into the second: `r0 :acq= flag`
+    lies between. -/
+theorem not_fwdNoAcq : ¬ esA.fwdNoAcq 2 4 :=
+  fun h => (h.2.2 3 (po_of (by decide)) (po_of (by decide))).1 ⟨_, rfl, rfl⟩
+
+theorem not_fwdRel (j : Justification) : ¬ esA.fwdRel j 2 4 :=
+  fun h => not_fwdNoAcq h.2.1
+
+/-- **No generated justification forwards the first `x := 1` into the
+    second.** -/
+theorem not_generated {Ω : Pred} {j : Justification} (h : esA.Generated Ω j) :
+    (2, 4) ∉ j.δ.f := by
+  intro hp
+  obtain ⟨j₀, h₀⟩ := Generated.fwd_mem esA h _ hp
+  exact not_fwdRel j₀ h₀
+
+/-! ## Blind to the memory order: forwarded, and admitted by `CoherenceT` -/
+
+/-- `jF` as Forwarding would generate it from `jB` along `fwd_24_blind`, were
+    the acquire restriction dropped: the rule's other premises hold. -/
+theorem jF_premises :
+    jB.w.kind = .write .rlx (Expr.glob "x") (Expr.num 1) false ∧
+    FwdCtx.WF { jB.δ with f := jB.δ.f ++ [(2, 4)] } ∧
+    Sat (Pred.and (jB.P.replace (Expr.num 1) (Expr.num 1)).holds (fun _ => True)) := by
+  refine ⟨rfl, ⟨fun a ha => ?_, fun a b e ha hb => ?_⟩, ?_⟩
+  · have : ∀ c d, Relation.TransGen
+        ({ jB.δ with f := jB.δ.f ++ [(2, 4)] } : FwdCtx).edge c d → c = 2 ∧ d = 4 := by
+      intro c d h
+      induction h with
+      | single h => rcases h with h | h <;> simp [jB, pj, FwdCtx.empty] at h; exact h
+      | tail _ h ih =>
+          rcases h with h | h <;> simp [jB, pj, FwdCtx.empty] at h
+          obtain ⟨-, rfl⟩ := ih; cases h.1
+    have := this a a ha
+    rw [this.1] at this; cases this.2
+  · rcases ha with h | h <;> simp [jB, pj, FwdCtx.empty] at h
+    rcases hb with h' | h' <;> simp [jB, pj, FwdCtx.empty] at h'
+    rw [h.1, h'.1]
   · refine ⟨fun _ => .num 0, ?_, trivial⟩
     rw [Expr.replace_same]
     simp [jB, pj, e2, W, Event.valres, Expr.conj, Expr.holds, Expr.eval, Expr.tt]
@@ -247,8 +271,10 @@ theorem no_dp_F {a b : EventId} : ¬ xF.DP a b := by
 
 theorem rfOK_F : RfOK esA rfA := by decide
 
-/-- **The execution forwarding across the acquire is one of sMRD's.** -/
-theorem isExecution_F : xF.IsExecution esA (fun _ => True) where
+/-- **The execution forwarding across the acquire would be one of sMRD's**,
+    were `jF` generated. -/
+theorem isExecution_F (hg : esA.Generated (fun _ => True) jF) :
+    xF.IsExecution esA (fun _ => True) where
   maximal := ⟨fun _ h => h, fun a b _ _ ⟨ea, eb, ha, hb, hn⟩ =>
       hn ⟨fun _ => .num 0, SA.holds (ev_inv ha).1 _, SA.holds (ev_inv hb).1 _⟩,
     fun _ hc hn => absurd hc hn⟩
@@ -256,7 +282,7 @@ theorem isExecution_F : xF.IsExecution esA (fun _ => True) where
     rcases mem_JF hj with rfl | rfl | rfl | rfl | rfl
     · exact pre_A (by simp [esA, e0]) rfl
     · exact pre_A (by simp [esA, e1]) rfl
-    · exact gen_jF
+    · exact hg
     · exact pre_A (by simp [esA, e5]) rfl
     · exact pre_A (by simp [esA, e6]) rfl
   inX j hj := by
@@ -433,17 +459,22 @@ theorem coherenceT_F : xF.CoherenceT esA (relL coF) := by
   · exact (hok _ (hH _ _ hab)).1 rfl
   · exact (hok _ (hH _ _ hab)).2 (hE _ _ hba)
 
-/-- **`CoherenceT` admits the outcome RC11 forbids, by Forwarding across the
-    acquire**: `xF` is an execution of sMRD with `φ`, No-Thin-Air and
-    `CoherentT` under `coF`, in which `r0` reads `flag := 1` and `x := 2` is
-    coherence-last among the writes to `x` of `X ∖ †`. -/
-theorem fwd_admitted :
-    xF.ConsistentT esA (fun _ => True) ∧ xF.CoherenceOrderT esA (relL coF) ∧
+/-- **Without the acquire restriction, `CoherenceT` admits the outcome RC11
+    forbids, by Forwarding across the acquire**: Forwarding blind to the
+    memory order forwards the first `x := 1` into the second
+    (`fwd_24_blind`); the acquire restriction refutes it (`¬ fwdNoAcq 2 4`);
+    everything else an execution asks holds (`isExecution_F`), and so do `φ`,
+    No-Thin-Air and `CoherentT` under `coF`, in which `r0` reads `flag := 1`
+    and `x := 2` is coherence-last among the writes to `x` of `X ∖ †`. -/
+theorem blind_admitted :
+    (esA.fwdRelBlind jB 2 4 ∧ ¬ esA.RMWAcc 4 ∧ ¬ esA.fwdNoAcq 2 4) ∧
+    (esA.Generated (fun _ => True) jF → xF.IsExecution esA (fun _ => True)) ∧
+    xF.phi esA ∧ xF.NoThinAir esA ∧ xF.CoherenceOrderT esA (relL coF) ∧
     xF.CoherenceT esA (relL coF) ∧ xF.rf 6 3 ∧ xF.elided 4 ∧
     ∀ w, xF.XT w → w ≠ 5 → (relL coF) w 5 ∨ ¬ xF.sameLoc esA w 5 := by
-  refine ⟨⟨isExecution_F, phi_F, ntaF, relL coF, coherenceOrderT_F, coherenceT_F,
-    fun r w h => by obtain ⟨-, -, ent, hm, -⟩ := h; cases hm⟩,
-    coherenceOrderT_F, coherenceT_F, show (6, 3) ∈ rfA by decide, elided_F.2 rfl, ?_⟩
+  refine ⟨⟨fwd_24_blind, EventStructure.not_rmwAcc_of_nil _ rfl _, not_fwdNoAcq⟩,
+    isExecution_F, phi_F, ntaF, coherenceOrderT_F, coherenceT_F,
+    show (6, 3) ∈ rfA by decide, elided_F.2 rfl, ?_⟩
   intro w hw hne
   by_cases hs : xF.sameLoc esA w 5
   · left
@@ -478,5 +509,60 @@ theorem fwd_not_coherenceV : ¬ xF.CoherenceV esA (relL coF) := by
       ⟨3, .inl X3, .inl rfl, .inr (po_of (by decide))⟩⟩⟩⟩
   exact h 5 ⟨2, .tail (.tail (.single (.inl (.inl p56))) (.inr (sw63 (show (6, 3) ∈ rfA by decide))))
     (.inl (.inl p32)), .inr (.single (.inl (.inr (show (2, 5) ∈ coF by decide))))⟩
+
+/-! ## With the restriction: forbidden under `CoherenceT` -/
+
+/-- **With the acquire restriction, no execution admits `r0 = 1` with `x`
+    ending at `2` under `CoherenceT`**, forwarding and write elision allowed:
+    `x := 2` is in `X ∖ †` and coherence-last among its writes to `x`. The
+    second `x := 1` is in `X ∖ †`: Forwarding into it crosses `r0`, and
+    nothing is `⊑`-after it to elide it into. -/
+theorem forbidden_T {Ω : Pred} {x : Execution} (hx : x.IsExecution esA Ω) (hphi : x.phi esA)
+    (h63 : x.rf 6 3) {co : Rel} (hcoh : x.CoherenceT esA co) (h5 : x.XT 5)
+    (hlast : ∀ w, x.XT w → w ≠ 5 → x.sameLoc esA w 5 → co w 5) : False := by
+  have X : ∀ e ∈ esA.events, x.X e.id := fun e he =>
+    all_in_X hx SA (cand_of_mem SA.nodup he (by revert e; decide) (by revert e; decide))
+  have X3 := X (R 3 0 [1, 1, 0, 1, 0] .acq "flag") (by simp [esA])
+  have X4 := X e4 (by simp [esA])
+  have X6 := X e6 (by simp [esA])
+  have n6 : ¬ x.elided 6 := hphi.1 6 (.inl ⟨3, h63⟩)
+  -- `r0` is not elided: no read is `⊑`-before it, and it is no write
+  have n3 : ¬ x.elided 3 := by
+    rintro ⟨⟨q, _⟩, hp | hp, rfl⟩
+    · obtain ⟨j₀, ⟨⟨⟨-, hpo, -⟩, hk, -⟩, -, -⟩⟩ := fwd_edge hx hp
+      dsimp only at hpo hk
+      have h3 : ∀ q ∈ esA.po, q.2 = 3 → clsB esA Event.isRead q.1 = false := by decide
+      rcases hk with ⟨-, h⟩ | ⟨-, h⟩ | ⟨h, -⟩
+      · exact absurd (cls_clsB.1 h) (by decide)
+      · exact absurd (cls_clsB.1 h) (by decide)
+      · have := h3 _ hpo rfl
+        rw [cls_clsB.1 h] at this; cases this
+    · obtain ⟨j₀, ⟨⟨-, h, -, -⟩, -⟩, -⟩ := we_edge hx hp
+      dsimp only at h
+      exact absurd (cls_clsB.1 h) (by decide)
+  -- the second `x := 1` is not elided: forwarding into it crosses `r0`
+  have n4 : ¬ x.elided 4 := by
+    rintro ⟨⟨q, _⟩, hp | hp, rfl⟩
+    · obtain ⟨j₀, ⟨⟨⟨-, hpo, -⟩, hk, -⟩, hna, -⟩⟩ := fwd_edge hx hp
+      dsimp only at hpo hk hna
+      have hw : clsB esA Event.isWrite q = true := by
+        rcases hk with ⟨h, -⟩ | ⟨h, -⟩ | ⟨-, h⟩
+        · exact cls_clsB.1 h
+        · exact cls_clsB.1 h
+        · exact absurd (cls_clsB.1 h) (by decide)
+      have h4 : ∀ q ∈ esA.po, q.2 = 4 → clsB esA Event.isWrite q.1 = true → (q.1, 3) ∈ esA.po := by
+        decide
+      exact (hna.2.2 3 (h4 _ hpo rfl hw) (po_of (by decide))).1 ⟨_, rfl, rfl⟩
+    · obtain ⟨j₀, ⟨⟨⟨-, hpo, -⟩, -⟩, -⟩, -⟩ := we_edge hx hp
+      dsimp only at hpo
+      have h4 : ∀ q ∈ esA.po, q.1 ≠ 4 := by decide
+      exact h4 _ hpo rfl
+  have hco := hlast 4 ⟨X4, n4⟩ (by decide) (sameLoc_of rfl rfl rfl rfl)
+  have poT : ∀ a b, x.X a → x.X b → ¬ x.elided a → ¬ x.elided b → (a, b) ∈ esA.po →
+      x.poXT esA a b := fun a b ha hb na nb h => ⟨poX_of ha hb h, na, nb⟩
+  have hb : x.hbT esA 5 4 :=
+    .tail (.tail (.single (.inl (poT 5 6 h5.1 X6 h5.2 n6 (by decide))))
+      (.inr ⟨sw63 h63, n6, n3⟩)) (.inl (poT 3 4 X3 X4 n3 n4 (by decide)))
+  exact hcoh 5 ⟨4, hb, .inr (.single (.inl (.inr hco)))⟩
 
 end FwdAcrossAcquire

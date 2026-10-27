@@ -25,38 +25,45 @@ Elision therefore carries MoRDor's release restriction
   `rmw` pair lies in `X ∖ †` and Atomicity over `X ∖ †` is RC11's.
 * `coherentT_iff_coherent`: without elided events, `CoherentT` is RC11's
   `Coherent`.
-* `remap_cross_pub`: under the restriction, an elision crosses no event that
-  publishes (release write, release or `sc` fence, `sc` read) unless that
-  event is elided into the same write.
-* `ppoSyncRM_po_T`: hence the remapped `ppo_sync` has no backward pair: every
-  anchored pair of it on the path lies in `⊑`, without further hypotheses
-  (beyond no forwarding and `⊑` a forest). The backward pair
-  `(x := 2, flag :rel= 1)` that made MoRDor's sMRD forbid the outcome above is
-  not generated, and not needed.
-* `dep_po_T`: `DP ∪ ≼ ⊆ ⊑` without forwarding, where no elision crosses an
-  event that may alias the elided write or is an RMW access (`NoCrossLoc`);
-  that no RMW access is elided is derived (`rmw_not_elided`). This replaces `NoCross` of `Smrd.PpoTail`: crossings
-  of publishing events are excluded by the restriction, and the remaining
-  ones are those MoRDor's `pred` condition (the elided write is the
-  immediate `ppo_loc`-predecessor) is meant to exclude, which is not derived
-  here.
+* `remap_cross_pub`: under the restriction, without forwarding, an elision
+  crosses no event that publishes (release write, release or `sc` fence,
+  `sc` read) unless that event is elided into the same write.
+* Forwarding carries the dual, acquire restriction
+  (`EventStructure.fwdNoAcq`, MoRDor #210): without it, forwarding a store
+  into a later one across an acquire, `x := 1; r0 :acq= flag; x := 1`, makes
+  `CoherenceT` admit an outcome RC11 and `HB_v`-coherence forbid
+  (`Smrd.FwdAcrossAcquire`).
+* `remap_stay_up`, `remap_enter_up`, `remap_acq_back`, `remap_rel_fwd`: a
+  chain of `remap_δ` (Write Elision moves `⊑`-forward, Forwarding
+  `⊑`-backward) leaves the up-set of an event `c` only by a Forwarding edge
+  across `c`, and enters it only by a Write Elision edge across `c`; the
+  chain of an acquiring event moves backward, that of a releasing event
+  forward.
+* `sync_not_back`, `ppoSyncRM_po_T`: hence `remap_δ` reverses no pair of
+  `ppo_sync`, with forwarding and write elision, under the two restrictions
+  and with no other hypothesis on `δ`: the remapped `ppo_sync` has no backward
+  pair. The backward pairs `(x := 2, flag :rel= 1)` and `(r0, x := 1)` that
+  made MoRDor's sMRD forbid the two outcomes are not generated, and not
+  needed.
+* `dep_po_T`: `DP ∪ ≼ ⊆ ⊑` with forwarding and write elision, where `remap_δ`
+  reverses no `⊑`-pair of events that may alias or of which one is an RMW
+  access (`NoRevLoc`), and RMWs are tight (`RMWTightR`). `NoRevLoc` is what
+  MoRDor's `pred` condition (the source is the immediate `ppo_loc`-predecessor)
+  is meant to give; it is not derived here. Without forwarding it follows from
+  `NoCrossLoc` (`noRevLoc_of_noCrossLoc`), the hypothesis this replaces. No
+  `WEForward`, no hypothesis that there is no forwarding.
 * `coherenceV_of_coherenceT`, `coherenceT_of_coherenceV`,
   `coherenceT_iff_coherenceV`: `HB_v`-coherence (`HB_v = (DP ∪ ≼ ∪ SW)⁺`, the
   operational semantics' happens-before) and `CoherenceT` coincide for one
-  coherence order over `X ∖ †`. Against `coherenceV_iff_coherence_we`, the
-  hypothesis that no event of the path is elided is gone (the transformed
-  execution leaves them out), `NoCross` is weakened to `NoCrossLoc`, and the
-  execution justifies no elided write (`hJ`). That elisions point `⊑`-forward
-  is derived (`we_po`: Write Elision asks `e₁ ⊑ e₂`, `EventStructure.fwdBase`),
-  so `WEForward` reduces to no forwarding (`weForward_of_noFwd`), which is
-  still assumed: a forwarded event is in `†` too, it is remapped `⊑`-backward
-  to its source, and Forwarding across an
-  acquire is not restricted. That is a real gap, not only of the proof:
-  forwarding a store into a later one across an acquire,
-  `x := 1; r0 :acq= flag; x := 1`, makes `CoherenceT` admit an outcome RC11
-  and `HB_v`-coherence forbid (`Smrd.FwdAcrossAcquire`). Forwarding needs the
-  dual restriction (no acquire `⊑`-between), or the remapped backward pair
-  of `ppo_sync` stays necessary there.
+  coherence order over `X ∖ †`, with forwarding and write elision, under
+  `NoRevLoc`, `RMWTightR`, `DP ⊆ ⊑`, `φ`, no justification of an elided write
+  (`hJ`), and where no acquire read is forwarded (`hnoAcqF`). A forwarded
+  acquire read is `SW`-after its release in `HB_v` but not in `HB_T`; it has
+  no `HB_v`-successor, so only a cycle closing through its `FR` is at stake,
+  which is not ruled out here. Elided (forwarded) reads that are `ECO`-targets
+  have no `HB_v`-successor (`no_step_elided_read`, from `φ`). That elisions
+  point `⊑`-forward and forwardings `⊑`-backward is derived (`we_po`,
+  `fwd_po`).
 -/
 
 namespace Event
@@ -207,8 +214,10 @@ theorem we_po {Ω : Pred} (hx : x.IsExecution es Ω) : ∀ p ∈ x.δ.we, es.poR
 /-- **`WEForward` holds of every execution without forwarding**: its second
     half, elisions `⊑`-forward, is `we_po`. Its first half, no forwarding, is
     not derived: Forwarding remaps the forwarded event `⊑`-backward, to its
-    source, so `remap_fwd` fails with it, and forwarding across an acquire is
-    a real gap of `CoherenceT` (`Smrd.FwdAcrossAcquire`). -/
+    source, so `remap_fwd` fails with it. The results below that need
+    `⊑`-forward chains (`dep_po_T`, `coherenceV_of_coherenceT`) no longer go
+    through `WEForward`: they use the acquire restriction on Forwarding
+    (`remap_stay_up`, `sync_not_back`). -/
 theorem weForward_of_noFwd {Ω : Pred} (hx : x.IsExecution es Ω) (hnoF : ∀ p ∈ x.δ.f, False) :
     WEForward es x :=
   ⟨hnoF, we_po hx⟩
@@ -297,6 +306,20 @@ theorem mem_δ_f_inv {p : EventId × EventId} (hp : p ∈ x.δ.f) : ∃ j ∈ x.
       · obtain ⟨j', hj', hp'⟩ := ih hp
         exact ⟨j', List.mem_cons_of_mem _ hj', hp'⟩
 
+/-- **Every forwarding edge of an execution was generated under Forwarding's
+    conditions** (`fwdRel`), the acquire restriction among them. -/
+theorem fwd_edge {Ω : Pred} (hx : x.IsExecution es Ω) {p : EventId × EventId} (hp : p ∈ x.δ.f) :
+    ∃ j₀ : Justification, es.fwdRel j₀ p.1 p.2 := by
+  obtain ⟨j, hj, hpj⟩ := mem_δ_f_inv hp
+  exact EventStructure.Generated.fwd_mem es (hx.generated j hj) p hpj
+
+/-- **Every forwarding of an execution is `⊑`-backward**, `e₁ ⊑ e₂` for
+    `(e₁, e₂) ∈ F`: Forwarding asks it of the pair (`fwdBase`). -/
+theorem fwd_po {Ω : Pred} (hx : x.IsExecution es Ω) : ∀ p ∈ x.δ.f, es.poR p.1 p.2 :=
+  fun _ hp => by
+    obtain ⟨j₀, ⟨⟨⟨-, hpo, -⟩, -⟩, -⟩⟩ := fwd_edge hx hp
+    exact hpo
+
 /-- **No RMW access of an execution is elided** (`rmw_not_elided`). -/
 theorem rmw_not_elided {Ω : Pred} (hx : x.IsExecution es Ω) {e : EventId} (h : x.elided e) :
     ¬ es.RMWAcc e := by
@@ -382,19 +405,264 @@ theorem backward_cross (hW : WEForward es x)
   · exact hb'a'
   · exact hpo_trans _ _ _ hbb hb'a'
 
-/-- **A step of `ppoM`, anchored and on the path, lies in `⊑`** without
-    forwarding, under the release restriction and `NoCrossLoc`. -/
-theorem ppoM_po_T {Ω : Pred} (hx : x.IsExecution es Ω) (hW : WEForward es x)
+/-! ### Chains of `remap_δ` with forwarding
+
+`remap_δ` follows a chain of `F ∪ WE` edges: a Write Elision edge moves an
+event `⊑`-forward (`we_po`), a Forwarding edge `⊑`-backward (`fwd_po`). A
+chain that starts at or after an event `c` and ends before it crosses `c` by a
+Forwarding edge, or passes through `c` (`remap_stay_up`); one that starts
+outside the up-set of `c` and ends in it crosses `c` by a Write Elision edge,
+or passes through `c` (`remap_enter_up`). The release restriction excludes
+the second for a publishing `c`, the acquire restriction the first for an
+acquiring `c`. -/
+
+/-- An edge of the execution's `F ∪ WE` is a Forwarding edge, `⊑`-backward,
+    or a Write Elision edge, `⊑`-forward. -/
+theorem edge_cases {Ω : Pred} (hx : x.IsExecution es Ω) {q p : EventId} (h : x.δ.edge q p) :
+    ((q, p) ∈ x.δ.f ∧ es.poR q p) ∨ ((q, p) ∈ x.δ.we ∧ es.poR p q) := by
+  rcases h with h | h
+  · exact .inl ⟨h, fwd_po hx _ h⟩
+  · exact .inr ⟨h, we_po hx _ h⟩
+
+/-- **A chain from the up-set of `c` stays in it**, unless it passes through
+    `c` or a Forwarding edge crosses `c`. -/
+theorem remap_stay_up {Ω : Pred} (hx : x.IsExecution es Ω)
+    (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c) (hF : PoForest es)
+    {c e e' : EventId} (h : x.δ.Remap e e') (hc : c = e ∨ es.poR c e) :
+    (c = e' ∨ es.poR c e') ∨ x.δ.Remap c e' ∨
+      ∃ q p, (q, p) ∈ x.δ.f ∧ es.poR q c ∧ es.poR c p := by
+  revert hc
+  induction h with
+  | canon _ => exact fun hc => .inl hc
+  | @step q e e' he hr ih =>
+      rintro (rfl | hce)
+      · exact .inr (.inl (.step he hr))
+      · rcases edge_cases hx he with ⟨hf, hqe⟩ | ⟨-, heq⟩
+        · rcases hF q c e (.inr hqe) (.inr hce) with rfl | hqc | hcq
+          · exact .inr (.inl hr)
+          · exact .inr (.inr ⟨q, e, hf, hqc, hce⟩)
+          · exact ih (.inr hcq)
+        · exact ih (.inr (hpo_trans _ _ _ hce heq))
+
+/-- **A chain into the up-set of `c` from outside it** passes through `c`, or
+    a Write Elision edge crosses `c`. -/
+theorem remap_enter_up {Ω : Pred} (hx : x.IsExecution es Ω)
+    (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c) (hF : PoForest es)
+    {c e e' : EventId} (h : x.δ.Remap e e') (hc : ¬ (c = e ∨ es.poR c e))
+    (hc' : c = e' ∨ es.poR c e') :
+    x.δ.Remap c e' ∨ ∃ q p, (q, p) ∈ x.δ.we ∧ es.poR p c ∧ es.poR c q := by
+  revert hc
+  induction h with
+  | canon _ => exact fun hc => absurd hc' hc
+  | @step q e e' he hr ih =>
+      intro hc
+      by_cases hq : c = q ∨ es.poR c q
+      · rcases edge_cases hx he with ⟨-, hqe⟩ | ⟨hw, heq⟩
+        · rcases hq with rfl | hcq
+          · exact absurd (.inr hqe) hc
+          · exact absurd (.inr (hpo_trans _ _ _ hcq hqe)) hc
+        · rcases hq with rfl | hcq
+          · exact .inl hr
+          · rcases hF c e q (.inr hcq) (.inr heq) with rfl | hce | hec
+            · exact absurd (.inl rfl) hc
+            · exact absurd (.inr hce) hc
+            · exact .inr ⟨q, e, hw, hec, hcq⟩
+      · exact ih hc' hq
+
+theorem isRead_of_isRlxR {e : Event} (h : e.isRlxR = true) : e.isRead = true := by
+  obtain ⟨id, k, l, g⟩ := e
+  cases k with
+  | read o => cases o <;> simp_all [Event.isRlxR, Event.isRead]
+  | _ => simp_all [Event.isRlxR]
+
+theorem isWrite_of_isRlxW {e : Event} (h : e.isRlxW = true) : e.isWrite = true := by
+  obtain ⟨id, k, l, g⟩ := e
+  cases k with
+  | write o => cases o <;> simp_all [Event.isRlxW, Event.isWrite]
+  | _ => simp_all [Event.isRlxW]
+
+/-- The forwarded event is a read or a write. -/
+theorem fwd_tgt_rw {j : Justification} {e₁ e₂ : EventId} (h : es.fwdRelBlind j e₁ e₂) :
+    es.cls (fun e => e.isRead || e.isWrite) e₂ := by
+  obtain ⟨-, hk, -⟩ := h
+  rcases hk with ⟨-, h⟩ | ⟨-, h⟩ | ⟨-, h⟩
+  · exact cls_mono es (fun e h => by simp [isRead_of_isRlxR h]) h
+  · exact cls_mono es (fun e h => by simp [isWrite_of_isRlxW h]) h
+  · exact cls_mono es (fun e h => by simp [h]) h
+
+/-- An acquiring fence is neither forwarded nor elided. -/
+theorem fence_not_rw {e : Event} (h : e.isAcqF = true) : (e.isRead || e.isWrite) = false := by
+  obtain ⟨id, k, l, g⟩ := e
+  cases k <;> simp_all [Event.isAcqF, Event.isRead, Event.isWrite]
+
+theorem acquires_of_isAcqM {e : Event} (h : e.isAcqM = true) : e.acquires = true := by
+  simpa [Event.acquires, Event.isAcqM] using h
+
+/-- **The chain of an acquiring event moves `⊑`-backward**: only an acquire
+    read is forwarded into an acquire read (`fwdNoAcq`), an acquire fence is
+    not forwarded, and neither is elided by Write Elision. -/
+theorem remap_acq_back {Ω : Pred} (hx : x.IsExecution es Ω)
     (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
-    (hirr : ∀ a, ¬ es.poR a a) (hF : PoForest es) (hL : NoCrossLoc es x) (hT : RMWTightR es x)
+    {a a' : EventId} (h : x.δ.Remap a a') (ha : es.cls Event.isAcqM a) :
+    a = a' ∨ es.poR a' a := by
+  induction h with
+  | canon _ => exact .inl rfl
+  | @step q e e' he hr ih =>
+      rcases edge_cases hx he with ⟨hf, hqe⟩ | ⟨hw, -⟩
+      · obtain ⟨j₀, hb, hna, -⟩ := fwd_edge hx hf
+        dsimp only at hb hna
+        have hacqR : es.cls Event.isAcqR e := by
+          obtain ⟨ev, hev, hm⟩ := ha
+          simp only [Event.isAcqM, Bool.or_eq_true] at hm
+          rcases hm with hm | hm
+          · exact ⟨ev, hev, hm⟩
+          · obtain ⟨ev', hev', hrw⟩ := fwd_tgt_rw hb
+            rw [hev] at hev'; cases hev'
+            have := fence_not_rw hm
+            simp only [this] at hrw; cases hrw
+        have hq : es.cls Event.isAcqM q :=
+          cls_mono es (fun e h => by simp [Event.isAcqM, h]) (hna.1 hacqR)
+        rcases ih hq with rfl | h'
+        · exact .inr hqe
+        · exact .inr (hpo_trans _ _ _ h' hqe)
+      · obtain ⟨j₀, ⟨⟨-, hwr, -, -⟩, -⟩, -⟩ := we_edge hx hw
+        exact absurd (cls_excl es (fun e h₁ h₂ => by rw [Event.not_write_of_isAcqM h₁] at h₂; cases h₂)
+          ha hwr) id
+
+theorem relM_not_fwd {e : Event} (h : e.isRelM = true) :
+    e.isRlxR = false ∧ e.isRlxW = false ∧ e.isRead = false := by
+  obtain ⟨id, k, l, g⟩ := e
+  cases k with
+  | read o => cases o <;> simp_all [Event.isRelM, Event.isRelW, Event.isRelF]
+  | write o => cases o <;> simp_all [Event.isRelM, Event.isRelW, Event.isRelF, MemOrd.isRelSc,
+      Event.isRlxR, Event.isRlxW, Event.isRead]
+  | fence o => cases o <;> simp_all [Event.isRelM, Event.isRelW, Event.isRelF, MemOrd.isRelSc,
+      Event.isRlxR, Event.isRlxW, Event.isRead]
+  | _ => simp_all [Event.isRelM, Event.isRelW, Event.isRelF]
+
+theorem isRelM_of_isRelW {e : Event} (h : e.isRelW = true) : e.isRelM = true := by
+  simp [Event.isRelM, h]
+
+/-- **The chain of a releasing event moves `⊑`-forward**: a release write or
+    fence is not forwarded, and a release write is elided only into a release
+    write (`weNoRel`). -/
+theorem remap_rel_fwd {Ω : Pred} (hx : x.IsExecution es Ω)
+    (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
+    {b b' : EventId} (h : x.δ.Remap b b') (hb : es.cls Event.isRelM b) :
+    b = b' ∨ es.poR b b' := by
+  induction h with
+  | canon _ => exact .inl rfl
+  | @step q e e' he hr ih =>
+      rcases edge_cases hx he with ⟨hf, -⟩ | ⟨hw, heq⟩
+      · obtain ⟨j₀, ⟨-, hk, -⟩, -, -⟩ := fwd_edge hx hf
+        dsimp only at hk
+        obtain ⟨ev, hev, hm⟩ := hb
+        have hn := relM_not_fwd hm
+        rcases hk with ⟨-, ev', hev', h'⟩ | ⟨-, ev', hev', h'⟩ | ⟨-, ev', hev', h'⟩ <;>
+          (rw [hev] at hev'; cases hev') <;> simp_all
+      · obtain ⟨j₀, ⟨⟨-, hwr, -, -⟩, hnr, -⟩, -⟩ := we_edge hx hw
+        dsimp only at hwr hnr
+        have hrelW : es.cls Event.isRelW e := by
+          obtain ⟨ev, hev, hm⟩ := hb
+          simp only [Event.isRelM, Bool.or_eq_true] at hm
+          rcases hm with hm | hm
+          · exact ⟨ev, hev, hm⟩
+          · obtain ⟨ev', hev', hw'⟩ := hwr
+            rw [hev] at hev'; cases hev'
+            rw [Event.not_write_of_isFence (isFence_of_isRelF hm)] at hw'; cases hw'
+        have hq : es.cls Event.isRelM q := cls_mono es (fun _ h => isRelM_of_isRelW h) (hnr.1 hrelW)
+        rcases ih hq with rfl | h'
+        · exact .inr heq
+        · exact .inr (hpo_trans _ _ _ heq h')
+
+/-- **No pair of `ppo_sync` is reversed by `remap_δ`**, with forwarding and
+    write elision, under their restrictions: for an acquire source `a`, the
+    chain of `a` moves backward and that of `b` stays after `a`, as no
+    Forwarding edge crosses `a` (`fwdNoAcq`); for a release target `b`, the
+    chain of `b` moves forward and that of `a` stays out of the up-set of `b`,
+    as no Write Elision edge crosses `b` (`weNoRel`). -/
+theorem sync_not_back {Ω : Pred} (hx : x.IsExecution es Ω)
+    (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
+    (hirr : ∀ a, ¬ es.poR a a) (hF : PoForest es)
+    {a b a' b' : EventId} (hs : es.ppoSyncM a b) (ra : x.δ.Remap a a') (rb : x.δ.Remap b b')
+    (hne : a' ≠ b') : ¬ es.poR b' a' := by
+  intro hba
+  have hfun := fun {e e₁ e₂ : EventId} => @FwdCtx.Remap.functional x.δ hx.fwdWF.uniq e e₁ e₂
+  rcases hs.2 with hacq | hrel
+  · rcases remap_stay_up hx hpo_trans hF rb (c := a) (.inr hs.1) with hup | hra | ⟨q, p, hf, hqa, hap⟩
+    · have hb'a : es.poR b' a := by
+        rcases remap_acq_back hx hpo_trans ra hacq with rfl | h
+        · exact hba
+        · exact hpo_trans _ _ _ hba h
+      rcases hup with rfl | h
+      · exact hirr _ hb'a
+      · exact hirr _ (hpo_trans _ _ _ h hb'a)
+    · exact hne (hfun ra hra)
+    · obtain ⟨j₀, -, hna, -⟩ := fwd_edge hx hf
+      exact (hna.2.2 a hqa hap).1 (cls_mono es (fun _ h => acquires_of_isAcqM h) hacq)
+  · have hup : b = a' ∨ es.poR b a' := by
+      rcases remap_rel_fwd hx hpo_trans rb hrel with rfl | h
+      · exact .inr hba
+      · exact .inr (hpo_trans _ _ _ h hba)
+    have hnot : ¬ (b = a ∨ es.poR b a) := by
+      rintro (rfl | h)
+      · exact hirr _ hs.1
+      · exact hirr _ (hpo_trans _ _ _ hs.1 h)
+    rcases remap_enter_up hx hpo_trans hF ra hnot hup with hrb | ⟨q, p, hw, hpb, hbq⟩
+    · exact hne (hfun hrb rb)
+    · obtain ⟨j₀, ⟨-, hnr, -⟩, -⟩ := we_edge hx hw
+      exact hnr.2 b hpb hbq (cls_mono es (fun _ h => Event.publishes_of_isRelM h) hrel)
+
+/-! ### `≼ ⊆ ⊑` with forwarding -/
+
+/-- The base pairs of `ppo_loc` and `ppo_rmw`: `a` and `b` may alias (outright,
+    under the combined predicate, or under a justification's), or one is an
+    RMW access. -/
+def LocLinked (es : EventStructure) (x : Execution) (a b : EventId) : Prop :=
+  es.mustAlias a b ∨ es.mayAlias (x.Pm es) a b ∨ (∃ j ∈ x.J, es.mayAlias (x.PJ es j) a b) ∨
+    es.RMWAcc a ∨ es.RMWAcc b
+
+/-- `remap_δ` reverses no `⊑`-ordered pair of `LocLinked` events. This is what
+    MoRDor's `pred` condition (the source is an immediate `ppo_loc`-predecessor
+    of the forwarded or eliding event) is meant to give, and is not derived
+    here, for the reasons given at `NoCrossLoc` (`pred` is taken under the
+    generating justification's `P` and `δ`, not the execution's). It covers
+    Forwarding, which `NoCrossLoc` does not; without forwarding `NoCrossLoc`
+    implies it (`noRevLoc_of_noCrossLoc`). -/
+def NoRevLoc (es : EventStructure) (x : Execution) : Prop :=
+  ∀ a b a' b', es.poR a b → x.δ.Remap a a' → x.δ.Remap b b' → LocLinked es x a b →
+    ¬ es.poR b' a'
+
+/-- **Without forwarding, `NoCrossLoc` implies `NoRevLoc`.** -/
+theorem noRevLoc_of_noCrossLoc {Ω : Pred} (hx : x.IsExecution es Ω) (hW : WEForward es x)
+    (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
+    (hirr : ∀ a, ¬ es.poR a a) (hL : NoCrossLoc es x) : NoRevLoc es x := by
+  intro a b a' b' hab ra rb hl hba
+  have hfun := fun {e e₁ e₂ : EventId} => @FwdCtx.Remap.functional x.δ hx.fwdWF.uniq e e₁ e₂
+  have hba' := backward_cross hW hpo_trans rb hba
+  have cross : x.δ.Remap b a' → False := fun h => by
+    rw [hfun rb h] at hba; exact hirr _ hba
+  rcases hl with hm | hm | hm | hm | hm
+  · exact cross (hL a a' b ra hab hba' (.inl hm))
+  · exact cross (hL a a' b ra hab hba' (.inr (.inl hm)))
+  · exact cross (hL a a' b ra hab hba' (.inr (.inr (.inl hm))))
+  · have haa : a = a' := remap_rmwAcc hx ra hm
+    subst haa
+    exact hirr _ (hpo_trans _ _ _ hab hba')
+  · exact cross (hL a a' b ra hab hba' (.inr (.inr (.inr hm))))
+
+/-- **A step of `ppoM`, anchored and on the path, lies in `⊑`**, with
+    forwarding and write elision under their restrictions, and `NoRevLoc`. -/
+theorem ppoM_po_T {Ω : Pred} (hx : x.IsExecution es Ω)
+    (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
+    (hirr : ∀ a, ¬ es.poR a a) (hF : PoForest es) (hL : NoRevLoc es x) (hT : RMWTightR es x)
     {Pa Pr : Pred}
     (hPa : ∀ a c, es.mayAlias Pa a c →
       es.mayAlias (x.Pm es) a c ∨ ∃ j ∈ x.J, es.mayAlias (x.PJ es j) a c)
     {a' b' : EventId} (ha' : x.XwF es a') (hb' : x.XwF es b')
     (hA : x.Anchored es a' b') (h : es.ppoM Pa Pr x.δ a' b') : es.poR a' b' := by
   obtain ⟨⟨a, b, hab, ra, rb⟩, hne⟩ := h
-  have hu := hx.fwdWF.uniq
-  have hfun := fun {e e₁ e₂ : EventId} => @FwdCtx.Remap.functional x.δ hu e e₁ e₂
+  have hfun := fun {e e₁ e₂ : EventId} => @FwdCtx.Remap.functional x.δ hx.fwdWF.uniq e e₁ e₂
   -- the base pair is `⊑`-forward
   have hbase : es.poR a b := by
     rcases hab with (hs | (⟨w, hs, ent, hm, hw, hr', -⟩ | ⟨r, ⟨ent, hm, hw, hr', -⟩, hs⟩)) | hal
@@ -411,56 +679,29 @@ theorem ppoM_po_T {Ω : Pred} (hx : x.IsExecution es Ω) (hW : WEForward es x)
   rcases anchored_cmp hF hA with h | h | h
   · exact absurd h hne
   · exact h
-  · -- backward: `b ⊑ a'`, and `b` is shown to be elided into `a'`
-    have hba' := backward_cross hW hpo_trans rb h
-    have hcross : x.δ.Remap b a' := by
-      rcases hab with (hs | (⟨w, hs, ent, hm, hw, hr', -⟩ | ⟨r, ⟨ent, hm, hw, hr', -⟩, hs⟩)) | hal
-      · rcases hs.2 with hacq | hrel
-        · -- an acquiring read or fence is not elided, so `a = a'`
-          have hna : ¬ x.elided a := not_elided_of_not_write hx hW
-            (fun _ h => Event.not_write_of_isAcqM h) hacq
-          have haa : a = a' := Classical.byContradiction fun hne' =>
-            hna (elided_of_remap_ne ra hne')
-          subst haa
-          exact absurd (hpo_trans _ _ _ hbase hba') (hirr _)
-        · rcases remap_cross_pub hx hW hpo_trans hirr hF ra b hbase hba' with h' | h'
-          · exact h'
-          · exact absurd (cls_mono es (fun _ h => Event.publishes_of_isRelM h) hrel) h'
-      · exact hL a a' b ra hbase hba' (.inr (.inr (.inr ⟨ent, hm, .inl hr'⟩)))
-      · -- `a` is the RMW's write, which is not elided, so `a = a'`
-        have haa : a = a' := remap_rmwAcc hx ra ⟨ent, hm, .inr hw⟩
-        subst haa
-        exact absurd (hpo_trans _ _ _ hbase hba') (hirr _)
-      · rcases hal.2 with hm | hm
-        · exact hL a a' b ra hbase hba' (.inl hm)
-        · rcases hPa a b hm with h' | h'
-          · exact hL a a' b ra hbase hba' (.inr (.inl h'))
-          · exact hL a a' b ra hbase hba' (.inr (.inr (.inl h')))
-    exact absurd (hfun rb hcross) (fun h => hne h.symm)
+  · refine absurd h ?_
+    rcases hab with (hs | (⟨w, hs, ent, hm, hw, hr', -⟩ | ⟨r, ⟨ent, hm, hw, hr', -⟩, hs⟩)) | hal
+    · exact sync_not_back hx hpo_trans hirr hF hs ra rb hne
+    · exact hL a b a' b' hbase ra rb (.inr (.inr (.inr (.inr ⟨ent, hm, .inl hr'⟩))))
+    · exact hL a b a' b' hbase ra rb (.inr (.inr (.inr (.inl ⟨ent, hm, .inr hw⟩))))
+    · rcases hal.2 with hm | hm
+      · exact hL a b a' b' hbase ra rb (.inl hm)
+      · rcases hPa a b hm with h' | h'
+        · exact hL a b a' b' hbase ra rb (.inr (.inl h'))
+        · exact hL a b a' b' hbase ra rb (.inr (.inr (.inl h')))
 
-/-- **The remapped `ppo_sync` has no backward pair under the release
-    restriction**: without forwarding, every anchored pair of it on the path
-    lies in `⊑`, with no hypothesis on crossings. -/
-theorem ppoSyncRM_po_T {Ω : Pred} (hx : x.IsExecution es Ω) (hW : WEForward es x)
+/-- **The remapped `ppo_sync` has no backward pair**, with forwarding and
+    write elision under their restrictions: every anchored pair of it lies in
+    `⊑`, with no hypothesis on crossings or on forwarding. -/
+theorem ppoSyncRM_po_T {Ω : Pred} (hx : x.IsExecution es Ω)
     (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
     (hirr : ∀ a, ¬ es.poR a a) (hF : PoForest es)
     {a' b' : EventId} (hA : x.Anchored es a' b') (h : es.ppoSyncRM x.δ a' b') : es.poR a' b' := by
   obtain ⟨⟨a, b, hs, ra, rb⟩, hne⟩ := h
-  have hfun := fun {e e₁ e₂ : EventId} => @FwdCtx.Remap.functional x.δ hx.fwdWF.uniq e e₁ e₂
   rcases anchored_cmp hF hA with h | h | h
   · exact absurd h hne
   · exact h
-  · have hba' := backward_cross hW hpo_trans rb h
-    rcases hs.2 with hacq | hrel
-    · have hna : ¬ x.elided a := not_elided_of_not_write hx hW
-        (fun _ h => Event.not_write_of_isAcqM h) hacq
-      have haa : a = a' := Classical.byContradiction fun hne' =>
-        hna (elided_of_remap_ne ra hne')
-      subst haa
-      exact absurd (hpo_trans _ _ _ hs.1 hba') (hirr _)
-    · rcases remap_cross_pub hx hW hpo_trans hirr hF ra b hs.1 hba' with h' | h'
-      · exact absurd (hfun rb h') (fun h => hne h.symm)
-      · exact absurd (cls_mono es (fun _ h => Event.publishes_of_isRelM h) hrel) h'
+  · exact absurd h (sync_not_back hx hpo_trans hirr hF hs ra rb hne)
 
 theorem mayAlias_Pm_or_PJ {Pa : Pred} (hPa : Pa = x.Pm es ∨ ∃ j ∈ x.J, Pa = x.PJ es j)
     {a c : EventId} (h : es.mayAlias Pa a c) :
@@ -469,30 +710,30 @@ theorem mayAlias_Pm_or_PJ {Pa : Pred} (hPa : Pa = x.Pm es ∨ ∃ j ∈ x.J, Pa 
   · exact .inl h
   · exact .inr ⟨j, hj, h⟩
 
-/-- **Without forwarding, each step of `≼` lies in `⊑`**, under the release
-    restriction and `NoCrossLoc`. -/
-theorem ppoStep_po_T {Ω : Pred} (hx : x.IsExecution es Ω) (hW : WEForward es x)
+/-- **Each step of `≼` lies in `⊑`**, with forwarding and write elision under
+    their restrictions, and `NoRevLoc`. -/
+theorem ppoStep_po_T {Ω : Pred} (hx : x.IsExecution es Ω)
     (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
-    (hirr : ∀ a, ¬ es.poR a a) (hF : PoForest es) (hL : NoCrossLoc es x) (hT : RMWTightR es x)
+    (hirr : ∀ a, ¬ es.poR a a) (hF : PoForest es) (hL : NoRevLoc es x) (hT : RMWTightR es x)
     {a b : EventId} (h : x.ppoStep es a b) : es.poR a b := by
   obtain ⟨ha, hb, ⟨j, hj, hp, hwa, hwb⟩ | ⟨hs | ⟨hp, -⟩, hA⟩⟩ := h
-  · exact ppoM_po_T hx hW hpo_trans hirr hF hL hT
+  · exact ppoM_po_T hx hpo_trans hirr hF hL hT
       (fun _ _ h => mayAlias_Pm_or_PJ (.inr ⟨j, hj, rfl⟩) h) ha hb
       (anchored_of_inWin hx.inX ⟨j, hj, hwa, hwb⟩) hp
-  · exact ppoSyncRM_po_T hx hW hpo_trans hirr hF hA hs
-  · exact ppoM_po_T hx hW hpo_trans hirr hF hL hT
+  · exact ppoSyncRM_po_T hx hpo_trans hirr hF hA hs
+  · exact ppoM_po_T hx hpo_trans hirr hF hL hT
       (fun _ _ h => mayAlias_Pm_or_PJ (.inl rfl) h) ha hb hA hp
 
-/-- **`DP ∪ ≼ ⊆ ⊑` without forwarding**, under the release restriction and
-    `NoCrossLoc`. -/
-theorem dep_po_T {Ω : Pred} (hx : x.IsExecution es Ω) (hW : WEForward es x)
+/-- **`DP ∪ ≼ ⊆ ⊑`**, with forwarding and write elision under their
+    restrictions, `NoRevLoc`, and `DP ⊆ ⊑`. -/
+theorem dep_po_T {Ω : Pred} (hx : x.IsExecution es Ω)
     (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
-    (hirr : ∀ a, ¬ es.poR a a) (hF : PoForest es) (hL : NoCrossLoc es x) (hT : RMWTightR es x)
+    (hirr : ∀ a, ¬ es.poR a a) (hF : PoForest es) (hL : NoRevLoc es x) (hT : RMWTightR es x)
     (hDP : ∀ a b, x.DP a b → es.poR a b) {a b : EventId} (h : x.dep es a b) :
     x.poX es a b := by
   rcases h with hp | hd
   · exact ⟨.inl hp.1, .inl hp.2.1,
-      ppo_po hpo_trans (fun _ _ h => ppoStep_po_T hx hW hpo_trans hirr hF hL hT h) hp⟩
+      ppo_po hpo_trans (fun _ _ h => ppoStep_po_T hx hpo_trans hirr hF hL hT h) hp⟩
   · exact ⟨.inl hd.1, .inl hd.2.1, hDP a b hd⟩
 
 end Elided
@@ -503,9 +744,34 @@ section Equiv
 
 variable {es x}
 
+/-- An acquire read that is not forwarded, or an acquire fence, is not
+    elided: Write Elision elides writes, and Forwarding forwards reads and
+    writes. -/
+theorem not_elided_acq {Ω : Pred} (hx : x.IsExecution es Ω)
+    (hnoAcqF : ∀ p ∈ x.δ.f, ¬ es.cls Event.isAcqR p.2) {d : EventId}
+    (h : es.cls Event.isAcqR d ∨ es.cls Event.isAcqF d) : ¬ x.elided d := by
+  rintro ⟨⟨q, p⟩, hp | hp, rfl⟩
+  · rcases h with h | h
+    · exact hnoAcqF _ hp h
+    · obtain ⟨j₀, hb, -, -⟩ := fwd_edge hx hp
+      obtain ⟨ev, hev, hrw⟩ := fwd_tgt_rw hb
+      obtain ⟨ev', hev', hf⟩ := h
+      dsimp only at hev hev'
+      rw [hev] at hev'; cases hev'
+      dsimp only at hrw
+      rw [fence_not_rw hf] at hrw; cases hrw
+  · obtain ⟨j₀, ⟨⟨-, hw, -, -⟩, -⟩, -⟩ := we_edge hx hp
+    dsimp only at hw
+    rcases h with h | h
+    · exact cls_excl es (fun e h₁ h₂ => by
+        rw [Event.not_write_of_isRead (isRead_of_isAcqR h₁)] at h₂; cases h₂) h hw
+    · exact cls_excl es (fun e h₁ h₂ => by
+        rw [Event.not_write_of_isFence (isFence_of_isAcqF h₁)] at h₂; cases h₂) h hw
+
 /-- No step of `DP ∪ ≼ ∪ SW` ends at an elided event, where no elided write is
-    justified in the execution. -/
-theorem step_tgt {Ω : Pred} (hx : x.IsExecution es Ω) (hW : WEForward es x)
+    justified in the execution and no acquire read is forwarded. -/
+theorem step_tgt {Ω : Pred} (hx : x.IsExecution es Ω)
+    (hnoAcqF : ∀ p ∈ x.δ.f, ¬ es.cls Event.isAcqR p.2)
     (hJ : ∀ j ∈ x.J, ¬ x.elided j.w.id) {c d : EventId}
     (h : ((x.dep es).union (x.sw es)) c d) : ¬ x.elided d := by
   rcases h with (hp | hd) | hs
@@ -520,65 +786,94 @@ theorem step_tgt {Ω : Pred} (hx : x.IsExecution es Ω) (hW : WEForward es x)
   · obtain ⟨-, -, j, hj, rfl, -⟩ := hd
     exact hJ j hj
   · obtain ⟨-, -, -, -, -, -, -, -, -, hacq⟩ := hs
-    rcases hacq with h | h
-    · exact not_elided_of_not_write hx hW
-        (fun _ h => Event.not_write_of_isRead (isRead_of_isAcqR h)) h
-    · exact not_elided_of_not_write hx hW
-        (fun _ h => Event.not_write_of_isFence (isFence_of_isAcqF h)) h
+    exact not_elided_acq hx hnoAcqF hacq
 
 /-- A step of `DP ∪ ≼ ∪ SW` from an event that is not elided is a step of
     `⊑ ∪ SW` over `X ∖ †`. -/
-theorem step_T {Ω : Pred} (hx : x.IsExecution es Ω) (hW : WEForward es x)
+theorem step_T {Ω : Pred} (hx : x.IsExecution es Ω)
+    (hnoAcqF : ∀ p ∈ x.δ.f, ¬ es.cls Event.isAcqR p.2)
     (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
-    (hirr : ∀ a, ¬ es.poR a a) (hF : PoForest es) (hL : NoCrossLoc es x) (hT : RMWTightR es x)
+    (hirr : ∀ a, ¬ es.poR a a) (hF : PoForest es) (hL : NoRevLoc es x) (hT : RMWTightR es x)
     (hDP : ∀ a b, x.DP a b → es.poR a b) (hJ : ∀ j ∈ x.J, ¬ x.elided j.w.id)
     {c d : EventId} (hc : ¬ x.elided c) (h : ((x.dep es).union (x.sw es)) c d) :
     ((x.poXT es).union (x.swT es)) c d := by
-  have hd := step_tgt hx hW hJ h
+  have hd := step_tgt hx hnoAcqF hJ h
   rcases h with hdep | hs
-  · exact .inl ⟨dep_po_T hx hW hpo_trans hirr hF hL hT hDP hdep, hc, hd⟩
+  · exact .inl ⟨dep_po_T hx hpo_trans hirr hF hL hT hDP hdep, hc, hd⟩
   · exact .inr ⟨hs, hc, hd⟩
 
-/-- No `ECO` edge ends at an elided event, for a coherence order of `X ∖ †`. -/
-theorem eco_tgt {Ω : Pred} (hx : x.IsExecution es Ω) (hW : WEForward es x) {co : Rel}
-    (hco : x.CoherenceOrderT es co) {a b : EventId} (h : x.eco co b a) : ¬ x.elided a := by
-  have one : ∀ c d, ((x.rf.union co).union (x.fr co)) c d → ¬ x.elided d := by
-    rintro c d ((h | h) | ⟨w, -, h⟩)
-    · exact not_elided_of_not_write hx hW (fun _ h => Event.not_write_of_isRead h)
-        (hx.rf_wr c d h).2.1
-    · exact (hco.writes c d h).2.1.2
-    · exact (hco.writes w d h).2.1.2
+/-- An `ECO` edge ends at an elided event only if it is a read (a forwarded
+    one), for a coherence order of `X ∖ †`. -/
+theorem eco_tgt {Ω : Pred} (hx : x.IsExecution es Ω) {co : Rel}
+    (hco : x.CoherenceOrderT es co) {a b : EventId} (h : x.eco co b a) (hel : x.elided a) :
+    es.cls Event.isRead a := by
+  have one : ∀ c d, ((x.rf.union co).union (x.fr co)) c d → x.elided d → es.cls Event.isRead d := by
+    rintro c d ((h | h) | ⟨w, -, h⟩) hd
+    · exact (hx.rf_wr c d h).2.1
+    · exact absurd hd (hco.writes c d h).2.1.2
+    · exact absurd hd (hco.writes w d h).2.1.2
   cases h with
-  | single h => exact one _ _ h
-  | tail _ h => exact one _ _ h
+  | single h => exact one _ _ h hel
+  | tail _ h => exact one _ _ h hel
+
+/-- No step of `DP ∪ ≼ ∪ SW` leaves an elided read: `≼` leaves images of
+    `remap_δ`, `φ` gives an elided event no dependency, and `SW` leaves
+    releasing writes and fences. -/
+theorem no_step_elided_read (hphi : x.phi es) {a c : EventId} (hel : x.elided a)
+    (hr : es.cls Event.isRead a) (h : ((x.dep es).union (x.sw es)) a c) : False := by
+  rcases h with (hp | hd) | hs
+  · obtain ⟨-, -, hp⟩ := hp
+    have first : ∀ c, Relation.TransGen (x.ppoStep es) a c → ∃ d, x.ppoStep es a d := by
+      intro c h
+      induction h with
+      | single h => exact ⟨_, h⟩
+      | tail _ _ ih => exact ih
+    obtain ⟨d, ⟨-, -, ⟨j, -, ⟨⟨_, _, _, ra, -⟩, -⟩, -⟩ | ⟨⟨⟨_, _, _, ra, -⟩, -⟩ |
+      ⟨⟨⟨_, _, _, ra, -⟩, -⟩, -⟩, -⟩⟩⟩ := first c hp <;> exact remap_not_elided ra hel
+  · exact hphi.1 a (.inr ⟨c, hd⟩) hel
+  · rcases hs.1 with h | h
+    · exact cls_excl es (fun e h₁ h₂ => by
+        rw [Event.not_write_of_isRead h₁] at h₂; cases h₂) hr
+        (cls_mono es (fun _ h => isWrite_of_isRelW h) h)
+    · exact cls_excl es (fun e h₁ h₂ => not_read_fence h₁ h₂) hr
+        (cls_mono es (fun _ h => isFence_of_isRelF h) h)
 
 /-- **`CoherenceT` implies `HB_v`-coherence**, for one coherence order of
-    `X ∖ †`: without forwarding, under the release restriction, `NoCrossLoc`,
-    `RMWTightR`, `DP ⊆ ⊑`, and no justification of an elided write. No
-    `NoCross`, and no hypothesis that the path has no elided event. -/
+    `X ∖ †`: with forwarding and write elision under their restrictions,
+    where no acquire read is forwarded, under `NoRevLoc`, `RMWTightR`,
+    `DP ⊆ ⊑`, and no justification of an elided write. A forwarded acquire
+    read is the target of `SW` in `HB_v` but not in `HB_T`. -/
 theorem coherenceV_of_coherenceT {Ω : Pred} {co : Rel} (hx : x.IsExecution es Ω)
-    (hnoF : ∀ p ∈ x.δ.f, False)
+    (hphi : x.phi es) (hnoAcqF : ∀ p ∈ x.δ.f, ¬ es.cls Event.isAcqR p.2)
     (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
-    (hirr : ∀ a, ¬ es.poR a a) (hF : PoForest es) (hL : NoCrossLoc es x) (hT : RMWTightR es x)
+    (hirr : ∀ a, ¬ es.poR a a) (hF : PoForest es) (hL : NoRevLoc es x) (hT : RMWTightR es x)
     (hDP : ∀ a b, x.DP a b → es.poR a b) (hJ : ∀ j ∈ x.J, ¬ x.elided j.w.id)
     (hco : x.CoherenceOrderT es co) (h : x.CoherenceT es co) : x.CoherenceV es co := by
-  have hW := weForward_of_noFwd hx hnoF
   rintro a ⟨b, hab, hba⟩
   have ha : ¬ x.elided a := by
+    intro hel
     rcases hba with rfl | heco
     · cases hab with
-      | single s => exact step_tgt hx hW hJ s
-      | tail _ s => exact step_tgt hx hW hJ s
-    · exact eco_tgt hx hW hco heco
+      | single s => exact step_tgt hx hnoAcqF hJ s hel
+      | tail _ s => exact step_tgt hx hnoAcqF hJ s hel
+    · have hr := eco_tgt hx hco heco hel
+      have first : ∀ c, x.hbV es a c → ∃ d, ((x.dep es).union (x.sw es)) a d := by
+        intro c h
+        induction h with
+        | single h => exact ⟨_, h⟩
+        | tail _ _ ih => exact ih
+      obtain ⟨d, hd⟩ := first b hab
+      exact no_step_elided_read hphi hel hr hd
   -- the path stays among events that are not elided
   have path : ∀ c, x.hbV es a c → x.hbT es a c ∧ ¬ x.elided c := by
     intro c hc
     induction hc with
     | single s =>
-        exact ⟨.single (step_T hx hW hpo_trans hirr hF hL hT hDP hJ ha s), step_tgt hx hW hJ s⟩
+        exact ⟨.single (step_T hx hnoAcqF hpo_trans hirr hF hL hT hDP hJ ha s),
+          step_tgt hx hnoAcqF hJ s⟩
     | tail _ s ih =>
-        exact ⟨.tail ih.1 (step_T hx hW hpo_trans hirr hF hL hT hDP hJ ih.2 s),
-          step_tgt hx hW hJ s⟩
+        exact ⟨.tail ih.1 (step_T hx hnoAcqF hpo_trans hirr hF hL hT hDP hJ ih.2 s),
+          step_tgt hx hnoAcqF hJ s⟩
   exact h a ⟨b, (path b hab).1, hba⟩
 
 /-- An `HB_T` path is an `HB_v` path or a single `⊑` edge of `X ∖ †`. -/
@@ -636,20 +931,21 @@ theorem coherenceT_of_coherenceV {co : Rel} (hnf : x.FenceFree es)
       exact h a ⟨b, .single (.inl (poloc_dep_ne hnf hirr hm hna hnb ⟨hpo, hl⟩)), .inr heco⟩
 
 /-- **`HB_v`-coherence and `CoherenceT` coincide** for a coherence order of
-    `X ∖ †`, for fence-free executions with a location model, without
-    forwarding, under the release restriction, `NoCrossLoc`, `RMWTightR`,
-    `DP ⊆ ⊑`, and no justification of an elided write. -/
+    `X ∖ †`, for fence-free executions with a location model, with forwarding
+    and write elision under their restrictions, where no acquire read is
+    forwarded, under `NoRevLoc`, `RMWTightR`, `DP ⊆ ⊑`, and no justification
+    of an elided write. -/
 theorem coherenceT_iff_coherenceV {Ω : Pred} {co : Rel} (hx : x.IsExecution es Ω)
-    (hnf : x.FenceFree es) (hnoF : ∀ p ∈ x.δ.f, False)
+    (hphi : x.phi es) (hnf : x.FenceFree es) (hnoAcqF : ∀ p ∈ x.δ.f, ¬ es.cls Event.isAcqR p.2)
     (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
-    (hirr : ∀ a, ¬ es.poR a a) (hF : PoForest es) (hL : NoCrossLoc es x) (hT : RMWTightR es x)
+    (hirr : ∀ a, ¬ es.poR a a) (hF : PoForest es) (hL : NoRevLoc es x) (hT : RMWTightR es x)
     (hDP : ∀ a b, x.DP a b → es.poR a b) (hJ : ∀ j ∈ x.J, ¬ x.elided j.w.id)
     (hLtrans : ∀ a b c, x.sameLoc es a b → x.sameLoc es b c → x.sameLoc es a c)
     (hrfL : ∀ a b, x.rf a b → x.sameLoc es a b)
     (hco : x.CoherenceOrderT es co) (hcoL : ∀ a b, co a b → x.sameLoc es a b)
     (hm : LocModel es x) :
     x.CoherenceT es co ↔ x.CoherenceV es co :=
-  ⟨coherenceV_of_coherenceT hx hnoF hpo_trans hirr hF hL hT hDP hJ hco,
+  ⟨coherenceV_of_coherenceT hx hphi hnoAcqF hpo_trans hirr hF hL hT hDP hJ hco,
    coherenceT_of_coherenceV hnf hpo_trans hirr hLtrans hrfL hcoL hm⟩
 
 end Equiv
