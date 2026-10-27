@@ -26,11 +26,20 @@ predicate `Generated`, whose derivations are the elements of `⋃ᵢ 𝕁ᵢ`.
 * The environment `g = [val(e₂) ↦ val(e₁)]` of Forwarding replaces the
   expression `val(e₂)`, which for store-store forwarding is the value written
   and not a symbol (`Expr.replace`).
-* The origins `e ∈ S` of Strengthening are required to be `⊑`-related to `w`
+* The origins `e ∈ S` of Strengthening are required to be `⊑`-before `w`
   strictly: a reflexive reading would put `(w, w)` into `DP` for an allocation
   constraining its own symbol.
 
 ## Deviations from the paper
+
+* Strengthening introduces origins `⊑`-before the justified write only,
+  `e ⊑ w ∧ w ⋠ e`, the reading of sMRD's prose (Richards et al., §4.7: "We
+  restrict P′ to predicates where all symbols are visible to the justified
+  write"). sMRD's formal Def. 4.11, and the paper's `def:elab-str`, also admit
+  `w ⊑ e`, which gives `DP` edges that run against `⊑`. Under the restriction
+  every origin of a dependency precedes its write (`Smrd.DPPast`,
+  `Execution.dp_po`), up to store-store forwarding from beyond the write and
+  Lifting.
 
 * Neither access of an RMW is in the elided position (`RMWAcc`, MoRDor
   `docs/DEPARTURES.md` E4): not the forwarded event `e₂` of a Forwarding
@@ -240,12 +249,17 @@ inductive Generated (Ω : Pred) : Justification → Prop
       `S = origin(symbols(P')) ∖ origin(symbols(P))`. The equation for `S` is
       a fixed point, as `valres(e)` may itself bring in symbols; `S` is given
       and checked against it. `P'` is built syntactically, so
-      `symbols(P') ⊇ symbols(P)` and `P'` entails `P`. -/
+      `symbols(P') ⊇ symbols(P)` and `P'` entails `P`.
+
+      The new origins are `⊑`-before the write, `e ⊑ w` (sMRD §4.7's prose,
+      "all symbols are visible to the justified write"), not
+      `e ⊑ w ∨ w ⊑ e` as in sMRD's Def. 4.11 and `def:elab-str`; see the
+      module header. -/
   | str {j₁ : Justification} (Q : Expr) (S : List EventId) :
       Generated Ω j₁ →
       (∀ e, e ∈ S ↔ e ∈ (strPred es j₁.P Q S).syms ∧ e ∉ j₁.P.syms) →
       (∀ e ∈ S, j₁.δ.Remap e e) →
-      (∀ e ∈ S, (es.poR e j₁.w.id ∨ es.poR j₁.w.id e) ∧ ¬ es.ppo j₁.P.holds j₁.δ j₁.w.id e) →
+      (∀ e ∈ S, es.poR e j₁.w.id ∧ ¬ es.ppo j₁.P.holds j₁.δ j₁.w.id e) →
       Sat (Pred.and (strPred es j₁.P Q S).holds Ω) →
       Generated Ω { j₁ with P := strPred es j₁.P Q S }
   /-- Forwarding (Definition `def:elab-fwd`) along `e₁ -F_{j₁}→ e₂`, applying

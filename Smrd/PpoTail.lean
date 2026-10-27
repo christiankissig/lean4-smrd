@@ -586,15 +586,25 @@ theorem ppo_win_or_tail (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es
 /-- The dependency order with `≼` cut to the windows. -/
 def depWin (es : EventStructure) (x : Execution) : Rel := (x.ppoWin es).union x.DP
 
+/-- `DP` leaves the head only where `DP ⊆ ⊑`: the origin of a dependency is
+    `⊑`-before a justified write, so not in the tail. -/
+theorem dp_not_tail (hDP : ∀ a b, x.DP a b → es.poR a b) :
+    ∀ a b, x.DP a b → ¬ x.Tail es a := by
+  rintro a b hd ht
+  have hab := hDP a b hd
+  obtain ⟨-, -, j, hj, hjb, -⟩ := hd
+  exact ht ⟨j, hj, .inr (hjb ▸ hab)⟩
+
 /-- **No-Thin-Air is the same over MoRDor's `≼` and its cut to the
     justification windows**, where every step of `≼` lies in `⊑`
-    (`ppoStep_po`: no forwarding or elision; condition (1)) and `DP` does
-    (`DP` origins `⊑`-before their write, condition (2)). The combined
+    (`ppoStep_po`: no forwarding or elision; condition (1)) and no origin of
+    `DP` lies in the tail (condition (2), implied by `DP ⊆ ⊑`, `dp_not_tail`,
+    which `Smrd.DPPast` derives). The combined
     predicate (condition (3)) is built into `≼`. -/
 theorem noThinAir_iff_win {Ω : Pred} (hx : x.IsExecution es Ω) (hphi : x.phi es)
     (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
     (hirr : ∀ a, ¬ es.poR a a)
-    (hstep : ∀ a b, x.ppoStep es a b → es.poR a b) (hDP : ∀ a b, x.DP a b → es.poR a b) :
+    (hstep : ∀ a b, x.ppoStep es a b → es.poR a b) (hDP : ∀ a b, x.DP a b → ¬ x.Tail es a) :
     x.NoThinAir es ↔ Rel.Acyclic ((depWin es x).union x.rf) := by
   refine acyclic_iff_of_tail (x.Tail es) hpo_trans hirr ?_ ?_ ?_
   · rintro a b ((hw | hd) | hrf)
@@ -612,7 +622,7 @@ theorem noThinAir_iff_win {Ω : Pred} (hx : x.IsExecution es Ω) (hphi : x.phi e
       fun hpo => ⟨tail_of_po hpo_trans hpo ha, hpo⟩
     rcases h with (hp | hd) | hrf
     · exact fwd (ppo_po hpo_trans hstep hp)
-    · exact fwd (hDP a b hd)
+    · exact absurd ha (hDP a b hd)
     · obtain ⟨hW, -, hXa, -⟩ := hx.rf_wr a b hrf
       have hnel : ¬ x.elided a := hphi.1 a (.inl ⟨b, hrf⟩)
       have hE : es.cls Event.isEffect a := by
@@ -630,6 +640,7 @@ theorem noThinAir_iff_win_we {Ω : Pred} (hx : x.IsExecution es Ω) (hphi : x.ph
     (hDP : ∀ a b, x.DP a b → es.poR a b) :
     x.NoThinAir es ↔ Rel.Acyclic ((depWin es x).union x.rf) :=
   noThinAir_iff_win hx hphi hpo_trans hirr
-    (fun _ _ h => ppoStep_po_we hx.inX hW hx.fwdWF.uniq hpo_trans hirr hF hN hT h) hDP
+    (fun _ _ h => ppoStep_po_we hx.inX hW hx.fwdWF.uniq hpo_trans hirr hF hN hT h)
+    (dp_not_tail hDP)
 
 end Execution
