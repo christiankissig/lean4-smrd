@@ -65,6 +65,7 @@ Smrd.Types                        expressions, values, events, event structures,
                                                       ├── Smrd.LiftCross  (+ PpoNecessity) `r := y; if r = 0 then x := 1 ∥ x := 1`: the paper's Lifting lifts the guard into the other thread, DP against ⊑ in an execution; `LiftPast` fails, the restriction on Lifting forbids
                                                       └── Smrd.SymWFDenote  (+ Fresh) ⟨P⟩_n introduces symbols ⊑-before their uses (`denote_symWF`)
 Smrd.Labels  (Fresh + Monotonicity + Executions) labels are unique in P̄: distinct events of ⟨P⟩_n with one label conflict (`labels_unique`, `conflictFree_label_inj`), for distinct loop ids
+Smrd.RoutineHyps  (Fresh + PpoTail) ⊑ of ⟨P⟩_n a strict order (`denote_po_trans`, `denote_po_irrefl`); sameLoc transitive through evaluating locations (`sameLoc_trans`); rf ⊆ sameLoc (`rfLoc_of_entails`, `rfLoc_of_phi_closed`) and LocModel (`locModel_of_phi`) under stated hypotheses, with counterexamples from φ alone
 ```
 
 `Smrd.Basic` re-exports all of the above and is the library root (`Smrd.lean` imports it).
