@@ -24,8 +24,7 @@ Executions `𝕏 = (X, J, rf)` (Definition `def:executions`), freezing
   transitive and contains `rf` without further hypotheses.
 
 `Frozen` abstracts an execution to the events and dependency relations the
-futures of Appendix A.7 are built from (`EpisodicLoops.Futures`, in
-`lean4-episodic-loops`).
+futures of Appendix A.7 are built from.
 -/
 
 /-- An execution `(X, J, rf)`; `rf w r` reads "`r` reads from `w`". -/

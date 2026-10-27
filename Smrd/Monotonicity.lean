@@ -289,8 +289,7 @@ def MapsInj (θ : Nat → Nat) (a₁ b₁ a₂ b₂ : Nat) : Prop :=
     allocates injectively onto ids `m₂` allocates, under which -- and under any
     further extension -- the structure `m₁` generates embeds into the one `m₂`
     generates. The combinators below are generic in `Emb`; `Sim` takes
-    `Embeds`, and `lean4-episodic-loops` instantiates `Emb` with the
-    correspondence of `γ`. -/
+    `Embeds`; the correspondence of `γ` is another instance. -/
 def SimBy (Emb : (Nat → Nat) → (Nat → Nat) → EventStructure → EventStructure → Prop)
     (θ₀ τ₀ : Nat → Nat) (bI bT : Nat) (m₁ m₂ : Gen EventStructure) : Prop :=
   ∀ σ₁ σ₂ : GenState, bI ≤ σ₁.nextId → bT ≤ σ₁.nextThread →
