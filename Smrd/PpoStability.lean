@@ -613,7 +613,7 @@ theorem noThinAir_iff_trunc {es : EventStructure} {x : Execution} {Ω : Pred}
     x.NoThinAir es ↔ Rel.Acyclic (((x.ppoTrunc es).union x.DP).union x.rf) := by
   have hT : RMWTight es x := by
     refine ⟨fun ent h => ?_, fun ent h => ?_⟩ <;> (rw [hr] at h; cases h)
-  rw [noThinAir_iff_win hx hphi hpo_trans hirr (fun _ _ h => ppoStep_po hδ hT h) hDP]
+  rw [noThinAir_iff_win hx hphi hpo_trans hirr (fun _ _ h => ppoStep_po hδ hT h) (dp_not_tail hDP)]
   -- `ppoWin ∪ DP` against `ppoTrunc ∪ DP`
   have e1 : Rel.Acyclic ((depWin es x).union x.rf) ↔
       Rel.Acyclic ((x.ppoWin es).union (x.DP.union x.rf)) := by
