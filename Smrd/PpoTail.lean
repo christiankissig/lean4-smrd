@@ -116,8 +116,9 @@ theorem ppo_po (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
 
 The cut to `Anchored` pairs makes every step of `≼` relate `⊑`-comparable
 events, where `⊑` is a forest (`PoForest`: the `⊑`-down-set of an event is a
-chain, as `denote` builds it: sequencing extends a chain and parallel
-composition has no join). Without forwarding, `remap_δ` moves an event only
+chain). `denote` builds a forest only without code after a parallel block:
+`(P₁ ∥ P₂); κ` joins, and with Forwarding into `κ` a step of `≼` can relate
+the two threads (`Smrd.FwdAcrossJoin`). Without forwarding, `remap_δ` moves an event only
 `⊑`-forward, to the write it is elided into (`WEForward`), so a remapped pair
 `(a', b')` of a base pair `a ⊑ b` points backward only if the elision of `a`
 crosses `b`: `a ⊑ b ⊑ remap_δ(a)` with `b` not elided into the same write.
