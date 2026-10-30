@@ -44,7 +44,7 @@ semantic (`Pred := Valuation → Prop`), and syntactic predicates are `Expr`s de
 Smrd.Types                        expressions, values, events, event structures, relations
 ├── Smrd.Conjuncts                `conj(P)`, predicates read up to their conjuncts (par:conj)
 ├── Smrd.EventStructureSemantics  program syntax, CPS semantics ⟨P⟩_{n ρ κ φ} (∥ joins: κ runs once, after both threads), per-loop step-counters
-│     ├── Smrd.Fresh            `denote_ids_nodup`: the events of ⟨P⟩_n have distinct ids
+│     ├── Smrd.Fresh            `denote_ids_nodup`: the events of ⟨P⟩_n have distinct ids; `interp_invR` (invariants with RMW entries added as `RMWShapeR`: read ⊑ write, one location)
 │     └── Smrd.Monotonicity     `denote_mono`: ⟨P⟩_n embeds into ⟨P⟩_{n'} for n ≤ n' (l:es-mono)
 └── Smrd.Forwardingcontext        δ = (F, WE), ψ_δ, remap_δ
       └── Smrd.Ppo                ≼_sync, ≼_rmw, ≼_alias, ≼^P_δ, pred, dependence on P
@@ -73,6 +73,7 @@ Smrd.Types                        expressions, values, events, event structures,
                                                       └── Smrd.SymWFDenote  (+ Fresh) ⟨P⟩_n introduces symbols ⊑-before their uses (`denote_symWF`)
 Smrd.Labels  (Fresh + Monotonicity + Executions) labels are unique in P̄: distinct events of ⟨P⟩_n with one label conflict (`labels_unique`, `conflictFree_label_inj`), for distinct loop ids
 Smrd.RoutineHyps  (Fresh + PpoTail) ⊑ of ⟨P⟩_n a strict order (`denote_po_trans`, `denote_po_irrefl`); sameLoc (under P ∧ φ_rf, as partial values) transitive and ⊇ rf outright (`sameLoc_trans`, `rfLoc` in CoherenceRC11); locations of ⟨P⟩_n Total for programs that do not compute pointers (`denote_totalLocs`, `Stmt.PtrWF`), so LocModel from a model of P ∧ valres_X ∧ φ_rf (`locModel_of_denote`); with constant offsets `*(r + c)`, `*(r + rc)` (`Stmt.PtrOffWF`, RCU's `rcu1_ptrOffWF`) from a model that also types the offset bases as non-booleans (`AddrTypedAt`, `locModel_of_denote_off`; needed: `locModel_of_offset_false`); counterexamples to LocModel from φ alone
+Smrd.RMWWFDenote  (RoutineHyps + FwdEntailsRMW) ⟨P⟩_n is `RMWWF` (`denote_rmwWF`); `dep_po_R_denote`, `dep_po_R_of_phi_denote` drop `RMWWF` and ⊑'s transitivity and irreflexivity (`PoForest` stays: false for `(a ∥ b); c`)
 ```
 
 `Smrd.Basic` re-exports all of the above and is the library root (`Smrd.lean` imports it).

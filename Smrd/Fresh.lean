@@ -369,14 +369,39 @@ structure ESInv (Q : EventStructure → Prop) : Prop where
   join   : ∀ k k', Q k → Q k' → Q (k.join k')
   addRMW : ∀ k r c w, Q k → RMWShape k r w → Q (k.addRMW r c w)
 
+/-- `RMWShape`, together with what the interpreter's one step also gives: the
+    read `r` is `⊑`-before the write `w`, and both access one location
+    expression. -/
+def RMWShapeR (k : EventStructure) (r w : EventId) : Prop :=
+  (r, w) ∈ k.po ∧ ∃ er ∈ k.events, ∃ ew ∈ k.events, er.id = r ∧ ew.id = w ∧
+    er.label.thread = ew.label.thread ∧ er.label.iter = ew.label.iter ∧
+    ∃ l, er.loc = some l ∧ ew.loc = some l
+
+theorem RMWShapeR.shape {k : EventStructure} {r w : EventId} (h : RMWShapeR k r w) :
+    RMWShape k r w := by
+  obtain ⟨-, er, her, ew, hew, h₁, h₂, h₃, h₄, -⟩ := h
+  exact ⟨er, her, ew, hew, h₁, h₂, h₃, h₄⟩
+
+/-- `ESInv` where an RMW entry is added with the stronger shape `RMWShapeR`. -/
+structure ESInvR (Q : EventStructure → Prop) : Prop where
+  empty  : Q EventStructure.empty
+  «prefix» : ∀ e k, Q k → Q (EventStructure.prefix e k)
+  plus   : ∀ k k', Q k → Q k' → Q (k.plus k')
+  join   : ∀ k k', Q k → Q k' → Q (k.join k')
+  addRMW : ∀ k r c w, Q k → RMWShapeR k r w → Q (k.addRMW r c w)
+
+theorem ESInv.toR {Q : EventStructure → Prop} (hQ : ESInv Q) : ESInvR Q :=
+  ⟨hQ.empty, hQ.prefix, hQ.plus, hQ.join, fun k r c w hk hs => hQ.addRMW k r c w hk hs.shape⟩
+
 /-- Every structure `m` generates has the property `Q`. -/
 def Gen.Holds (Q : EventStructure → Prop) (m : Gen EventStructure) : Prop :=
   ∀ s : GenState, Q (m.run s).1
 
 open EventStructure in
 /-- The structures `⟨s⟩` generates have every property closed under the
-    combinators, provided the continuation's do. -/
-theorem interp_inv {Q : EventStructure → Prop} (hQ : ESInv Q) :
+    combinators, an RMW entry added with the shape `RMWShapeR`, provided the
+    continuation's do. -/
+theorem interp_invR {Q : EventStructure → Prop} (hQ : ESInvR Q) :
     ∀ (N : Nat) (n : Bounds) (ctx : Ctx) (pc : List Nat) (s : Stmt)
     (ρ : RegState) (κ : Cont) (φ : List Guard),
     sumB s.loops n + sizeOf s < N → (∀ ρ φ, Gen.Holds Q (κ ρ φ)) →
@@ -402,35 +427,39 @@ theorem interp_inv {Q : EventStructure → Prop} (hQ : ESInv Q) :
         rw [interp.eq_def]
         intro σ
         exact hQ.addRMW _ _ _ _ (hQ.prefix _ _ (hQ.prefix _ _ (hκ _ _ _)))
-          ⟨_, List.mem_cons_self, _, List.mem_cons_of_mem _ List.mem_cons_self, rfl, rfl, rfl, rfl⟩
+          ⟨List.mem_append_left _ (List.mem_map.2 ⟨_, List.mem_cons_self, rfl⟩),
+            _, List.mem_cons_self, _, List.mem_cons_of_mem _ List.mem_cons_self, rfl, rfl, rfl, rfl,
+            _, rfl, rfl⟩
     | cas or ow r x e₁ e₂ =>
         rw [interp.eq_def]
         intro σ
         exact hQ.addRMW _ _ _ _ (hQ.prefix _ _ (hQ.prefix _ _
           (hQ.plus _ _ (hQ.prefix _ _ (hκ _ _ _)) (hκ _ _ _))))
-          ⟨_, List.mem_cons_self, _, List.mem_cons_of_mem _ (List.mem_cons_of_mem _
-            (List.mem_append_left _ List.mem_cons_self)), rfl, rfl, rfl, rfl⟩
+          ⟨List.mem_append_left _ (List.mem_map.2 ⟨_, List.mem_cons_of_mem _
+              (List.mem_append_left _ List.mem_cons_self), rfl⟩),
+            _, List.mem_cons_self, _, List.mem_cons_of_mem _ (List.mem_cons_of_mem _
+              (List.mem_append_left _ List.mem_cons_self)), rfl, rfl, rfl, rfl, _, rfl, rfl⟩
     | seq s₁ s₂ =>
         rw [interp.eq_def]
         simp only [Stmt.loops, sumB_append, Stmt.seq.sizeOf_spec] at hN
-        exact interp_inv hQ N n ctx (pc ++ [0]) s₁ ρ _ φ (by omega)
-          (fun ρ' φ' => interp_inv hQ N n ctx (pc ++ [1]) s₂ ρ' κ φ' (by omega) hκ)
+        exact interp_invR hQ N n ctx (pc ++ [0]) s₁ ρ _ φ (by omega)
+          (fun ρ' φ' => interp_invR hQ N n ctx (pc ++ [1]) s₂ ρ' κ φ' (by omega) hκ)
     | par s₁ s₂ =>
         rw [interp.eq_def]
         simp only [Stmt.loops, sumB_append, Stmt.par.sizeOf_spec] at hN
         intro σ
         exact hQ.join _ _ (hQ.plus _ _
-          (interp_inv hQ N n ctx (pc ++ [0]) s₁ ρ (fun _ _ => pure .empty) φ (by omega)
+          (interp_invR hQ N n ctx (pc ++ [0]) s₁ ρ (fun _ _ => pure .empty) φ (by omega)
             (fun _ _ _ => hQ.empty) _)
-          (interp_inv hQ N n _ (pc ++ [1]) s₂ ρ (fun _ _ => pure .empty) φ (by omega)
+          (interp_invR hQ N n _ (pc ++ [1]) s₂ ρ (fun _ _ => pure .empty) φ (by omega)
             (fun _ _ _ => hQ.empty) _))
           (hκ _ _ _)
     | ite b s₁ s₂ =>
         rw [interp.eq_def]
         simp only [Stmt.loops, sumB_append, Stmt.ite.sizeOf_spec] at hN
         intro σ
-        exact hQ.prefix _ _ (hQ.plus _ _ (interp_inv hQ N n ctx _ s₁ ρ κ _ (by omega) hκ _)
-          (interp_inv hQ N n ctx _ s₂ ρ κ _ (by omega) hκ _))
+        exact hQ.prefix _ _ (hQ.plus _ _ (interp_invR hQ N n ctx _ s₁ ρ κ _ (by omega) hκ _)
+          (interp_invR hQ N n ctx _ s₂ ρ κ _ (by omega) hκ _))
     | «while» ℓ b body =>
         rw [interp.eq_def]
         dsimp only
@@ -441,10 +470,18 @@ theorem interp_inv {Q : EventStructure → Prop} (hQ : ESInv Q) :
           have h₂ := Bounds.dec_self n ℓ
           intro σ
           exact hQ.prefix _ _ (hQ.plus _ _
-            (interp_inv hQ N (n.dec ℓ) _ _ body ρ _ _ (by omega)
-              (fun ρ' φ' => interp_inv hQ N (n.dec ℓ) _ pc (.while ℓ b body) ρ' κ φ'
+            (interp_invR hQ N (n.dec ℓ) _ _ body ρ _ _ (by omega)
+              (fun ρ' φ' => interp_invR hQ N (n.dec ℓ) _ pc (.while ℓ b body) ρ' κ φ'
                 (by simp only [Stmt.loops, sumB_cons, Stmt.while.sizeOf_spec]; omega) hκ) _)
             (hκ _ _ _))
+
+/-- The structures `⟨s⟩` generates have every property closed under the
+    combinators, provided the continuation's do. -/
+theorem interp_inv {Q : EventStructure → Prop} (hQ : ESInv Q) (N : Nat) (n : Bounds) (ctx : Ctx)
+    (pc : List Nat) (s : Stmt) (ρ : RegState) (κ : Cont) (φ : List Guard)
+    (hN : sumB s.loops n + sizeOf s < N) (hκ : ∀ ρ φ, Gen.Holds Q (κ ρ φ)) :
+    Gen.Holds Q (interp n ctx pc s ρ κ φ) :=
+  interp_invR hQ.toR N n ctx pc s ρ κ φ hN hκ
 
 
 /-! ## Every id allocated is the id of an event -/

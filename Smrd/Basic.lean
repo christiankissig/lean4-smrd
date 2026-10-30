@@ -30,5 +30,6 @@ import Smrd.RMWCross
 import Smrd.SymWFDenote
 import Smrd.Labels
 import Smrd.RoutineHyps
+import Smrd.RMWWFDenote
 
 def hello := "world"
