@@ -54,6 +54,8 @@ stronger for it), and it carries `δ_{j₀} ⊆ δ` (as every generated one does
   `dep_po_T` but `NoRevLoc`, plus `Sat P` (from `φ`), locations that evaluate
   (`LocsEval`, from `TotalLocs`), and `NoRevRMW`, the part of `NoRevLoc` for
   pairs with an RMW access, which entailment of predicates does not address.
+  `Smrd.FwdEntailsRMW` drops it (`dep_po_R`, with `RMWWF`) and refutes it
+  from the restrictions (`Smrd.RMWCross`).
 * `noRevLoc_of_fwdEntailsAll`: `FwdEntailsAll` (with `NoRevRMW`) implies
   `NoRevLoc` itself. The window-restricted conditions cannot: `NoRevLoc`'s
   `LocLinked` asks alias queries of every justification, windows or not, so
@@ -492,7 +494,10 @@ theorem noRev_of_edges {Ω : Pred} (hx : x.IsExecution es Ω)
 
 /-- The part of `NoRevLoc` for pairs with an RMW access, which entailment of
     predicates does not address. It holds where there are no RMWs
-    (`noRevRMW_of_nil`) and under `NoRevLoc`. -/
+    (`noRevRMW_of_nil`), under `NoRevLoc`, and where no `F ∪ WE` edge crosses
+    an RMW access (`noRevRMW_of_noCrossRMW`); it does not follow from the
+    restrictions (`RMWCross.rmwCross`), and `DP ∪ ≼ ⊆ ⊑` does not need it
+    (`dep_po_R`). -/
 def NoRevRMW (es : EventStructure) (x : Execution) : Prop :=
   ∀ a b a' b', es.poR a b → x.δ.Remap a a' → x.δ.Remap b b' → (es.RMWAcc a ∨ es.RMWAcc b) →
     ¬ es.poR b' a'
