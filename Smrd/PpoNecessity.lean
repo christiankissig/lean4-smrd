@@ -489,7 +489,9 @@ theorem gen_jWE : esWW.Generated (fun _ => True) jWE := by
       show (0, 1) ∈ esWW.po by decide,
       _, _, _, _, rfl, rfl, rfl, rfl, fun _ _ _ _ h₁ h₂ => by rw [h₁] at h₂; cases h₂; rfl⟩,
     ⟨_, rfl, rfl⟩, ⟨_, rfl, rfl⟩, fun ⟨e, he, hp⟩ => by cases he; simp [W, Event.isVol] at hp⟩,
-    weNoRel_of (by decide) (by decide), EventStructure.not_rmwAcc_of_nil _ rfl _⟩ ?_ ?_
+    weNoRel_of (by decide) (by decide),
+    Execution.weNoJoin_of_poForest (poForest_of (by decide)) _ _,
+    EventStructure.not_rmwAcc_of_nil _ rfl _⟩ ?_ ?_
   · rintro ⟨e'', h₁, h₂⟩
     have m₁ := hppo _ _ h₁
     have m₂ := hppo _ _ h₂
@@ -744,7 +746,9 @@ theorem gen_jC : esC.Generated (fun _ => True) jC := by
       show (0, 1) ∈ esC.po by decide,
       _, _, _, _, rfl, rfl, rfl, rfl, fun _ _ _ _ h₁ h₂ => by rw [h₁] at h₂; cases h₂; rfl⟩,
     ⟨_, rfl, rfl⟩, ⟨_, rfl, rfl⟩, fun ⟨e, he, hp⟩ => by cases he; simp [W, Event.isVol] at hp⟩,
-    weNoRel_of (by decide) (by decide), EventStructure.not_rmwAcc_of_nil _ rfl _⟩ ?_ ?_
+    weNoRel_of (by decide) (by decide),
+    Execution.weNoJoin_of_poForest (poForest_of (by decide)) _ _,
+    EventStructure.not_rmwAcc_of_nil _ rfl _⟩ ?_ ?_
   · rintro ⟨e'', h₁, h₂⟩
     have m₁ := hppo _ _ h₁
     have m₂ := hppo _ _ h₂

@@ -98,6 +98,16 @@ theorem mem_poL {a b : EventId} : (a, b) ∈ poL ↔ a < b ∧ b < 11 := by
   · rintro ⟨i, -, j, ⟨hj, hij⟩, h₁, h₂⟩; subst h₁ h₂; exact ⟨hij, hj⟩
   · rintro ⟨h₁, h₂⟩; exact ⟨a, Nat.lt_trans h₁ h₂, b, ⟨h₂, h₁⟩, rfl, rfl⟩
 
+theorem forestL_poL : ForestL poL := by
+  rintro ⟨a, b⟩ hp ⟨c, d⟩ hq h
+  simp only at h ⊢
+  rw [mem_poL] at hp hq
+  subst h
+  rcases Nat.lt_trichotomy a c with h | rfl | h
+  · exact .inr (.inl (mem_poL.2 ⟨h, Nat.lt_trans hq.1 hq.2⟩))
+  · exact .inl rfl
+  · exact .inr (.inr (mem_poL.2 ⟨h, Nat.lt_trans hp.1 hp.2⟩))
+
 theorem closed_poL : Closed poL := by
   rintro ⟨a, b⟩ hp ⟨c, d⟩ hq h
   simp only at h ⊢
@@ -256,7 +266,8 @@ theorem fwd_68 : esP.fwdRel jS 6 8 := by
       ?_⟩, po_of (by decide), _, _, _, _, rfl, rfl, rfl, rfl, ?_⟩,
     .inr (.inr ⟨⟨_, rfl, rfl⟩, ⟨_, rfl, rfl⟩⟩),
     fun ⟨e, he, hp⟩ => by cases he; simp [e8, R, Event.isVol] at hp⟩,
-    fwdNoAcq_of (by decide) (by decide) (by decide), not_rmwAcc_of_nil _ rfl _⟩
+    fwdNoAcq_of (by decide) (by decide) (by decide),
+    Execution.fwdNoJoin_of_poForest (poForest_of forestL_poL) _ _, not_rmwAcc_of_nil _ rfl _⟩
   · rintro ⟨e'', h₁, h₂⟩
     have p₁ := (ppo_empty h₁).1
     have p₂ := (ppo_empty h₂).1
@@ -629,16 +640,6 @@ theorem rmwTightR_P : RMWTightR esP xP :=
 theorem dp_po_P : ∀ a b, xP.DP a b → esP.poR a b := fun a b h => by
   have key : ∀ p ∈ dpL, p ∈ poL := by decide
   exact key _ (dp_P h)
-
-theorem forestL_poL : ForestL poL := by
-  rintro ⟨a, b⟩ hp ⟨c, d⟩ hq h
-  simp only at h ⊢
-  rw [mem_poL] at hp hq
-  subst h
-  rcases Nat.lt_trichotomy a c with h | rfl | h
-  · exact .inr (.inl (mem_poL.2 ⟨h, Nat.lt_trans hq.1 hq.2⟩))
-  · exact .inl rfl
-  · exact .inr (.inr (mem_poL.2 ⟨h, Nat.lt_trans hp.1 hp.2⟩))
 
 /-- **`NoRevLoc` is not a consequence of the other hypotheses of `dep_po_T`,
     and cannot be dropped from it.** The execution is a consistent one

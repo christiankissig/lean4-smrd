@@ -133,7 +133,8 @@ theorem we_14 : esX.weRel jB 1 4 := by
       po_of (by decide), _, _, _, _, rfl, rfl, rfl, rfl,
       fun _ _ _ _ h₁ h₂ => by rw [h₁] at h₂; cases h₂; rfl⟩,
     ⟨_, rfl, rfl⟩, ⟨_, rfl, rfl⟩, fun ⟨e, he, hp⟩ => by cases he; simp [e1, W, Event.isVol] at hp⟩,
-    weNoRel_of (by decide) (by decide), fun ⟨ent, hm, h⟩ => by
+    weNoRel_of (by decide) (by decide),
+    Execution.weNoJoin_of_poForest (poForest_of (by decide)) _ _, fun ⟨ent, hm, h⟩ => by
       simp only [esX, List.mem_cons, List.mem_nil_iff, or_false] at hm
       subst hm; simp at h⟩
   rintro ⟨e'', h₁, h₂⟩
@@ -482,7 +483,7 @@ theorem rmwCross :
     (∀ a b, xX.dep esX a b → xX.poX esX a b) :=
   ⟨consistentT_X, poTrans_X, poIrr_X, poForest_X, rmwTightR_X, dp_po_X, sat_X, locsEval_X,
     rmwWF_X, fwdEntailsAll_X, not_noRevRMW, not_noRevLoc, not_noCrossRMW,
-    fun _ _ h => dep_po_R isExecution_X poTrans_X poIrr_X poForest_X rmwTightR_X dp_po_X sat_X
+    fun _ _ h => dep_po_R isExecution_X poTrans_X poIrr_X rmwTightR_X dp_po_X sat_X
       locsEval_X (fwdEntailsAll_X.on _) rmwWF_X h⟩
 
 /-- **`noRevLoc_of_fwdEntailsAll` needs an RMW hypothesis**: `FwdEntailsAll`

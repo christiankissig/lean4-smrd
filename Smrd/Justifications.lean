@@ -77,6 +77,18 @@ predicate `Generated`, whose derivations are the elements of `⋃ᵢ 𝕁ᵢ`.
   restriction `CoherenceT` admits an outcome RC11 forbids
   (`Smrd.FwdAcrossAcquire`); with it, the remapped `ppo_sync` has no backward
   pair even with forwarding (`Execution.ppoSyncRM_po_T`).
+* Forwarding and Write Elision carry a join restriction (`fwdNoJoin`,
+  `weNoJoin`): `remap_δ` moves the forwarded event onto its source, and the
+  elided write onto the eliding one, and the move must keep `⊑`-comparable
+  every event comparable with the moved one where the two have a common upper
+  bound (`NoJoinMove`). Forwarding does not reach across the join of a
+  parallel block, from a thread (or from before the block) into the code after
+  it; Write Elision does not move a write from before a parallel block into
+  one of its threads when the threads join again. Without it `≼` relates
+  `⊑`-incomparable events of two threads below the join
+  (`Smrd.FwdAcrossJoin`). MoRDor generates neither across a join in those
+  programs. Where `⊑` is a forest the restriction is vacuous
+  (`Execution.fwdNoJoin_of_poForest`, `Execution.weNoJoin_of_poForest`).
 -/
 
 /-- A justification `j : (P, D) ⊢^δ w`. -/
@@ -201,11 +213,99 @@ def fwdNoAcq (e₁ e₂ : EventId) : Prop :=
     ∀ c, es.poR e₁ c → es.poR c e₂ →
       ¬ es.cls Event.acquires c ∧ (es.cls Event.isSc e₂ → ¬ es.cls Event.isSc c)
 
+/-! ### The join restriction -/
+
+/-- `a` and `b` are `⊑`-comparable or equal. -/
+def PoCmp (a b : EventId) : Prop := a = b ∨ es.poR a b ∨ es.poR b a
+
+/-- `a` and `b` have a common upper bound in `⊑`: an event at or `⊑`-above
+    both. -/
+def Joinable (a b : EventId) : Prop :=
+  ∃ d, (a = d ∨ es.poR a d) ∧ (b = d ∨ es.poR b d)
+
+/-- `c` and `e` are `⊑`-comparable where they have a common upper bound.
+    Where `⊑` is a forest (`Execution.PoForest`) this holds of every pair. -/
+def JoinCmp (c e : EventId) : Prop := es.Joinable c e → es.PoCmp c e
+
+/-- Moving `u` to `v` keeps joinable events comparable: every event `c` that
+    is comparable with `u` where joinable with it is comparable with `v` where
+    joinable with it. -/
+def NoJoinMove (u v : EventId) : Prop := ∀ c, es.JoinCmp c u → es.JoinCmp c v
+
+/-- The join restriction on Forwarding: `remap_δ` moves the forwarded event
+    `e₂` onto its source `e₁` (`NoJoinMove e₂ e₁`). For `e₁ ⊑ e₂` it says
+    that every event `⊑`-below `e₂` is comparable with `e₁`
+    (`fwdNoJoin_below`) -- no event of another thread joins between them, as
+    in `(… ∥ x := 1); r := x`, where `r := x`, after the join, would be
+    forwarded from `x := 1` in one thread, `⊑`-incomparable with the events
+    of the other (`Smrd.FwdAcrossJoin`) -- and, of an event `c` incomparable
+    with `e₂` and without a common upper bound with it, that `c` has none
+    with `e₁` either, or is comparable with it (no `N` in `⊑`; vacuous for
+    the series-parallel `⊑` of `⟨P⟩_n`). Vacuous where `⊑` is a forest
+    (`Execution.fwdNoJoin_of_poForest`). -/
+def fwdNoJoin (e₁ e₂ : EventId) : Prop := es.NoJoinMove e₂ e₁
+
+/-- The join restriction on Write Elision: `remap_δ` moves the elided write
+    `e₁` onto the eliding write `e₂` (`NoJoinMove e₁ e₂`). For `e₁ ⊑ e₂` it
+    says that every event `c ⊒ e₁` with a common upper bound with `e₂` is
+    comparable with `e₂` (`weNoJoin_iff`): the elision does not move `e₁`
+    from before a parallel block into one of its threads when the threads
+    join again, as in `x := 0; (x := 1 ∥ r := x); κ`, where `r := x` is after
+    `x := 0` but not after `x := 1`. Elision into the continuation of a join,
+    `(x := 1 ∥ …); x := 2`, is not restricted. Vacuous where `⊑` is a forest
+    (`Execution.weNoJoin_of_poForest`). -/
+def weNoJoin (e₁ e₂ : EventId) : Prop := es.NoJoinMove e₁ e₂
+
+theorem PoCmp.symm {a b : EventId} (h : es.PoCmp a b) : es.PoCmp b a := by
+  rcases h with rfl | h | h
+  · exact .inl rfl
+  · exact .inr (.inr h)
+  · exact .inr (.inl h)
+
+theorem Joinable.symm {a b : EventId} (h : es.Joinable a b) : es.Joinable b a := by
+  obtain ⟨d, ha, hb⟩ := h
+  exact ⟨d, hb, ha⟩
+
+theorem JoinCmp.symm {a b : EventId} (h : es.JoinCmp a b) : es.JoinCmp b a :=
+  fun hj => PoCmp.symm es (h (Joinable.symm es hj))
+
+theorem joinCmp_of_poCmp {a b : EventId} (h : es.PoCmp a b) : es.JoinCmp a b := fun _ => h
+
+theorem joinable_of_po_of_po {a b d : EventId} (ha : a = d ∨ es.poR a d)
+    (hb : b = d ∨ es.poR b d) : es.Joinable a b := ⟨d, ha, hb⟩
+
+/-- Forwarding's join restriction: every event `⊑`-below the forwarded event
+    `e₂` is comparable with the source `e₁`. -/
+theorem fwdNoJoin_below {e₁ e₂ : EventId} (h : es.fwdNoJoin e₁ e₂) (h₁₂ : es.poR e₁ e₂)
+    {c : EventId} (hc : es.poR c e₂) : es.PoCmp c e₁ :=
+  h c (joinCmp_of_poCmp es (.inr (.inl hc))) ⟨e₂, .inr hc, .inr h₁₂⟩
+
+/-- Write Elision's join restriction, for `e₁ ⊑ e₂`: every event `⊑`-above
+    the elided write `e₁` with a common upper bound with the eliding write
+    `e₂` is comparable with `e₂`. -/
+theorem weNoJoin_iff (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
+    {e₁ e₂ : EventId} (h₁₂ : es.poR e₁ e₂) :
+    es.weNoJoin e₁ e₂ ↔ ∀ c, es.poR e₁ c → es.Joinable c e₂ → es.PoCmp c e₂ := by
+  constructor
+  · intro h c hc hj
+    exact h c (joinCmp_of_poCmp es (.inr (.inr hc))) hj
+  · intro h c hc hj
+    obtain ⟨d, hcd, hed⟩ := hj
+    have hj₁ : es.Joinable c e₁ := ⟨d, hcd, .inr (by
+      rcases hed with rfl | hed
+      · exact h₁₂
+      · exact hpo_trans _ _ _ h₁₂ hed)⟩
+    rcases hc hj₁ with rfl | hce | hec
+    · exact .inr (.inl h₁₂)
+    · exact .inr (.inl (hpo_trans _ _ _ hce h₁₂))
+    · exact h c hec ⟨d, hcd, hed⟩
+
 /-- `e₁ -F_j→ e₂`: Forwarding's conditions (`fwdRelBlind`) under the acquire
-    restriction (`fwdNoAcq`), where the forwarded event `e₂` is not an RMW
-    access (a deviation from the paper, MoRDor E4). -/
+    restriction (`fwdNoAcq`) and the join restriction (`fwdNoJoin`), where the
+    forwarded event `e₂` is not an RMW access (a deviation from the paper,
+    MoRDor E4). -/
 def fwdRel (j : Justification) (e₁ e₂ : EventId) : Prop :=
-  es.fwdRelBlind j e₁ e₂ ∧ es.fwdNoAcq e₁ e₂ ∧ ¬ es.RMWAcc e₂
+  es.fwdRelBlind j e₁ e₂ ∧ es.fwdNoAcq e₁ e₂ ∧ es.fwdNoJoin e₁ e₂ ∧ ¬ es.RMWAcc e₂
 
 /-- The conditions of Write Elision blind to the memory order:
     `e₁ -F'_j→ e₂` on a pair of writes, where the overwritten write `e₁` is not
@@ -226,10 +326,11 @@ def weNoRel (e₁ e₂ : EventId) : Prop :=
     ∀ c, es.poR e₁ c → es.poR c e₂ → ¬ es.cls Event.publishes c
 
 /-- `e₁ -WE_j→ e₂`: Write Elision's conditions (`weRelBlind`) under the
-    release restriction (`weNoRel`), where the elided write `e₁` is not an
-    RMW access (a deviation from the paper, MoRDor E4). -/
+    release restriction (`weNoRel`) and the join restriction (`weNoJoin`),
+    where the elided write `e₁` is not an RMW access (a deviation from the
+    paper, MoRDor E4). -/
 def weRel (j : Justification) (e₁ e₂ : EventId) : Prop :=
-  es.weRelBlind j e₁ e₂ ∧ es.weNoRel e₁ e₂ ∧ ¬ es.RMWAcc e₁
+  es.weRelBlind j e₁ e₂ ∧ es.weNoRel e₁ e₂ ∧ es.weNoJoin e₁ e₂ ∧ ¬ es.RMWAcc e₁
 
 /-! ## Closed relabel-equivalence (Definition `def:rel-eq`) -/
 
@@ -450,9 +551,9 @@ theorem Generated.fwd_mem {Ω : Pred} {j : Justification} (h : es.Generated Ω j
 theorem Generated.not_rmwAcc_elided {Ω : Pred} {j : Justification} (h : es.Generated Ω j) :
     ∀ p, (p ∈ j.δ.f ∨ p ∈ j.δ.we) → ¬ es.RMWAcc p.2 := by
   rintro p (hp | hp)
-  · obtain ⟨j₀, -, -, h⟩ := Generated.fwd_mem es h p hp
+  · obtain ⟨j₀, -, -, -, h⟩ := Generated.fwd_mem es h p hp
     exact h
-  · obtain ⟨j₀, ⟨-, -, h⟩, -⟩ := Generated.we_mem es h p hp
+  · obtain ⟨j₀, ⟨-, -, -, h⟩, -⟩ := Generated.we_mem es h p hp
     exact h
 
 end EventStructure

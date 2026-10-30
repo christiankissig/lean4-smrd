@@ -118,7 +118,9 @@ The cut to `Anchored` pairs makes every step of `≼` relate `⊑`-comparable
 events, where `⊑` is a forest (`PoForest`: the `⊑`-down-set of an event is a
 chain). `denote` builds a forest only without code after a parallel block:
 `(P₁ ∥ P₂); κ` joins, and with Forwarding into `κ` a step of `≼` can relate
-the two threads (`Smrd.FwdAcrossJoin`). Without forwarding, `remap_δ` moves an event only
+the two threads (`Smrd.FwdAcrossJoin`). The results here assume `PoForest`;
+`Smrd.CoherenceT` drops it for executions, whose elaborations carry the join
+restrictions (`remap_poCmp`). Without forwarding, `remap_δ` moves an event only
 `⊑`-forward, to the write it is elided into (`WEForward`), so a remapped pair
 `(a', b')` of a base pair `a ⊑ b` points backward only if the elision of `a`
 crosses `b`: `a ⊑ b ⊑ remap_δ(a)` with `b` not elided into the same write.
@@ -140,6 +142,18 @@ theorem anchored_of_inWin (hinX : ∀ j ∈ x.J, x.X j.w.id) {a b : EventId}
     comparable. -/
 def PoForest (es : EventStructure) : Prop :=
   ∀ a b e, (a = e ∨ es.poR a e) → (b = e ∨ es.poR b e) → a = b ∨ es.poR a b ∨ es.poR b a
+
+/-- Where `⊑` is a forest, joinable events are comparable. -/
+theorem joinCmp_of_poForest (hF : PoForest es) (c e : EventId) : es.JoinCmp c e := by
+  rintro ⟨d, hc, he⟩
+  exact hF c e d hc he
+
+/-- **The join restrictions are vacuous where `⊑` is a forest.** -/
+theorem fwdNoJoin_of_poForest (hF : PoForest es) (e₁ e₂ : EventId) : es.fwdNoJoin e₁ e₂ :=
+  fun c _ => joinCmp_of_poForest hF c e₁
+
+theorem weNoJoin_of_poForest (hF : PoForest es) (e₁ e₂ : EventId) : es.weNoJoin e₁ e₂ :=
+  fun c _ => joinCmp_of_poForest hF c e₂
 
 /-- No forwarding, and every write elision `(e₂, e₁) ∈ WE` (`e₁` elided into
     `e₂`) is `⊑`-forward, `e₁ ⊑ e₂`. The second half holds of every execution,

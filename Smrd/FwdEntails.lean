@@ -172,7 +172,7 @@ variable {es : EventStructure} {x : Execution}
 /-- `remap_stay_up` (`Smrd.CoherenceT`), with the crossing Forwarding edge on
     the chain. -/
 theorem remap_stay_up' {Ω : Pred} (hx : x.IsExecution es Ω)
-    (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c) (hF : PoForest es)
+    (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
     {c e e' : EventId} (h : x.δ.Remap e e') (hc : c = e ∨ es.poR c e) :
     (c = e' ∨ es.poR c e') ∨ x.δ.Remap c e' ∨
       ∃ q p, (q, p) ∈ x.δ.f ∧ es.poR q c ∧ es.poR c p ∧ x.δ.Remap p e' := by
@@ -183,24 +183,24 @@ theorem remap_stay_up' {Ω : Pred} (hx : x.IsExecution es Ω)
       rintro (rfl | hce)
       · exact .inr (.inl (.step he hr))
       · rcases edge_cases hx he with ⟨hf, hqe⟩ | ⟨-, heq⟩
-        · rcases hF q c e (.inr hqe) (.inr hce) with rfl | hqc | hcq
+        · rcases edge_poCmp hx he hce hqe with rfl | hcq | hqc
           · exact .inr (.inl hr)
-          · exact .inr (.inr ⟨q, e, hf, hqc, hce, .step he hr⟩)
           · exact ih (.inr hcq)
+          · exact .inr (.inr ⟨q, e, hf, hqc, hce, .step he hr⟩)
         · exact ih (.inr (hpo_trans _ _ _ hce heq))
 
 /-- `remap_enter_up` (`Smrd.CoherenceT`), with the crossing Write Elision edge
     on the chain. -/
 theorem remap_enter_up' {Ω : Pred} (hx : x.IsExecution es Ω)
-    (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c) (hF : PoForest es)
-    {c e e' : EventId} (h : x.δ.Remap e e') (hc : ¬ (c = e ∨ es.poR c e))
-    (hc' : c = e' ∨ es.poR c e') :
+    (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
+    {c e e' : EventId} (h : x.δ.Remap e e') (hj : es.JoinCmp c e)
+    (hc : ¬ (c = e ∨ es.poR c e)) (hc' : c = e' ∨ es.poR c e') :
     x.δ.Remap c e' ∨ ∃ q p, (q, p) ∈ x.δ.we ∧ es.poR p c ∧ es.poR c q ∧ x.δ.Remap p e' := by
-  revert hc
+  revert hj hc
   induction h with
-  | canon _ => exact fun hc => absurd hc' hc
+  | canon _ => exact fun _ hc => absurd hc' hc
   | @step q e e' he hr ih =>
-      intro hc
+      intro hj hc
       by_cases hq : c = q ∨ es.poR c q
       · rcases edge_cases hx he with ⟨-, hqe⟩ | ⟨hw, heq⟩
         · rcases hq with rfl | hcq
@@ -208,11 +208,11 @@ theorem remap_enter_up' {Ω : Pred} (hx : x.IsExecution es Ω)
           · exact absurd (.inr (hpo_trans _ _ _ hcq hqe)) hc
         · rcases hq with rfl | hcq
           · exact .inl hr
-          · rcases hF c e q (.inr hcq) (.inr heq) with rfl | hce | hec
+          · rcases hj ⟨q, .inr hcq, .inr heq⟩ with rfl | hce | hec
             · exact absurd (.inl rfl) hc
             · exact absurd (.inr hce) hc
             · exact .inr ⟨q, e, hw, hec, hcq, .step he hr⟩
-      · exact ih hc' hq
+      · exact ih hc' (edge_noJoin hx he c hj) hq
 
 /-! ## The condition -/
 
@@ -431,7 +431,7 @@ theorem no_cross (hev : LocsEval es) {j₀ : Justification} {u v c c₀ : EventI
     two chains.** No hypothesis on the shape of the chains. -/
 theorem noRev_of_edges {Ω : Pred} (hx : x.IsExecution es Ω)
     (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
-    (hirr : ∀ a, ¬ es.poR a a) (hF : PoForest es) (hev : LocsEval es)
+    (hirr : ∀ a, ¬ es.poR a a) (hev : LocsEval es)
     {a b a' b' : EventId} (hab : es.poR a b) (ra : x.δ.Remap a a') (rb : x.δ.Remap b b')
     (hne : a' ≠ b') {f : Valuation} {val : Val}
     (hfa : locVal es f a = some val) (hfb : locVal es f b = some val)
@@ -446,7 +446,7 @@ theorem noRev_of_edges {Ω : Pred} (hx : x.IsExecution es Ω)
   have lb : locVal es f b' = some val := by
     rw [← chain_loc hev rb fun s t he h => H s t he (.inr h)]; exact hfb
   have cb : ∀ e, ¬ x.δ.edge e b' := canon_of_remap rb
-  rcases remap_stay_up' hx hpo_trans hF rb (c := a) (.inr hab) with
+  rcases remap_stay_up' hx hpo_trans rb (c := a) (.inr hab) with
     (heq | hab') | hra | ⟨q, p, hf, hqa, hap, hpb⟩
   · have : x.δ.Remap a b' := heq ▸ (.canon cb : x.δ.Remap b' b')
     exact hne (hfun ra this)
@@ -455,7 +455,8 @@ theorem noRev_of_edges {Ω : Pred} (hx : x.IsExecution es Ω)
       rintro (h | h)
       · exact hirr _ (h ▸ hab')
       · exact hirr _ (hpo_trans _ _ _ hab' h)
-    rcases remap_enter_up' hx hpo_trans hF ra hnot (.inr hba) with hrb | ⟨q, p, hw, hpb, hbq, hpa⟩
+    rcases remap_enter_up' hx hpo_trans ra (es.joinCmp_of_poCmp (.inr (.inr hab'))) hnot (.inr hba)
+      with hrb | ⟨q, p, hw, hpb, hbq, hpa⟩
     · exact hne (hfun hrb (.canon cb))
     · have hqp : x.δ.edge q p := .inr hw
       have hqa : x.δ.Remap q a' := remap_inv_step hu hqp hpa
@@ -515,7 +516,7 @@ theorem noRevRMW_of_noRevLoc (h : NoRevLoc es x) : NoRevRMW es x :=
     the step's own alias predicate. -/
 theorem ppoM_po_E {Ω : Pred} (hx : x.IsExecution es Ω)
     (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
-    (hirr : ∀ a, ¬ es.poR a a) (hF : PoForest es) (hR : NoRevRMW es x) (hT : RMWTightR es x)
+    (hirr : ∀ a, ¬ es.poR a a) (hR : NoRevRMW es x) (hT : RMWTightR es x)
     {Pa Pr : Pred} {a' b' : EventId}
     (hAl : ∀ a b, es.poR a b → (es.mustAlias a b ∨ es.mayAlias Pa a b) →
       x.δ.Remap a a' → x.δ.Remap b b' → a' ≠ b' → ¬ es.poR b' a')
@@ -535,12 +536,12 @@ theorem ppoM_po_E {Ω : Pred} (hx : x.IsExecution es Ω)
       · exact absurd (hfun ra rb) hne
       · exact h
     · exact hal.1
-  rcases anchored_cmp hF hA with h | h | h
+  rcases remap_poCmp hx (.inr (.inl hbase)) ra rb (joinable_of_anchored hA) with h | h | h
   · exact absurd h hne
   · exact h
   · refine absurd h ?_
     rcases hab with (hs | (⟨w, hs, ent, hm, hw, hr', -⟩ | ⟨r, ⟨ent, hm, hw, hr', -⟩, hs⟩)) | hal
-    · exact sync_not_back hx hpo_trans hirr hF hs ra rb hne
+    · exact sync_not_back hx hpo_trans hirr hs ra rb hne
     · exact hR a b a' b' hbase ra rb (.inr ⟨ent, hm, .inl hr'⟩)
     · exact hR a b a' b' hbase ra rb (.inl ⟨ent, hm, .inr hw⟩)
     · exact hAl a b hbase hal.2 ra rb hne
@@ -553,11 +554,11 @@ theorem PJ_of_P {f : Valuation} (h : x.P es f) {j : Justification} (hj : j ∈ x
 /-- **Each step of `≼` lies in `⊑` under `FwdEntailsImg`.** -/
 theorem ppoStep_po_E {Ω : Pred} (hx : x.IsExecution es Ω)
     (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
-    (hirr : ∀ a, ¬ es.poR a a) (hF : PoForest es) (hT : RMWTightR es x)
+    (hirr : ∀ a, ¬ es.poR a a) (hT : RMWTightR es x)
     (hsat : Sat (x.P es)) (hev : LocsEval es) (hE : FwdEntailsImg es x) (hR : NoRevRMW es x)
     {a b : EventId} (h : x.ppoStep es a b) : es.poR a b := by
   obtain ⟨ha, hb, ⟨j, hj, hp, hwa, hwb⟩ | ⟨hs | ⟨hp, hal'⟩, hA⟩⟩ := h
-  · refine ppoM_po_E hx hpo_trans hirr hF hR hT ?_ ha hb
+  · refine ppoM_po_E hx hpo_trans hirr hR hT ?_ ha hb
       (anchored_of_inWin hx.inX ⟨j, hj, hwa, hwb⟩) hp
     intro a₀ b₀ hab hal ra rb hne
     obtain ⟨f, hf, val, h₁, h₂⟩ : ∃ f, x.PJ es j f ∧ ∃ v, locVal es f a₀ = some v ∧
@@ -566,14 +567,14 @@ theorem ppoStep_po_E {Ω : Pred} (hx : x.IsExecution es Ω)
       · obtain ⟨f, hf⟩ := hsat
         exact ⟨f, PJ_of_P hf hj, locVal_of_mustAlias hev hm f⟩
       · exact of_mayAlias hm
-    refine noRev_of_edges hx hpo_trans hirr hF hev hab ra rb hne h₁ h₂ fun s t he ht => ?_
+    refine noRev_of_edges hx hpo_trans hirr hev hab ra rb hne h₁ h₂ fun s t he ht => ?_
     obtain ⟨j₀, u, v, hg, hJ, -⟩ := hE s t he
     refine ⟨j₀, u, v, hg, hJ j hj ?_ f hf⟩
     rcases ht with ht | ht
     · exact ⟨_, ht, hwa⟩
     · exact ⟨_, ht, hwb⟩
-  · exact ppoSyncRM_po_T hx hpo_trans hirr hF hA hs
-  · refine ppoM_po_E hx hpo_trans hirr hF hR hT ?_ ha hb hA hp
+  · exact ppoSyncRM_po_T hx hpo_trans hirr hA hs
+  · refine ppoM_po_E hx hpo_trans hirr hR hT ?_ ha hb hA hp
     intro a₀ b₀ hab hal ra rb hne
     obtain ⟨f, hf, val, h₁, h₂⟩ : ∃ f, x.Pm es f ∧ ∃ v, locVal es f a₀ = some v ∧
         locVal es f b₀ = some v := by
@@ -581,7 +582,7 @@ theorem ppoStep_po_E {Ω : Pred} (hx : x.IsExecution es Ω)
       · obtain ⟨f, hf, -⟩ := of_mayAlias hal'
         exact ⟨f, hf, locVal_of_mustAlias hev hm f⟩
       · exact of_mayAlias hm
-    refine noRev_of_edges hx hpo_trans hirr hF hev hab ra rb hne h₁ h₂ fun s t he _ => ?_
+    refine noRev_of_edges hx hpo_trans hirr hev hab ra rb hne h₁ h₂ fun s t he _ => ?_
     obtain ⟨j₀, u, v, hg, -, hm⟩ := hE s t he
     exact ⟨j₀, u, v, hg, hm f hf⟩
 
@@ -590,23 +591,23 @@ theorem ppoStep_po_E {Ω : Pred} (hx : x.IsExecution es Ω)
     provides) and locations that evaluate. -/
 theorem dep_po_E {Ω : Pred} (hx : x.IsExecution es Ω)
     (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
-    (hirr : ∀ a, ¬ es.poR a a) (hF : PoForest es) (hT : RMWTightR es x)
+    (hirr : ∀ a, ¬ es.poR a a) (hT : RMWTightR es x)
     (hDP : ∀ a b, x.DP a b → es.poR a b) (hsat : Sat (x.P es)) (hev : LocsEval es)
     (hE : FwdEntailsImg es x) (hR : NoRevRMW es x) {a b : EventId} (h : x.dep es a b) :
     x.poX es a b := by
   rcases h with hp | hd
   · exact ⟨.inl hp.1, .inl hp.2.1,
-      ppo_po hpo_trans (fun _ _ h => ppoStep_po_E hx hpo_trans hirr hF hT hsat hev hE hR h) hp⟩
+      ppo_po hpo_trans (fun _ _ h => ppoStep_po_E hx hpo_trans hirr hT hsat hev hE hR h) hp⟩
   · exact ⟨.inl hd.1, .inl hd.2.1, hDP a b hd⟩
 
 /-- `dep_po_E` from a consistent execution: `φ` gives the model of `P`. -/
 theorem dep_po_E_of_phi {Ω : Pred} (hx : x.IsExecution es Ω) (hphi : x.phi es)
     (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
-    (hirr : ∀ a, ¬ es.poR a a) (hF : PoForest es) (hT : RMWTightR es x)
+    (hirr : ∀ a, ¬ es.poR a a) (hT : RMWTightR es x)
     (hDP : ∀ a b, x.DP a b → es.poR a b) (hev : LocsEval es)
     (hE : FwdEntailsImg es x) (hR : NoRevRMW es x) {a b : EventId} (h : x.dep es a b) :
     x.poX es a b :=
-  dep_po_E hx hpo_trans hirr hF hT hDP (by obtain ⟨-, -, f, hf, -⟩ := hphi; exact ⟨f, hf⟩)
+  dep_po_E hx hpo_trans hirr hT hDP (by obtain ⟨-, -, f, hf, -⟩ := hphi; exact ⟨f, hf⟩)
     hev hE hR h
 
 /-- **`FwdEntailsAll` implies `NoRevLoc`** (with its RMW part `NoRevRMW`):
@@ -614,7 +615,7 @@ theorem dep_po_E_of_phi {Ω : Pred} (hx : x.IsExecution es Ω) (hphi : x.phi es)
     predicates, no `LocLinked` pair is reversed. -/
 theorem noRevLoc_of_fwdEntailsAll {Ω : Pred} (hx : x.IsExecution es Ω)
     (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
-    (hirr : ∀ a, ¬ es.poR a a) (hF : PoForest es) (hsat : Sat (x.P es)) (hev : LocsEval es)
+    (hirr : ∀ a, ¬ es.poR a a) (hsat : Sat (x.P es)) (hev : LocsEval es)
     (hE : FwdEntailsAll es x) (hR : NoRevRMW es x) : NoRevLoc es x := by
   intro a b a' b' hab ra rb hl hba
   by_cases hne : a' = b'
@@ -623,7 +624,7 @@ theorem noRevLoc_of_fwdEntailsAll {Ω : Pred} (hx : x.IsExecution es Ω)
   have main : ∀ f, (∀ s t, x.δ.edge s t → ∃ j₀ u v, EdgeGen es x j₀ s t u v ∧ PredOf es j₀ f) →
       ∀ val, locVal es f a = some val → locVal es f b = some val → False :=
     fun f H val h₁ h₂ =>
-      noRev_of_edges hx hpo_trans hirr hF hev hab ra rb hne h₁ h₂ (fun s t he _ => H s t he) hba
+      noRev_of_edges hx hpo_trans hirr hev hab ra rb hne h₁ h₂ (fun s t he _ => H s t he) hba
   have ofJ : ∀ f, x.P es f → ∀ s t, x.δ.edge s t →
       ∃ j₀ u v, EdgeGen es x j₀ s t u v ∧ PredOf es j₀ f := fun f hf s t he => by
     obtain ⟨j₀, u, v, hg, hJ, -⟩ := hE s t he

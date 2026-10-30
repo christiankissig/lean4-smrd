@@ -3,49 +3,44 @@ import Smrd.DPPast
 import Smrd.PpoNecessity
 
 /-!
-# Forwarding into the join: `≼` across threads, `PoForest` needed
+# Forwarding into the join: `≼` across threads, excluded by the join restriction
 
-`dep_po_T`, `dep_po_E` and `dep_po_R` (`DP ∪ ≼ ⊆ ⊑` over `X ∖ †`) assume that
-`⊑` is a forest (`PoForest`): the events at or below one event are pairwise
-comparable. `⟨P⟩_n` is not a forest once code follows a parallel block:
-`(P₁ ∥ P₂); κ` joins, and every event of `κ` lies `⊑`-above both threads.
-`PoForest` cannot be dropped from those theorems, for the event structures of
-programs either. The program, with `r1 :=_acq z` in one thread and `x := 1` in
-the other:
+`⟨P⟩_n` is not a forest once code follows a parallel block: `(P₁ ∥ P₂); κ`
+joins, and every event of `κ` lies `⊑`-above both threads. Forwarding into
+`κ` from one of the threads then puts into `≼` a pair of `⊑`-incomparable
+events. The program, with `r1 :=_acq z` in one thread and `x := 1` in the
+other:
 
 ```
 z := 0; (r1 :=_acq z ∥ x := 1); r2 := x; y := r2
 ```
 
-* `y := r2` is justified by `jW`: its pre-justification `j4` with `r2 := x`
-  forwarded from `x := 1` (store forwarding, `F = {(x := 1, r2)}`). Under the
-  empty context, the immediate `≼`-predecessors of `r2` are `r1 :=_acq z`
-  (`≼_sync`) and `x := 1` (`≼_alias`), which `⊑` does not order; so
-  `x := 1 ∈ pred(r2)`, and every condition of `fwdRel` holds (`fwd_23`): no
-  event lies `⊑`-between `x := 1` and `r2`, so the acquire restriction holds
-  although `r1` acquires and is `⊑`-before `r2`.
+* `y := r2` would be justified by `jW`: its pre-justification `j4` with
+  `r2 := x` forwarded from `x := 1` (store forwarding, `F = {(x := 1, r2)}`).
+  Under the empty context, the immediate `≼`-predecessors of `r2` are
+  `r1 :=_acq z` (`≼_sync`) and `x := 1` (`≼_alias`), which `⊑` does not
+  order; so `x := 1 ∈ pred(r2)`, and every condition of Forwarding but the
+  join restriction holds (`fwd_23_blind`): no event lies `⊑`-between
+  `x := 1` and `r2`, so the acquire restriction holds although `r1` acquires
+  and is `⊑`-before `r2`.
 * The execution `xP` of all events, `J = [z := 0, x := 1, jW]`, `r1` reading
-  `z := 0` and `r2` reading `x := 1`, is consistent (`consistentT_P`).
+  `z := 0` and `r2` reading `x := 1`, satisfies `φ`, No-Thin-Air and
+  `CoherentT`, and is consistent if `jW` is generated (`consistentT_P`).
 * MoRDor's `ppo_sync` has `(r1, r2)` (an acquire read before a later event),
   and `remap_δ` sends `r2` onto `x := 1`. The pair `(r1, x := 1)` is anchored
   (`A`): both are `⊑`-below `r2` (and `y := r2`), which is on the path. So
   `≼` relates `r1 :=_acq z` to `x := 1` (`ppo_12`), two events of different
-  threads that `⊑` does not order either way (`not_po_12`, `not_po_21`).
+  threads that `⊑` does not order either way (`not_po_12`, `not_po_21`), and
+  `DP ∪ ≼ ⊄ ⊑` without any pair being reversed (`blind_join`): every other
+  hypothesis of `dep_po_T` and `dep_po_R` holds, `NoRevLoc` included.
 
-So `≼` relates `⊑`-incomparable events, and `≼ ⊄ ⊑` without any pair being
-reversed. Every hypothesis of `dep_po_R_of_phi_denote` but `PoForest` holds
-(`poForest_needed`), and also every hypothesis of `dep_po_T` but `PoForest`:
-`NoRevLoc` holds (`noRevLoc_P`), as no remapped pair points `⊑`-backward.
-
-The argument the cut to `A` rests on (Definition `def:freeze`: "parallel
-composition has no join, so an anchored pair lies within one thread's
-`⊑`-down-set") fails for the semantics with joins: the down-set of an event of
-`κ` holds both threads, and Forwarding moves the end of a pair of `κ` into one
-of them. Both uses of `PoForest` in the proofs fail here: `anchored_cmp`
-(`(r1, x := 1)` is anchored and incomparable), and the remap-chain lemmas
-(`remap_stay_up`, `remap_enter_up`, `remap_cross_pub`), which compare an event
-with the source of a Forwarding edge below a common event (`r1` and `x := 1`
-below `r2`).
+**The join restriction excludes it** (`EventStructure.fwdNoJoin`,
+`join_excluded`): `r1` is `⊑`-below `r2` but not comparable with `x := 1`, so
+the forwarding is not generated, and `xP` is not an execution. The same holds
+with the source in the parent thread, `z := 0; (x := 1 ∥ r1 :=_acq z); r2 := x;
+y := r2` (`parent_excluded`): `κ` runs in the parent's thread, so a
+restriction to one thread would not exclude it. With the restriction,
+`dep_po_T`, `dep_po_E` and `dep_po_R` hold without `PoForest`.
 -/
 
 namespace FwdAcrossJoin
@@ -143,10 +138,11 @@ theorem wf23 : FwdCtx.WF ⟨[(2, 3)], []⟩ := by
 theorem gen_j4 : esP.Generated (fun _ => True) j4 :=
   .pre (w := e4) (by simp [esP]) rfl ⟨fOut, valres_P _ (by simp [esP])⟩
 
-/-- **Store forwarding of `r2 := x` from `x := 1`**, across the join: `x := 1`
-    is an immediate `≼`-predecessor of `r2`, beside `r1 :=_acq z`, which `⊑`
-    does not order against it. -/
-theorem fwd_23 : esP.fwdRel j4 2 3 := by
+/-- **Store forwarding of `r2 := x` from `x := 1`**, across the join, under
+    every condition of Forwarding but the join restriction: `x := 1` is an
+    immediate `≼`-predecessor of `r2`, beside `r1 :=_acq z`, which `⊑` does
+    not order against it. -/
+theorem fwd_23_blind : esP.fwdRelBlind j4 2 3 ∧ esP.fwdNoAcq 2 3 ∧ ¬ esP.RMWAcc 3 := by
   refine ⟨⟨⟨⟨⟨(FwdCtx.remapRel_of_noEdge noEdge_empty).2 (.inr
       ⟨po_of (by decide), _, _, _, _, rfl, rfl, rfl, rfl, fOut, valres_P _ (by simp [esP]),
         by simp [Expr.holds, Expr.eval, Expr.glob]⟩), by decide⟩,
@@ -161,11 +157,34 @@ theorem fwd_23 : esP.fwdRel j4 2 3 := by
     cases h₁; cases h₂
     simp
 
-theorem gen_jW : esP.Generated (fun _ => True) jW := by
+theorem not_po_12 : ¬ esP.poR 1 2 := fun h => absurd (show (1, 2) ∈ poL from h) (by decide)
+theorem not_po_21 : ¬ esP.poR 2 1 := fun h => absurd (show (2, 1) ∈ poL from h) (by decide)
+
+/-- **The join restriction fails**: `r1 :=_acq z` is `⊑`-below `r2` and not
+    comparable with `x := 1`. -/
+theorem not_fwdNoJoin : ¬ esP.fwdNoJoin 2 3 := fun h => by
+  rcases esP.fwdNoJoin_below h (po_of (by decide)) (c := 1) (po_of (by decide)) with h | h | h
+  · cases h
+  · exact not_po_12 h
+  · exact not_po_21 h
+
+theorem not_fwdRel (j : Justification) : ¬ esP.fwdRel j 2 3 :=
+  fun h => not_fwdNoJoin h.2.2.1
+
+/-- **No generated justification forwards `x := 1` into `r2`.** -/
+theorem not_generated {Ω : Pred} {j : Justification} (h : esP.Generated Ω j) :
+    (2, 3) ∉ j.δ.f := by
+  intro hp
+  obtain ⟨j₀, h₀⟩ := Generated.fwd_mem esP h _ hp
+  exact not_fwdRel j₀ h₀
+
+/-- The premises of Forwarding other than `fwdRel` hold of `jW` against `j4`:
+    were the join restriction dropped, Forwarding would generate `jW`. -/
+theorem jW_premises :
+    esP.Generated (fun _ => True) j4 ∧ FwdCtx.WF { j4.δ with f := j4.δ.f ++ [(2, 3)] } ∧
+      Sat (Pred.and (j4.P.replace (.sym 3) (Expr.num 1)).holds (fun _ => True)) := by
   have h₁ : j4.P.replace (.sym 3) (Expr.num 1) = j4.P := Expr.replace_sym_of_not_mem (by decide)
-  exact .fwd (o := .rlx) (x := Expr.glob "y") (e := .sym 3) (b := false) (ev₁ := e2) (ev₂ := e3)
-    (v₁ := Expr.num 1) (v₂ := .sym 3) gen_j4 rfl fwd_23 rfl rfl rfl rfl wf23
-    ⟨fOut, by rw [h₁]; exact valres_P _ (by simp [esP]), trivial⟩
+  exact ⟨gen_j4, wf23, ⟨fOut, by rw [h₁]; exact valres_P _ (by simp [esP]), trivial⟩⟩
 
 /-! ## The execution -/
 
@@ -238,7 +257,10 @@ theorem psi_P (f : Valuation) (h : f 3 = .num 1) : xP.δ.psi esP f := by
   cases hv₁; cases hv₂
   simp [Expr.holds, Expr.eval, Expr.num, h]
 
-theorem isExecution_P : xP.IsExecution esP (fun _ => True) where
+/-- `xP` is an execution if `jW` is generated, which the join restriction
+    refutes (`not_isExecution`). -/
+theorem isExecution_P (gen_jW : esP.Generated (fun _ => True) jW) :
+    xP.IsExecution esP (fun _ => True) where
   maximal := ⟨fun _ h => h, fun a b _ _ ⟨ea, eb, ha, hb, hn⟩ =>
       hn ⟨fOut, SP.holds (ev_inv ha).1 _, SP.holds (ev_inv hb).1 _⟩,
     fun _ hc hn => absurd hc hn⟩
@@ -402,9 +424,17 @@ theorem coherentT_P : xP.CoherentT esP := by
     · exact (hok _ (hH _ _ hab)).1 rfl
     · exact (hok _ (hH _ _ hab)).2 (hE _ _ hba)
 
-/-- **The execution is consistent**: `X ∖ †` drops `r2 := x`. -/
-theorem consistentT_P : xP.ConsistentT esP (fun _ => True) :=
-  ⟨isExecution_P, phi_P, ntaP, coherentT_P⟩
+/-- **The execution is consistent if `jW` is generated**: `X ∖ †` drops
+    `r2 := x`. -/
+theorem consistentT_P (gen_jW : esP.Generated (fun _ => True) jW) :
+    xP.ConsistentT esP (fun _ => True) :=
+  ⟨isExecution_P gen_jW, phi_P, ntaP, coherentT_P⟩
+
+/-- **`xP` is not an execution**: `jW` is in `J`, and no generated
+    justification forwards `x := 1` into `r2`. -/
+theorem not_isExecution {Ω : Pred} : ¬ xP.IsExecution esP Ω := fun hx => by
+  have hg := hx.generated jW (by simp [xP, JP])
+  exact not_generated hg (by rw [jW_eq]; simp)
 
 /-! ## `≼` relates the two threads -/
 
@@ -421,9 +451,6 @@ theorem ppo_12 : xP.ppo esP 1 2 := by
 
 /-- The two ends of `ppo_12` lie in different threads. -/
 theorem threads_12 : e1.label.thread ≠ e2.label.thread := by decide
-
-theorem not_po_12 : ¬ esP.poR 1 2 := fun h => absurd (show (1, 2) ∈ poL from h) (by decide)
-theorem not_po_21 : ¬ esP.poR 2 1 := fun h => absurd (show (2, 1) ∈ poL from h) (by decide)
 
 /-- **`⊑` is not a forest**: `r1` and `x := 1` both lie below `r2`. -/
 theorem not_poForest : ¬ PoForest esP := fun h => by
@@ -447,16 +474,6 @@ theorem locsEval_P : LocsEval esP := by
   simp only [esP, List.mem_cons, List.mem_nil_iff, or_false] at hm
   rcases hm with rfl | rfl | rfl | rfl | rfl <;> cases hl <;> rfl
 
-/-- The one Forwarding edge was generated against `j4`, whose predicate is
-    valid, so every scope of `FwdEntailsOn` holds, `FwdEntailsImg` and
-    `FwdEntailsAll` included. -/
-theorem fwdEntails_P (scope) : FwdEntailsOn esP xP scope := by
-  refine fwdEntailsOn_of_valid (fun s t he => ?_) scope
-  obtain ⟨rfl, rfl⟩ := edge_P he
-  exact ⟨j4, 2, 3, ⟨.inl ⟨by rw [δP]; simp, rfl, rfl, fwd_23⟩,
-    fun _ h => (List.not_mem_nil h).elim, fun _ h => (List.not_mem_nil h).elim⟩,
-    fun f => valres_P f (by simp [esP])⟩
-
 /-- No remapped pair of `⊑` points `⊑`-backward: `NoRevLoc` holds. -/
 theorem noRevLoc_P : NoRevLoc esP xP := by
   intro a b a' b' hab ra rb _ hba
@@ -466,25 +483,71 @@ theorem noRevLoc_P : NoRevLoc esP xP := by
 
 theorem rmwWF_P : RMWWF esP := fun _ h => (List.not_mem_nil h).elim
 
-/-- **`PoForest` cannot be dropped from `dep_po_R_of_phi_denote`, nor from
-    `dep_po_T`, `dep_po_E`, `dep_po_R`**, for the event structure of a program:
-    `⟨z := 0; (r1 :=_acq z ∥ x := 1); r2 := x; y := r2⟩` has a consistent
-    execution, whose one Forwarding edge (`x := 1` into `r2`, across the join)
-    was generated under Forwarding's restrictions, where every other
-    hypothesis of those theorems holds; `PoForest` fails, and `≼` relates
-    `r1 :=_acq z` to `x := 1`, which `⊑` does not order either way. -/
-theorem poForest_needed :
+/-- **Without the join restriction, `DP ∪ ≼ ⊄ ⊑`**, for the event
+    structure of a program: `⟨z := 0; (r1 :=_acq z ∥ x := 1); r2 := x;
+    y := r2⟩` has an execution whose one Forwarding edge (`x := 1` into
+    `r2`, across the join) meets every condition of Forwarding but the join
+    restriction, which is consistent if that edge is generated, and where
+    every other hypothesis of `dep_po_T` and `dep_po_R` holds; `PoForest`
+    fails, and `≼` relates `r1 :=_acq z` to `x := 1`, which `⊑` does not order
+    either way. -/
+theorem blind_join :
     denote (fun _ => 0) prog = esP ∧
-    xP.ConsistentT esP (fun _ => True) ∧
+    (esP.fwdRelBlind j4 2 3 ∧ esP.fwdNoAcq 2 3 ∧ ¬ esP.RMWAcc 3 ∧ ¬ esP.fwdNoJoin 2 3) ∧
+    (esP.Generated (fun _ => True) jW → xP.ConsistentT esP (fun _ => True)) ∧
     (∀ a b c, esP.poR a b → esP.poR b c → esP.poR a c) ∧ (∀ a, ¬ esP.poR a a) ∧
     RMWTightR esP xP ∧ (∀ a b, xP.DP a b → esP.poR a b) ∧ LocsEval esP ∧
-    FwdEntailsImg esP xP ∧ FwdEntailsAll esP xP ∧ NoRevLoc esP xP ∧ NoRevRMW esP xP ∧
-    RMWWF esP ∧
+    NoRevLoc esP xP ∧ NoRevRMW esP xP ∧ RMWWF esP ∧
     ¬ PoForest esP ∧
     xP.ppo esP 1 2 ∧ ¬ esP.poR 1 2 ∧ ¬ esP.poR 2 1 ∧
     ¬ (∀ a b, xP.dep esP a b → xP.poX esP a b) :=
-  ⟨denote_prog, consistentT_P, po_trans_P, po_irr_P, rmwTightR_P,
-    fun _ _ h => absurd h dp_P, locsEval_P, fwdEntails_P _, fwdEntails_P _, noRevLoc_P,
+  ⟨denote_prog, ⟨fwd_23_blind.1, fwd_23_blind.2.1, fwd_23_blind.2.2, not_fwdNoJoin⟩,
+    consistentT_P, po_trans_P, po_irr_P, rmwTightR_P,
+    fun _ _ h => absurd h dp_P, locsEval_P, noRevLoc_P,
     noRevRMW_of_nil rfl, rmwWF_P, not_poForest, ppo_12, not_po_12, not_po_21, not_dep_po⟩
+
+/-! ## The join restriction excludes it -/
+
+/-- **The join restriction excludes the forwarding into the join**: no
+    generated justification forwards `x := 1` into `r2`, and `xP` is no
+    execution. -/
+theorem join_excluded :
+    (∀ {Ω : Pred} {j : Justification}, esP.Generated Ω j → (2, 3) ∉ j.δ.f) ∧
+    ∀ Ω : Pred, ¬ xP.IsExecution esP Ω :=
+  ⟨not_generated, fun _ => not_isExecution⟩
+
+/-- The source in the parent thread:
+    `z := 0; (x := 1 ∥ r1 :=_acq z); r2 := x; y := r2`. `κ` runs in the
+    parent's thread, as `x := 1` does. -/
+def prog' : Stmt :=
+  .seq (.store .rlx "z" (.num 0) false)
+  (.seq (.par (.store .rlx "x" (.num 1) false) (.load .acq "r1" "z" false))
+  (.seq (.load .rlx "r2" "x" false) (.store .rlx "y" (.reg "r2") false)))
+
+unseal interp in
+/-- `⊑` of `⟨prog'⟩`: `x := 1` (event `1`, thread `0`) and `r1` (event `2`,
+    thread `1`) unordered, both below `r2` (event `3`). -/
+theorem denote_prog'_po : (denote (fun _ => 0) prog').po = poL := rfl
+
+unseal interp in
+theorem threads_prog' :
+    ((denote (fun _ => 0) prog').events.map fun e => (e.id, e.label.thread)) =
+      [(0, 0), (1, 0), (2, 1), (3, 0), (4, 0)] := rfl
+
+/-- **Forwarding `r2 := x` from `x := 1` in the parent thread is excluded
+    too**: `r1 :=_acq z`, in the other thread, is `⊑`-below `r2` and not
+    comparable with `x := 1`. -/
+theorem parent_excluded : ¬ (denote (fun _ => 0) prog').fwdNoJoin 1 3 := fun h => by
+  have po : ∀ a b, (a, b) ∈ poL → (denote (fun _ => 0) prog').poR a b := fun a b h => by
+    show (a, b) ∈ (denote (fun _ => 0) prog').po
+    rw [denote_prog'_po]; exact h
+  have npo : ∀ a b, (a, b) ∉ poL → ¬ (denote (fun _ => 0) prog').poR a b := fun a b h h' => by
+    have : (a, b) ∈ (denote (fun _ => 0) prog').po := h'
+    rw [denote_prog'_po] at this; exact h this
+  rcases EventStructure.fwdNoJoin_below _ h (po 1 3 (by decide)) (c := 2) (po 2 3 (by decide))
+    with h | h | h
+  · cases h
+  · exact npo 2 1 (by decide) h
+  · exact npo 1 2 (by decide) h
 
 end FwdAcrossJoin

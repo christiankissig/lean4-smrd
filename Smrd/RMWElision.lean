@@ -291,7 +291,7 @@ theorem blind_we : esL.weRelBlind jB 2 3 := by
 theorem weNoRel_23 : esL.weNoRel 2 3 := weNoRel_of (by decide) (by decide)
 
 /-- **The RMW clause alone refutes the elision.** -/
-theorem not_weRel {j : Justification} : ¬ esL.weRel j 2 3 := fun h => h.2.2 acc2
+theorem not_weRel {j : Justification} : ¬ esL.weRel j 2 3 := fun h => h.2.2.2 acc2
 
 theorem wf_we : FwdCtx.WF { jB.δ with we := jB.δ.we ++ [(3, 2)] } := by
   refine ⟨fun a ha => ?_, fun a b e ha hb => ?_⟩

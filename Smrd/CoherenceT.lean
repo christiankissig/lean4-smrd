@@ -45,6 +45,12 @@ Elision therefore carries MoRDor's release restriction
   pair. The backward pairs `(x := 2, flag :rel= 1)` and `(r0, x := 1)` that
   made MoRDor's sMRD forbid the two outcomes are not generated, and not
   needed.
+* `edge_noJoin`, `remap_joinCmp`, `remap_poCmp`: under the join restrictions
+  (`EventStructure.fwdNoJoin`, `EventStructure.weNoJoin`), `remap_δ` maps a
+  `⊑`-comparable pair to one that is comparable wherever it has a common
+  upper bound; anchored pairs have one. This replaces `PoForest` in the
+  results below, which hold for the event structures of programs with code
+  after a parallel block (`Smrd.FwdAcrossJoin`, `Smrd.WEAcrossFork`).
 * `dep_po_T`: `DP ∪ ≼ ⊆ ⊑` with forwarding and write elision, where `remap_δ`
   reverses no `⊑`-pair of events that may alias or of which one is an RMW
   access (`NoRevLoc`), and RMWs are tight (`RMWTightR`). `NoRevLoc` is what
@@ -268,10 +274,11 @@ theorem elided_of_remap_ne {a a' : EventId} (h : x.δ.Remap a a') (hne : a ≠ a
     `remap_δ(a) = a'` and `a ⊑ c ⊑ a'`, `remap_δ(c) = a'` or `c` does not
     publish. By induction along the chain of elisions `a ↦ … ↦ a'`: `c` is a
     link of the chain, or lies strictly between two consecutive links, where
-    `weNoRel` excludes a publishing event. -/
+    `weNoRel` excludes a publishing event. `c` is comparable with each link,
+    as Write Elision's join restriction keeps it so (`weNoJoin`). -/
 theorem remap_cross_pub {Ω : Pred} (hx : x.IsExecution es Ω) (hW : WEForward es x)
     (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
-    (hirr : ∀ a, ¬ es.poR a a) (hF : PoForest es) {a a' : EventId} (h : x.δ.Remap a a') :
+    (hirr : ∀ a, ¬ es.poR a a) {a a' : EventId} (h : x.δ.Remap a a') :
     ∀ c, es.poR a c → es.poR c a' → x.δ.Remap c a' ∨ ¬ es.cls Event.publishes c := by
   induction h with
   | canon _ => intro c h₁ h₂; exact absurd (hpo_trans _ _ _ h₁ h₂) (hirr _)
@@ -282,9 +289,10 @@ theorem remap_cross_pub {Ω : Pred} (hx : x.IsExecution es Ω) (hW : WEForward e
         rcases he with hf | hw
         · exact (hW.1 _ hf).elim
         · exact hw
-      obtain ⟨j₀, ⟨-, ⟨-, hnr⟩, -⟩, -⟩ := we_edge hx hwe
+      obtain ⟨j₀, ⟨-, ⟨-, hnr⟩, hnj, -⟩, -⟩ := we_edge hx hwe
       have hb : b = e' ∨ es.poR b e' := remap_fwd hW hpo_trans hr
-      rcases hF c b e' (.inr h₂) (hb.elim (fun h => .inl h) .inr) with rfl | hcb | hbc
+      rcases hnj c (es.joinCmp_of_poCmp (.inr (.inr h₁))) ⟨e', .inr h₂, hb⟩ with
+        rfl | hcb | hbc
       · exact .inl hr
       · exact .inr (hnr c h₁ hcb)
       · exact ih c hbc h₂
@@ -322,6 +330,47 @@ theorem fwd_po {Ω : Pred} (hx : x.IsExecution es Ω) : ∀ p ∈ x.δ.f, es.poR
   fun _ hp => by
     obtain ⟨j₀, ⟨⟨⟨-, hpo, -⟩, -⟩, -⟩⟩ := fwd_edge hx hp
     exact hpo
+
+/-! ### The join restrictions along `remap_δ` -/
+
+/-- **An edge of `F ∪ WE` keeps joinable events comparable**: moving the
+    forwarded event onto its source (`fwdNoJoin`), or the elided write onto
+    the eliding one (`weNoJoin`). -/
+theorem edge_noJoin {Ω : Pred} (hx : x.IsExecution es Ω) {q e : EventId} (h : x.δ.edge q e) :
+    es.NoJoinMove e q := by
+  rcases h with h | h
+  · obtain ⟨j₀, -, -, hnj, -⟩ := fwd_edge hx h
+    exact hnj
+  · obtain ⟨j₀, ⟨-, -, hnj, -⟩, -⟩ := we_edge hx h
+    exact hnj
+
+/-- An edge `(q, e)` of `F ∪ WE` with `q ⊑ e` (a Forwarding edge) lands on an
+    event comparable with every event `⊑`-below `e`. -/
+theorem edge_poCmp {Ω : Pred} (hx : x.IsExecution es Ω) {q e c : EventId} (h : x.δ.edge q e)
+    (hce : es.poR c e) (hqe : es.poR q e) : es.PoCmp c q :=
+  edge_noJoin hx h c (es.joinCmp_of_poCmp (.inr (.inl hce))) ⟨e, .inr hce, .inr hqe⟩
+
+/-- **`remap_δ` keeps joinable events comparable**, along the whole chain. -/
+theorem remap_joinCmp {Ω : Pred} (hx : x.IsExecution es Ω) {c u w : EventId}
+    (h : x.δ.Remap u w) (hc : es.JoinCmp c u) : es.JoinCmp c w := by
+  revert hc
+  induction h with
+  | canon _ => exact id
+  | step he _ ih => exact fun hc => ih (edge_noJoin hx he _ hc)
+
+/-- **The images of comparable events are comparable where joinable**: with
+    forwarding and write elision under their join restrictions, `remap_δ`
+    maps a `⊑`-comparable pair to a pair that is `⊑`-comparable, or has no
+    common upper bound. -/
+theorem remap_poCmp {Ω : Pred} (hx : x.IsExecution es Ω) {a b a' b' : EventId}
+    (hab : es.PoCmp a b) (ra : x.δ.Remap a a') (rb : x.δ.Remap b b')
+    (hj : es.Joinable a' b') : es.PoCmp a' b' :=
+  remap_joinCmp hx rb (remap_joinCmp hx ra (es.joinCmp_of_poCmp hab.symm)).symm hj
+
+/-- Anchored events are joinable. -/
+theorem joinable_of_anchored {a b : EventId} (h : x.Anchored es a b) : es.Joinable a b := by
+  obtain ⟨e, -, ha, hb⟩ := h
+  exact ⟨e, ha, hb⟩
 
 /-- **No RMW access of an execution is elided** (`rmw_not_elided`). -/
 theorem rmw_not_elided {Ω : Pred} (hx : x.IsExecution es Ω) {e : EventId} (h : x.elided e) :
@@ -430,9 +479,10 @@ theorem edge_cases {Ω : Pred} (hx : x.IsExecution es Ω) {q p : EventId} (h : x
   · exact .inr ⟨h, we_po hx _ h⟩
 
 /-- **A chain from the up-set of `c` stays in it**, unless it passes through
-    `c` or a Forwarding edge crosses `c`. -/
+    `c` or a Forwarding edge crosses `c`: a Forwarding edge from `e ⊒ c` lands
+    on an event comparable with `c`, by Forwarding's join restriction. -/
 theorem remap_stay_up {Ω : Pred} (hx : x.IsExecution es Ω)
-    (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c) (hF : PoForest es)
+    (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
     {c e e' : EventId} (h : x.δ.Remap e e') (hc : c = e ∨ es.poR c e) :
     (c = e' ∨ es.poR c e') ∨ x.δ.Remap c e' ∨
       ∃ q p, (q, p) ∈ x.δ.f ∧ es.poR q c ∧ es.poR c p := by
@@ -443,24 +493,26 @@ theorem remap_stay_up {Ω : Pred} (hx : x.IsExecution es Ω)
       rintro (rfl | hce)
       · exact .inr (.inl (.step he hr))
       · rcases edge_cases hx he with ⟨hf, hqe⟩ | ⟨-, heq⟩
-        · rcases hF q c e (.inr hqe) (.inr hce) with rfl | hqc | hcq
+        · rcases edge_poCmp hx he hce hqe with rfl | hcq | hqc
           · exact .inr (.inl hr)
-          · exact .inr (.inr ⟨q, e, hf, hqc, hce⟩)
           · exact ih (.inr hcq)
+          · exact .inr (.inr ⟨q, e, hf, hqc, hce⟩)
         · exact ih (.inr (hpo_trans _ _ _ hce heq))
 
 /-- **A chain into the up-set of `c` from outside it** passes through `c`, or
-    a Write Elision edge crosses `c`. -/
+    a Write Elision edge crosses `c`, where the chain starts at an event
+    comparable with `c` where joinable with it (`JoinCmp`): the join
+    restrictions keep every link so. -/
 theorem remap_enter_up {Ω : Pred} (hx : x.IsExecution es Ω)
-    (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c) (hF : PoForest es)
-    {c e e' : EventId} (h : x.δ.Remap e e') (hc : ¬ (c = e ∨ es.poR c e))
-    (hc' : c = e' ∨ es.poR c e') :
+    (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
+    {c e e' : EventId} (h : x.δ.Remap e e') (hj : es.JoinCmp c e)
+    (hc : ¬ (c = e ∨ es.poR c e)) (hc' : c = e' ∨ es.poR c e') :
     x.δ.Remap c e' ∨ ∃ q p, (q, p) ∈ x.δ.we ∧ es.poR p c ∧ es.poR c q := by
-  revert hc
+  revert hj hc
   induction h with
-  | canon _ => exact fun hc => absurd hc' hc
+  | canon _ => exact fun _ hc => absurd hc' hc
   | @step q e e' he hr ih =>
-      intro hc
+      intro hj hc
       by_cases hq : c = q ∨ es.poR c q
       · rcases edge_cases hx he with ⟨-, hqe⟩ | ⟨hw, heq⟩
         · rcases hq with rfl | hcq
@@ -468,11 +520,11 @@ theorem remap_enter_up {Ω : Pred} (hx : x.IsExecution es Ω)
           · exact absurd (.inr (hpo_trans _ _ _ hcq hqe)) hc
         · rcases hq with rfl | hcq
           · exact .inl hr
-          · rcases hF c e q (.inr hcq) (.inr heq) with rfl | hce | hec
+          · rcases hj ⟨q, .inr hcq, .inr heq⟩ with rfl | hce | hec
             · exact absurd (.inl rfl) hc
             · exact absurd (.inr hce) hc
             · exact .inr ⟨q, e, hw, hec, hcq⟩
-      · exact ih hc' hq
+      · exact ih hc' (edge_noJoin hx he c hj) hq
 
 theorem isRead_of_isRlxR {e : Event} (h : e.isRlxR = true) : e.isRead = true := by
   obtain ⟨id, k, l, g⟩ := e
@@ -588,13 +640,13 @@ theorem remap_rel_fwd {Ω : Pred} (hx : x.IsExecution es Ω)
     as no Write Elision edge crosses `b` (`weNoRel`). -/
 theorem sync_not_back {Ω : Pred} (hx : x.IsExecution es Ω)
     (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
-    (hirr : ∀ a, ¬ es.poR a a) (hF : PoForest es)
+    (hirr : ∀ a, ¬ es.poR a a)
     {a b a' b' : EventId} (hs : es.ppoSyncM a b) (ra : x.δ.Remap a a') (rb : x.δ.Remap b b')
     (hne : a' ≠ b') : ¬ es.poR b' a' := by
   intro hba
   have hfun := fun {e e₁ e₂ : EventId} => @FwdCtx.Remap.functional x.δ hx.fwdWF.uniq e e₁ e₂
   rcases hs.2 with hacq | hrel
-  · rcases remap_stay_up hx hpo_trans hF rb (c := a) (.inr hs.1) with hup | hra | ⟨q, p, hf, hqa, hap⟩
+  · rcases remap_stay_up hx hpo_trans rb (c := a) (.inr hs.1) with hup | hra | ⟨q, p, hf, hqa, hap⟩
     · have hb'a : es.poR b' a := by
         rcases remap_acq_back hx hpo_trans ra hacq with rfl | h
         · exact hba
@@ -613,7 +665,8 @@ theorem sync_not_back {Ω : Pred} (hx : x.IsExecution es Ω)
       rintro (rfl | h)
       · exact hirr _ hs.1
       · exact hirr _ (hpo_trans _ _ _ hs.1 h)
-    rcases remap_enter_up hx hpo_trans hF ra hnot hup with hrb | ⟨q, p, hw, hpb, hbq⟩
+    rcases remap_enter_up hx hpo_trans ra (es.joinCmp_of_poCmp (.inr (.inr hs.1))) hnot hup with
+      hrb | ⟨q, p, hw, hpb, hbq⟩
     · exact hne (hfun hrb rb)
     · obtain ⟨j₀, ⟨-, hnr, -⟩, -⟩ := we_edge hx hw
       exact hnr.2 b hpb hbq (cls_mono es (fun _ h => Event.publishes_of_isRelM h) hrel)
@@ -668,7 +721,7 @@ theorem noRevLoc_of_noCrossLoc {Ω : Pred} (hx : x.IsExecution es Ω) (hW : WEFo
     forwarding and write elision under their restrictions, and `NoRevLoc`. -/
 theorem ppoM_po_T {Ω : Pred} (hx : x.IsExecution es Ω)
     (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
-    (hirr : ∀ a, ¬ es.poR a a) (hF : PoForest es) (hL : NoRevLoc es x) (hT : RMWTightR es x)
+    (hirr : ∀ a, ¬ es.poR a a) (hL : NoRevLoc es x) (hT : RMWTightR es x)
     {Pa Pr : Pred}
     (hPa : ∀ a c, es.mayAlias Pa a c →
       es.mayAlias (x.Pm es) a c ∨ ∃ j ∈ x.J, es.mayAlias (x.PJ es j) a c)
@@ -689,12 +742,12 @@ theorem ppoM_po_T {Ω : Pred} (hx : x.IsExecution es Ω)
       · exact absurd (hfun ra rb) hne
       · exact h
     · exact hal.1
-  rcases anchored_cmp hF hA with h | h | h
+  rcases remap_poCmp hx (.inr (.inl hbase)) ra rb (joinable_of_anchored hA) with h | h | h
   · exact absurd h hne
   · exact h
   · refine absurd h ?_
     rcases hab with (hs | (⟨w, hs, ent, hm, hw, hr', -⟩ | ⟨r, ⟨ent, hm, hw, hr', -⟩, hs⟩)) | hal
-    · exact sync_not_back hx hpo_trans hirr hF hs ra rb hne
+    · exact sync_not_back hx hpo_trans hirr hs ra rb hne
     · exact hL a b a' b' hbase ra rb (.inr (.inr (.inr (.inr ⟨ent, hm, .inl hr'⟩))))
     · exact hL a b a' b' hbase ra rb (.inr (.inr (.inr (.inl ⟨ent, hm, .inr hw⟩))))
     · rcases hal.2 with hm | hm
@@ -708,13 +761,13 @@ theorem ppoM_po_T {Ω : Pred} (hx : x.IsExecution es Ω)
     `⊑`, with no hypothesis on crossings or on forwarding. -/
 theorem ppoSyncRM_po_T {Ω : Pred} (hx : x.IsExecution es Ω)
     (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
-    (hirr : ∀ a, ¬ es.poR a a) (hF : PoForest es)
+    (hirr : ∀ a, ¬ es.poR a a)
     {a' b' : EventId} (hA : x.Anchored es a' b') (h : es.ppoSyncRM x.δ a' b') : es.poR a' b' := by
   obtain ⟨⟨a, b, hs, ra, rb⟩, hne⟩ := h
-  rcases anchored_cmp hF hA with h | h | h
+  rcases remap_poCmp hx (.inr (.inl hs.1)) ra rb (joinable_of_anchored hA) with h | h | h
   · exact absurd h hne
   · exact h
-  · exact absurd h (sync_not_back hx hpo_trans hirr hF hs ra rb hne)
+  · exact absurd h (sync_not_back hx hpo_trans hirr hs ra rb hne)
 
 theorem mayAlias_Pm_or_PJ {Pa : Pred} (hPa : Pa = x.Pm es ∨ ∃ j ∈ x.J, Pa = x.PJ es j)
     {a c : EventId} (h : es.mayAlias Pa a c) :
@@ -727,26 +780,26 @@ theorem mayAlias_Pm_or_PJ {Pa : Pred} (hPa : Pa = x.Pm es ∨ ∃ j ∈ x.J, Pa 
     their restrictions, and `NoRevLoc`. -/
 theorem ppoStep_po_T {Ω : Pred} (hx : x.IsExecution es Ω)
     (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
-    (hirr : ∀ a, ¬ es.poR a a) (hF : PoForest es) (hL : NoRevLoc es x) (hT : RMWTightR es x)
+    (hirr : ∀ a, ¬ es.poR a a) (hL : NoRevLoc es x) (hT : RMWTightR es x)
     {a b : EventId} (h : x.ppoStep es a b) : es.poR a b := by
   obtain ⟨ha, hb, ⟨j, hj, hp, hwa, hwb⟩ | ⟨hs | ⟨hp, -⟩, hA⟩⟩ := h
-  · exact ppoM_po_T hx hpo_trans hirr hF hL hT
+  · exact ppoM_po_T hx hpo_trans hirr hL hT
       (fun _ _ h => mayAlias_Pm_or_PJ (.inr ⟨j, hj, rfl⟩) h) ha hb
       (anchored_of_inWin hx.inX ⟨j, hj, hwa, hwb⟩) hp
-  · exact ppoSyncRM_po_T hx hpo_trans hirr hF hA hs
-  · exact ppoM_po_T hx hpo_trans hirr hF hL hT
+  · exact ppoSyncRM_po_T hx hpo_trans hirr hA hs
+  · exact ppoM_po_T hx hpo_trans hirr hL hT
       (fun _ _ h => mayAlias_Pm_or_PJ (.inl rfl) h) ha hb hA hp
 
 /-- **`DP ∪ ≼ ⊆ ⊑`**, with forwarding and write elision under their
     restrictions, `NoRevLoc`, and `DP ⊆ ⊑`. -/
 theorem dep_po_T {Ω : Pred} (hx : x.IsExecution es Ω)
     (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
-    (hirr : ∀ a, ¬ es.poR a a) (hF : PoForest es) (hL : NoRevLoc es x) (hT : RMWTightR es x)
+    (hirr : ∀ a, ¬ es.poR a a) (hL : NoRevLoc es x) (hT : RMWTightR es x)
     (hDP : ∀ a b, x.DP a b → es.poR a b) {a b : EventId} (h : x.dep es a b) :
     x.poX es a b := by
   rcases h with hp | hd
   · exact ⟨.inl hp.1, .inl hp.2.1,
-      ppo_po hpo_trans (fun _ _ h => ppoStep_po_T hx hpo_trans hirr hF hL hT h) hp⟩
+      ppo_po hpo_trans (fun _ _ h => ppoStep_po_T hx hpo_trans hirr hL hT h) hp⟩
   · exact ⟨.inl hd.1, .inl hd.2.1, hDP a b hd⟩
 
 end Elided
@@ -806,13 +859,13 @@ theorem step_tgt {Ω : Pred} (hx : x.IsExecution es Ω)
 theorem step_T {Ω : Pred} (hx : x.IsExecution es Ω)
     (hnoAcqF : ∀ p ∈ x.δ.f, ¬ es.cls Event.isAcqR p.2)
     (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
-    (hirr : ∀ a, ¬ es.poR a a) (hF : PoForest es) (hL : NoRevLoc es x) (hT : RMWTightR es x)
+    (hirr : ∀ a, ¬ es.poR a a) (hL : NoRevLoc es x) (hT : RMWTightR es x)
     (hDP : ∀ a b, x.DP a b → es.poR a b) (hJ : ∀ j ∈ x.J, ¬ x.elided j.w.id)
     {c d : EventId} (hc : ¬ x.elided c) (h : ((x.dep es).union (x.sw es)) c d) :
     ((x.poXT es).union (x.swT es)) c d := by
   have hd := step_tgt hx hnoAcqF hJ h
   rcases h with hdep | hs
-  · exact .inl ⟨dep_po_T hx hpo_trans hirr hF hL hT hDP hdep, hc, hd⟩
+  · exact .inl ⟨dep_po_T hx hpo_trans hirr hL hT hDP hdep, hc, hd⟩
   · exact .inr ⟨hs, hc, hd⟩
 
 /-- An `ECO` edge ends at an elided event only if it is a read (a forwarded
@@ -859,7 +912,7 @@ theorem no_step_elided_read (hphi : x.phi es) {a c : EventId} (hel : x.elided a)
 theorem coherenceV_of_coherenceT {Ω : Pred} {co : Rel} (hx : x.IsExecution es Ω)
     (hphi : x.phi es) (hnoAcqF : ∀ p ∈ x.δ.f, ¬ es.cls Event.isAcqR p.2)
     (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
-    (hirr : ∀ a, ¬ es.poR a a) (hF : PoForest es) (hL : NoRevLoc es x) (hT : RMWTightR es x)
+    (hirr : ∀ a, ¬ es.poR a a) (hL : NoRevLoc es x) (hT : RMWTightR es x)
     (hDP : ∀ a b, x.DP a b → es.poR a b) (hJ : ∀ j ∈ x.J, ¬ x.elided j.w.id)
     (hco : x.CoherenceOrderT es co) (h : x.CoherenceT es co) : x.CoherenceV es co := by
   rintro a ⟨b, hab, hba⟩
@@ -882,10 +935,10 @@ theorem coherenceV_of_coherenceT {Ω : Pred} {co : Rel} (hx : x.IsExecution es �
     intro c hc
     induction hc with
     | single s =>
-        exact ⟨.single (step_T hx hnoAcqF hpo_trans hirr hF hL hT hDP hJ ha s),
+        exact ⟨.single (step_T hx hnoAcqF hpo_trans hirr hL hT hDP hJ ha s),
           step_tgt hx hnoAcqF hJ s⟩
     | tail _ s ih =>
-        exact ⟨.tail ih.1 (step_T hx hnoAcqF hpo_trans hirr hF hL hT hDP hJ ih.2 s),
+        exact ⟨.tail ih.1 (step_T hx hnoAcqF hpo_trans hirr hL hT hDP hJ ih.2 s),
           step_tgt hx hnoAcqF hJ s⟩
   exact h a ⟨b, (path b hab).1, hba⟩
 
@@ -951,14 +1004,14 @@ theorem coherenceT_of_coherenceV {co : Rel} (hnf : x.FenceFree es)
 theorem coherenceT_iff_coherenceV {Ω : Pred} {co : Rel} (hx : x.IsExecution es Ω)
     (hphi : x.phi es) (hnf : x.FenceFree es) (hnoAcqF : ∀ p ∈ x.δ.f, ¬ es.cls Event.isAcqR p.2)
     (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
-    (hirr : ∀ a, ¬ es.poR a a) (hF : PoForest es) (hL : NoRevLoc es x) (hT : RMWTightR es x)
+    (hirr : ∀ a, ¬ es.poR a a) (hL : NoRevLoc es x) (hT : RMWTightR es x)
     (hDP : ∀ a b, x.DP a b → es.poR a b) (hJ : ∀ j ∈ x.J, ¬ x.elided j.w.id)
     (hLtrans : ∀ a b c, x.sameLoc es a b → x.sameLoc es b c → x.sameLoc es a c)
     (hrfL : ∀ a b, x.rf a b → x.sameLoc es a b)
     (hco : x.CoherenceOrderT es co) (hcoL : ∀ a b, co a b → x.sameLoc es a b)
     (hm : LocModel es x) :
     x.CoherenceT es co ↔ x.CoherenceV es co :=
-  ⟨coherenceV_of_coherenceT hx hphi hnoAcqF hpo_trans hirr hF hL hT hDP hJ hco,
+  ⟨coherenceV_of_coherenceT hx hphi hnoAcqF hpo_trans hirr hL hT hDP hJ hco,
    coherenceT_of_coherenceV hnf hpo_trans hirr hLtrans hrfL hcoL hm⟩
 
 end Equiv
