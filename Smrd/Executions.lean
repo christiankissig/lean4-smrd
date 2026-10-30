@@ -161,8 +161,11 @@ def ppoJ : Rel := fun a b =>
 /-- Both events lie at or `⊑`-below one event of the path `X ∪ X_F`:
     `∃ e ∈ X ∪ X_F. (a ⊑ e ∨ a = e) ∧ (b ⊑ e ∨ b = e)`. sMRD's windows
     `{e | e ⊑ w_j ∨ e = w_j}` (Def. 4.9) anchor the same cut at the justified
-    writes only. Parallel composition has no join, so an anchored pair lies
-    within one thread's `⊑`-down-set (and its sequential prefix). -/
+    writes only. Without code after a parallel block an anchored pair lies
+    within one thread's `⊑`-down-set (and its sequential prefix); after
+    `(P₁ ∥ P₂); κ` the down-set of an event of `κ` holds both threads, and
+    Forwarding into `κ` from one thread yields anchored pairs across threads
+    (`Smrd.FwdAcrossJoin`). -/
 def Anchored (a b : EventId) : Prop :=
   ∃ e, x.XwF es e ∧ (a = e ∨ es.poR a e) ∧ (b = e ∨ es.poR b e)
 
@@ -192,8 +195,10 @@ def ppoStep : Rel := fun a b =>
        path instead of only at the justified writes. The pairs after a
        thread's last justified write are kept (MoRDor's DEPARTURES F1: the
        thread's tail, which CoRR and MP need), while the pairs remapping moves
-       across threads are dropped, since parallel composition has no join and
-       no event of the path lies `⊑`-above events of two threads.
+       across threads are dropped where no event of the path lies `⊑`-above
+       events of two threads; after a join some do, and Forwarding into the
+       continuation from one thread keeps a pair across threads
+       (`Smrd.FwdAcrossJoin`).
     2. The union is restricted to the path and closed transitively; the paper's
        is neither. The closure runs through fences, whose pairs are in
        `ppo_sync`, before `≼` is restricted to `X`.

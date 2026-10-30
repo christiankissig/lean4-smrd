@@ -12,7 +12,9 @@ location is never a computed expression, so must-alias holds outright.
 With `denote_po_trans` and `denote_po_irrefl` (`Smrd.RoutineHyps`), this
 drops three hypotheses of `dep_po_R` for the event structures of programs
 (`dep_po_R_denote`, `dep_po_R_of_phi_denote`). `PoForest` stays: `⊑` of
-`⟨(a ∥ b); c⟩_n` puts both threads below `c` without ordering them.
+`⟨(a ∥ b); c⟩_n` puts both threads below `c` without ordering them, and it
+cannot be dropped: `Smrd.FwdAcrossJoin` gives a program and a consistent
+execution meeting every other hypothesis with `≼` across the two threads.
 -/
 
 namespace RMWWFDenote
