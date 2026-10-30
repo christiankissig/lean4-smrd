@@ -374,9 +374,11 @@ theorem atomicityT_iff {Ω : Pred} (hx : x.IsExecution es Ω) {co : Rel} :
     RMW access. MoRDor's Write Elision asks the elided write to be the
     immediate `ppo_loc`-predecessor of the eliding one (`fprime`), which an
     aliasing `c` in between would refute; that is not derived here. That `a`
-    is no RMW access is (`rmw_not_elided`); crossing one is not excluded:
-    `x := 1; FADD_rel(x, 1)` may elide `x := 1` into the FADD's write, across
-    its read. `pred` is taken
+    is no RMW access is (`rmw_not_elided`); crossing one is not excluded by
+    the restrictions: `y := 0; x := 1; FADD_rlx(y, 1); x := 2` elides `x := 1`
+    across the FADD (`Smrd.RMWCross`). `x := 1; FADD_rel(x, 1)` does not
+    elide `x := 1` into the FADD's write: its read is `≼`-between under every
+    predicate, so `pred` refuses (`RMWCross.not_weRel_fadd`). `pred` is taken
     in the eliding justification `j₀` (its `P` and `δ`), while the alias
     queries here are under the execution's predicates: a justification of
     `x` whose predicate Strengthening never made distinguish `c` from `a`

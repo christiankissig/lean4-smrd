@@ -25,6 +25,8 @@ import Smrd.FwdEntails
 import Smrd.FwdEntailsCheck
 import Smrd.FwdPastWindow
 import Smrd.FwdChain
+import Smrd.FwdEntailsRMW
+import Smrd.RMWCross
 import Smrd.SymWFDenote
 import Smrd.Labels
 import Smrd.RoutineHyps
