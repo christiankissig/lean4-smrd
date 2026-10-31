@@ -43,3 +43,26 @@ Loops are bounded differently. When a loop's counter runs out, `denote` generate
 head (its `Blocked` check) and leaves the loop on its exit outcome. MoRDor's bound n is therefore
 `denote`'s bound n + 1 with each loop's last body removed, and the test compares loop programs in
 that form (status `cut`). `do B while c` is translated as `B; while c B`.
+
+## Executions against the axioms
+
+`smrd-ax` decides the axioms of executions given by finite relations (see the header of
+`AxExport.lean`): No-Thin-Air, the coherence order, `CoherenceT`, RC11's `Coherence`,
+`CoherenceV`, `CoherenceP` and Atomicity. `Smrd.AxiomEval` proves each decision equal to the
+axiom of `Smrd.Executions`, `Smrd.CoherenceRC11` or `Smrd.CoherenceT`, for an execution whose
+primitives (`⊑` within `X ∪ X_F`, `rf`, `rmw`, same location, `DP ∪ ≼`, the event classes and
+`†`) the lists are.
+
+`scripts/exec_diff.py` checks every execution MoRDor exports (`mordor executions`) against them,
+with MoRDor's own `dp`, `ppo`, `rf`, `rmw` and `co` as the primitives:
+
+```bash
+lake build smrd-ax
+python3 scripts/exec_diff.py -j 8 ../mordor/litmus-tests
+```
+
+It checks soundness only: that each execution MoRDor admits satisfies the axioms, not that
+MoRDor finds them all. MoRDor's executions hold `X ∖ †`, and are checked as the transformed
+executions they are. Executions are enumerated under sMRD whatever model a test names
+(`--own-model` keeps the test's). Tests with non-atomic accesses or locks are skipped. See the
+script's header for the translation, and for the diagnostic `DP ∪ ≼ ⊄ ⊑`.
