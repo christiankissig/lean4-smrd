@@ -338,7 +338,8 @@ theorem fwdA : esP.fwdRel jA1 11 12 := by
       ?_⟩, po_of (by decide), _, _, _, _, rfl, rfl, rfl, rfl, ?_⟩,
     .inr (.inr ⟨⟨_, rfl, rfl⟩, ⟨_, rfl, rfl⟩⟩),
     fun ⟨e, he, hp⟩ => by cases he; simp [e12, R, Event.isVol] at hp⟩,
-    fwdNoAcq_of (by decide) (by decide) (by decide), not_rmwAcc_of_nil _ rfl _⟩
+    fwdNoAcq_of (by decide) (by decide) (by decide),
+    Execution.fwdNoJoin_of_poForest (poForest_of forestL_poL) _ _, not_rmwAcc_of_nil _ rfl _⟩
   · rintro ⟨e'', h₁, h₂⟩
     have p₁ := (ppo_empty h₁).1
     have p₂ := (ppo_empty h₂).1
@@ -404,7 +405,8 @@ theorem fwdB : esP.fwdRel jB1 8 11 := by
       ?_⟩, po_of (by decide), _, _, _, _, rfl, rfl, rfl, rfl, ?_⟩,
     .inr (.inr ⟨⟨_, rfl, rfl⟩, ⟨_, rfl, rfl⟩⟩),
     fun ⟨e, he, hp⟩ => by cases he; simp [e11, R, Event.isVol] at hp⟩,
-    fwdNoAcq_of (by decide) (by decide) (by decide), not_rmwAcc_of_nil _ rfl _⟩
+    fwdNoAcq_of (by decide) (by decide) (by decide),
+    Execution.fwdNoJoin_of_poForest (poForest_of forestL_poL) _ _, not_rmwAcc_of_nil _ rfl _⟩
   · rintro ⟨e'', h₁, h₂⟩
     have p₁ := (ppo_empty h₁).1
     have p₂ := (ppo_empty h₂).1

@@ -11,10 +11,11 @@ location is never a computed expression, so must-alias holds outright.
 
 With `denote_po_trans` and `denote_po_irrefl` (`Smrd.RoutineHyps`), this
 drops three hypotheses of `dep_po_R` for the event structures of programs
-(`dep_po_R_denote`, `dep_po_R_of_phi_denote`). `PoForest` stays: `⊑` of
-`⟨(a ∥ b); c⟩_n` puts both threads below `c` without ordering them, and it
-cannot be dropped: `Smrd.FwdAcrossJoin` gives a program and a consistent
-execution meeting every other hypothesis with `≼` across the two threads.
+(`dep_po_R_denote`, `dep_po_R_of_phi_denote`). `PoForest` is not needed
+either: `⊑` of `⟨(a ∥ b); c⟩_n` puts both threads below `c` without ordering
+them, and the join restrictions on Forwarding and Write Elision
+(`fwdNoJoin`, `weNoJoin`) keep `≼` from relating them
+(`Smrd.FwdAcrossJoin`, `Smrd.WEAcrossFork`).
 -/
 
 namespace RMWWFDenote
@@ -73,21 +74,21 @@ variable {x : Execution}
 
 /-- `dep_po_R` for `⟨P⟩_n`: `RMWWF` and the order properties of `⊑` hold. -/
 theorem dep_po_R_denote {n : Bounds} {P : Stmt} {Ω : Pred} (hx : x.IsExecution (denote n P) Ω)
-    (hF : PoForest (denote n P)) (hT : RMWTightR (denote n P) x)
+    (hT : RMWTightR (denote n P) x)
     (hDP : ∀ a b, x.DP a b → (denote n P).poR a b) (hsat : Sat (x.P (denote n P)))
     (hev : LocsEval (denote n P)) (hE : FwdEntailsImg (denote n P) x) {a b : EventId}
     (h : x.dep (denote n P) a b) : x.poX (denote n P) a b :=
-  dep_po_R hx (denote_po_trans n P) (denote_po_irrefl n P) hF hT hDP hsat hev hE
+  dep_po_R hx (denote_po_trans n P) (denote_po_irrefl n P) hT hDP hsat hev hE
     (denote_rmwWF n P) h
 
 /-- `dep_po_R_of_phi` for `⟨P⟩_n`. -/
 theorem dep_po_R_of_phi_denote {n : Bounds} {P : Stmt} {Ω : Pred}
     (hx : x.IsExecution (denote n P) Ω) (hphi : x.phi (denote n P))
-    (hF : PoForest (denote n P)) (hT : RMWTightR (denote n P) x)
+    (hT : RMWTightR (denote n P) x)
     (hDP : ∀ a b, x.DP a b → (denote n P).poR a b) (hev : LocsEval (denote n P))
     (hE : FwdEntailsImg (denote n P) x) {a b : EventId} (h : x.dep (denote n P) a b) :
     x.poX (denote n P) a b :=
-  dep_po_R_of_phi hx hphi (denote_po_trans n P) (denote_po_irrefl n P) hF hT hDP hev hE
+  dep_po_R_of_phi hx hphi (denote_po_trans n P) (denote_po_irrefl n P) hT hDP hev hE
     (denote_rmwWF n P) h
 
 end RMWWFDenote
