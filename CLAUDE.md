@@ -76,6 +76,14 @@ Smrd.Labels  (Fresh + Monotonicity + Executions) labels are unique in P̄: disti
 Smrd.RoutineHyps  (Fresh + PpoTail) ⊑ of ⟨P⟩_n a strict order (`denote_po_trans`, `denote_po_irrefl`); sameLoc (under P ∧ φ_rf, as partial values) transitive and ⊇ rf outright (`sameLoc_trans`, `rfLoc` in CoherenceRC11); locations of ⟨P⟩_n Total for programs that do not compute pointers (`denote_totalLocs`, `Stmt.PtrWF`), so LocModel from a model of P ∧ valres_X ∧ φ_rf (`locModel_of_denote`); with constant offsets `*(r + c)`, `*(r + rc)` (`Stmt.PtrOffWF`, RCU's `rcu1_ptrOffWF`) from a model that also types the offset bases as non-booleans (`AddrTypedAt`, `locModel_of_denote_off`; needed: `locModel_of_offset_false`); counterexamples to LocModel from φ alone
 Smrd.RMWWFDenote  (RoutineHyps + FwdEntailsRMW) ⟨P⟩_n is `RMWWF` (`denote_rmwWF`); `dep_po_R_denote`, `dep_po_R_of_phi_denote` drop `RMWWF` and ⊑'s transitivity and irreflexivity (`PoForest` stays: false for `(a ∥ b); c`)
       └── Smrd.FwdAcrossJoin  (+ DPPast, PpoNecessity) `z := 0; (r1 :=_acq z ∥ x := 1); r2 := x; y := r2`, `r2` forwarded from `x := 1` across the join: consistent, every hypothesis of `dep_po_R_of_phi_denote` and `dep_po_T` but `PoForest` holds, `≼` relates `r1` and `x := 1` (⊑-incomparable), `DP ∪ ≼ ⊄ ⊑`
+Smrd.ElabDec.Kleene  (Justifications + Conjuncts) predicates as three-valued combinations of their atoms (`kval`), propositional equivalence `PEq` (decided, kept by replace/rename/conj/liftPred), sizes, enumerations, pigeonhole
+└── Smrd.ElabDec.Fragment  bounded arithmetic (`isTerm`, `isBPred`), the `Oracle`, closure of the fragment under the elaborations (store-store forwarding of a multiplying numeral leaves it: `replace_leaves_fragment`), `psiE`
+      └── Smrd.ElabDec.Closure  `GenR` (Strengthening from `Qs`, Weakening optional), invariants (`Inv`: WF, distinct targets, `D` = symbols of `w`), atoms and writes small, `GenR.finite`, computable `GenR.bound`; `strengthening_infinite`
+            └── Smrd.ElabDec.Remap  `remap_δ` and `WF` decided (`remap_iff`, `wfB_iff`)
+                  └── Smrd.ElabDec.Deciders  `Bounded` (C1–C3, `boundedB`), `≼`/`pred`/`fwdBase` decided via the oracle, `RelSplit`, `relabEqExpr` vacuous (`relabEqExpr_true`), closed relabel equivalence decided (`crB_iff`)
+                        ├── Smrd.ElabDec.RelSplitMain  `relSplit`: the event-only conditions of `fwdRel`/`weRel` (the only module unfolding them)
+                        └── Smrd.ElabDec.Saturate  `step`, `stage`, `decideJ_iff` (Weakening-free closure decided up to `JEq`); `weak_not_congr`
+                              └── Smrd.ElabDec.Examples  (+ Basic) conditions checked on the litmus tests and RCU's retry loop at bounds 0–2
 ```
 
 `Smrd.Basic` re-exports all of the above and is the library root (`Smrd.lean` imports it).
