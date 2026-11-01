@@ -25,8 +25,8 @@ Lean version is pinned in `lean-toolchain`: `leanprover/lean4:v4.28.0`.
 ## Architecture
 
 This project mechanises the **SMRD (Symbolic Modular Relaxed Dependencies)** memory model
-(Richards et al., OOPSLA 2025), in the form restated in Appendix A of the episodic loops paper
-(`../episodic-loops-paper`), which refines it: effectful events (writes, allocations,
+(Richards et al., OOPSLA 2025), in the form restated in Appendix A of the episodic loops paper,
+which refines it: effectful events (writes, allocations,
 deallocations) are justified, `≼_rmw` is asymmetric for conditional RMWs, and loops carry per-loop
 step-counters and iteration labels. Docstrings cite that paper's LaTeX labels (`def:freeze`, …).
 
