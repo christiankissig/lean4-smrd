@@ -192,6 +192,7 @@ theorem isExecution_simple {es : EventStructure} (S : Simple es) {rf : List (Eve
     exact ⟨hw, hr, cand_of_cls S.nodup (fun e he => wr_nb e (.inl he)) hw,
       cand_of_cls S.nodup (fun e he => wr_nb e (.inr he)) hr⟩
   rf_func w w' r h h' := hrf.2 _ h _ h' rfl
+  notElided j _ := not_elided_simple es rf j.w.id
   justified w hw he _ := by
     obtain ⟨e, hev, hef⟩ := he
     obtain ⟨hm, rfl⟩ := ev_inv hev

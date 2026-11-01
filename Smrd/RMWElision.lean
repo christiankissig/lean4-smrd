@@ -350,6 +350,8 @@ theorem isExecution_B (hg : esL.Generated (fun _ => True) jWE) :
     · exact pre_L (w := e5) (by simp [esL]) rfl
   inX j hj := by
     rcases mem_JB hj with rfl | rfl | rfl <;> exact X_B.2 (by decide)
+  notElided j hj := by
+    rcases mem_JB hj with rfl | rfl | rfl <;> exact fun h => absurd (elided_B.1 h) (by decide)
   consistent := ⟨fun _ => .num 0, fun j hj => (J_B hj).1 _,
     fun a e _ he => holdsL (ev_inv he).1 _⟩
   fwdWF := by

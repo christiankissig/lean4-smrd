@@ -287,6 +287,8 @@ theorem isExecution_F (hg : esA.Generated (fun _ => True) jF) :
     · exact pre_A (by simp [esA, e6]) rfl
   inX j hj := by
     rcases mem_JF hj with rfl | rfl | rfl | rfl | rfl <;> (try rw [jF_eq]) <;> exact X_F.2 (by decide)
+  notElided j hj := by
+    rcases mem_JF hj with rfl | rfl | rfl | rfl | rfl <;> (try rw [jF_eq]) <;> exact fun h => absurd (elided_F.1 h) (by decide)
   consistent := ⟨fun _ => .num 0, fun j hj => (J_F hj).1 _,
     fun a e _ he => SA.holds (ev_inv he).1 _⟩
   fwdWF := by

@@ -75,6 +75,10 @@ theorem elided_iff (e : EventId) : x.elided e ↔ ∃ a, x.δ.edge a e := by
   · rintro ⟨⟨a, b⟩, h, rfl⟩; exact ⟨a, h⟩
   · rintro ⟨a, h⟩; exact ⟨(a, e), h, rfl⟩
 
+/-- Without forwarding or write elision no event is elided. -/
+theorem not_elided_of_δ_empty (h : x.δ = .empty) (e : EventId) : ¬ x.elided e := by
+  rintro ⟨p, hp, -⟩; rw [h] at hp; rcases hp with hp | hp <;> nomatch hp
+
 /-- `⋀_{e ∈ X} valres(e)` -/
 def valresX : Pred := fun f => ∀ a e, x.X a → es.ev a = some e → e.valres.holds f
 
@@ -97,6 +101,9 @@ structure IsExecution (Ω : Pred) : Prop where
       writes only, and forwarded reads still need an `rf` (`phi`) -/
   justified : ∀ w, x.X w → es.cls Event.isEffect w → ¬ x.elided w →
     ∃ j ∈ x.J, j.w.id = w ∧ ∀ j' ∈ x.J, j'.w.id = w → j' = j
+  /-- `J` justifies no elided event (`def:executions`): its justifications are those of
+      events in `X ∖ †` -/
+  notElided : ∀ j ∈ x.J, ¬ x.elided j.w.id
 
 /-- A complete execution: `rf` assigns a write to every read. -/
 def IsComplete (Ω : Pred) : Prop :=

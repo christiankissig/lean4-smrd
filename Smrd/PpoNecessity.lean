@@ -543,6 +543,9 @@ theorem isExecution_WW : xWW.IsExecution esWW (fun _ => True) where
     rcases hj with rfl | rfl
     · exact X_WW.2 (.inr (.inl rfl))
     · exact X_WW.2 (.inr (.inr rfl))
+  notElided j hj := by
+    simp only [xWW, JWW, List.mem_cons, List.mem_nil_iff, or_false] at hj
+    rcases hj with rfl | rfl <;> exact fun h => absurd (elided_WW.1 h) (by decide)
   consistent := ⟨fun _ => .num 0, fun j hj => by
       simp only [xWW, JWW, List.mem_cons, List.mem_nil_iff, or_false] at hj
       rcases hj with rfl | rfl <;> simp [jWE, pj, W, Event.valres, Expr.conj, Expr.holds,
@@ -793,6 +796,9 @@ theorem isExecution_C : xC.IsExecution esC (fun _ => True) where
   inX j hj := by
     simp only [xC, List.mem_cons, List.mem_nil_iff, or_false] at hj
     subst hj; exact X_C.2 (.inr rfl)
+  notElided j hj := by
+    simp only [xC, List.mem_cons, List.mem_nil_iff, or_false] at hj
+    subst hj; exact fun h => absurd (elided_C.1 h) (by decide)
   consistent := ⟨fun _ => .num 0, fun j hj => by
       simp only [xC, List.mem_cons, List.mem_nil_iff, or_false] at hj
       subst hj; simp [jC, pj, W, Event.valres, Expr.conj, Expr.holds, Expr.eval, Expr.tt],
