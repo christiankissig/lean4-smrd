@@ -134,7 +134,7 @@ theorem we_14 : esX.weRel jB 1 4 := by
       fun _ _ _ _ h₁ h₂ => by rw [h₁] at h₂; cases h₂; rfl⟩,
     ⟨_, rfl, rfl⟩, ⟨_, rfl, rfl⟩, fun ⟨e, he, hp⟩ => by cases he; simp [e1, W, Event.isVol] at hp⟩,
     weNoRel_of (by decide) (by decide),
-    Execution.weNoJoin_of_poForest (poForest_of (by decide)) _ _, fun ⟨ent, hm, h⟩ => by
+    weNoFork_of (by decide), fun ⟨ent, hm, h⟩ => by
       simp only [esX, List.mem_cons, List.mem_nil_iff, or_false] at hm
       subst hm; simp at h⟩
   rintro ⟨e'', h₁, h₂⟩
@@ -248,6 +248,8 @@ theorem isExecution_X : xX.IsExecution esX (fun _ => True) where
     · exact pre_X (w := e3) (by simp [esX]) rfl
   inX j hj := by
     rcases mem_JX hj with rfl | rfl | rfl <;> exact X_X.2 (by decide)
+  notElided j hj := by
+    rcases mem_JX hj with rfl | rfl | rfl <;> exact fun h => absurd (elided_X.1 h) (by decide)
   consistent := ⟨fun _ => .num 0, fun j hj => (J_X hj).1 _,
     fun a e _ he => holdsX (ev_inv he).1 _⟩
   fwdWF := by

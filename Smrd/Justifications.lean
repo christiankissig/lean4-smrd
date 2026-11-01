@@ -59,7 +59,7 @@ predicate `Generated`, whose derivations are the elements of `⋃ᵢ 𝕁ᵢ`.
   (`Execution.CoherenceT`, `X ∖ †`): eliding an RMW's write turns the RMW
   into a plain read and a later store, about which Atomicity says nothing
   (`Smrd.RMWElision`). Hence `Generated.not_rmwAcc_elided`. The paper's
-  `def:fwd-rels` does not exclude them yet (Todoist 6hpW3hjc4W2839jX).
+  `def:fwd-rels` does not exclude them yet.
 * Write Elision carries MoRDor's release restriction (`weNoRel`, MoRDor #207):
   a releasing write is elided only into a releasing write, and no release
   write, release or `sc` fence, or `sc` read lies `⊑`-between the two. The
@@ -77,18 +77,24 @@ predicate `Generated`, whose derivations are the elements of `⋃ᵢ 𝕁ᵢ`.
   restriction `CoherenceT` admits an outcome RC11 forbids
   (`Smrd.FwdAcrossAcquire`); with it, the remapped `ppo_sync` has no backward
   pair even with forwarding (`Execution.ppoSyncRM_po_T`).
-* Forwarding and Write Elision carry a join restriction (`fwdNoJoin`,
-  `weNoJoin`): `remap_δ` moves the forwarded event onto its source, and the
-  elided write onto the eliding one, and the move must keep `⊑`-comparable
+* Forwarding carries a join restriction (`fwdNoJoin`): `remap_δ` moves the
+  forwarded event onto its source, and the move must keep `⊑`-comparable
   every event comparable with the moved one where the two have a common upper
   bound (`NoJoinMove`). Forwarding does not reach across the join of a
   parallel block, from a thread (or from before the block) into the code after
-  it; Write Elision does not move a write from before a parallel block into
-  one of its threads when the threads join again. Without it `≼` relates
-  `⊑`-incomparable events of two threads below the join
-  (`Smrd.FwdAcrossJoin`). MoRDor generates neither across a join in those
-  programs. Where `⊑` is a forest the restriction is vacuous
-  (`Execution.fwdNoJoin_of_poForest`, `Execution.weNoJoin_of_poForest`).
+  it. Without it `≼` relates `⊑`-incomparable events of two threads below the
+  join (`Smrd.FwdAcrossJoin`). Vacuous where `⊑` is a forest
+  (`Execution.fwdNoJoin_of_poForest`).
+* Write Elision carries MoRDor's fork restriction (`weNoFork`,
+  `ForwardElab.elision_blocked`): no elision past a fork, every event
+  `⊑`-after the elided write is comparable with the eliding one. A fork
+  synchronises like a release; eliding a write into one thread of a parallel
+  block would let a sibling thread read a coherence-earlier write once elided
+  writes are out of coherence (`Smrd.WEPastFork`). Unlike MoRDor's, it does
+  not exempt events of another branch of a choice. It implies the join
+  condition `weNoJoin` (`NoJoinMove` of the elided write onto the eliding one,
+  `weNoFork_weNoJoin`), which keeps `≼` within `⊑` (`Smrd.WEAcrossFork`) and
+  through which the proofs about `remap_δ` go.
 -/
 
 /-- A justification `j : (P, D) ⊢^δ w`. -/
@@ -245,7 +251,7 @@ def NoJoinMove (u v : EventId) : Prop := ∀ c, es.JoinCmp c u → es.JoinCmp c 
     (`Execution.fwdNoJoin_of_poForest`). -/
 def fwdNoJoin (e₁ e₂ : EventId) : Prop := es.NoJoinMove e₂ e₁
 
-/-- The join restriction on Write Elision: `remap_δ` moves the elided write
+/-- The join condition on Write Elision: `remap_δ` moves the elided write
     `e₁` onto the eliding write `e₂` (`NoJoinMove e₁ e₂`). For `e₁ ⊑ e₂` it
     says that every event `c ⊒ e₁` with a common upper bound with `e₂` is
     comparable with `e₂` (`weNoJoin_iff`): the elision does not move `e₁`
@@ -253,8 +259,26 @@ def fwdNoJoin (e₁ e₂ : EventId) : Prop := es.NoJoinMove e₂ e₁
     join again, as in `x := 0; (x := 1 ∥ r := x); κ`, where `r := x` is after
     `x := 0` but not after `x := 1`. Elision into the continuation of a join,
     `(x := 1 ∥ …); x := 2`, is not restricted. Vacuous where `⊑` is a forest
-    (`Execution.weNoJoin_of_poForest`). -/
+    (`Execution.weNoJoin_of_poForest`). Write Elision asks the stronger
+    `weNoFork`, which implies it (`weNoFork_weNoJoin`); the proofs about
+    `remap_δ` use this weaker form. -/
 def weNoJoin (e₁ e₂ : EventId) : Prop := es.NoJoinMove e₁ e₂
+
+/-- The fork restriction on Write Elision, MoRDor's write-elision restriction
+    (`ForwardElab.elision_blocked`): every event `⊑`-after the elided write
+    `e₁` other than the eliding write `e₂` is `⊑`-comparable with `e₂` -- `e₂`
+    is on `e₁`'s thread, or after the join of every parallel block that
+    starts after `e₁`. A fork synchronises like a release (`weNoRel`): eliding
+    a write from before a parallel block into one of its threads sinks it past
+    the fork, and once elided writes are out of coherence
+    (`Execution.CoherenceT`), a read of a sibling thread that happens after
+    the elided write but not after the eliding one could read a write
+    coherence-before it (`Smrd.WEPastFork`). Stronger than the join condition
+    `weNoJoin` (`weNoFork_weNoJoin`), which admits the elision when the threads
+    do not join again. MoRDor's rule also exempts events in conflict with
+    `e₂` (the other branch of a choice); this one does not, so it is stricter
+    where `e₂` lies in one branch of an `if` (or loop test) after `e₁`. -/
+def weNoFork (e₁ e₂ : EventId) : Prop := ∀ c, es.poR e₁ c → c ≠ e₂ → es.PoCmp c e₂
 
 theorem PoCmp.symm {a b : EventId} (h : es.PoCmp a b) : es.PoCmp b a := by
   rcases h with rfl | h | h
@@ -300,6 +324,17 @@ theorem weNoJoin_iff (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.po
     · exact .inr (.inl (hpo_trans _ _ _ hce h₁₂))
     · exact h c hec ⟨d, hcd, hed⟩
 
+/-- **No elision past a fork implies the join condition**: for `e₁ ⊑ e₂`,
+    `weNoFork e₁ e₂` gives `weNoJoin e₁ e₂`. An event `c` joinable with `e₂`
+    and comparable with `e₁` where joinable with it is `⊑`-below `e₁` (so
+    below `e₂`), or `⊑`-above `e₁` (so comparable with `e₂` by `weNoFork`); it
+    is not incomparable with `e₁`, as a common upper bound of `c` and `e₂`
+    bounds `e₁` too. -/
+theorem weNoFork_weNoJoin (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
+    {e₁ e₂ : EventId} (h : es.weNoFork e₁ e₂) (h₁₂ : es.poR e₁ e₂) : es.weNoJoin e₁ e₂ :=
+  (es.weNoJoin_iff hpo_trans h₁₂).2 fun c hc _ =>
+    if hce : c = e₂ then .inl hce else h c hc hce
+
 /-- `e₁ -F_j→ e₂`: Forwarding's conditions (`fwdRelBlind`) under the acquire
     restriction (`fwdNoAcq`) and the join restriction (`fwdNoJoin`), where the
     forwarded event `e₂` is not an RMW access (a deviation from the paper,
@@ -326,11 +361,16 @@ def weNoRel (e₁ e₂ : EventId) : Prop :=
     ∀ c, es.poR e₁ c → es.poR c e₂ → ¬ es.cls Event.publishes c
 
 /-- `e₁ -WE_j→ e₂`: Write Elision's conditions (`weRelBlind`) under the
-    release restriction (`weNoRel`) and the join restriction (`weNoJoin`),
+    release restriction (`weNoRel`) and the fork restriction (`weNoFork`),
     where the elided write `e₁` is not an RMW access (a deviation from the
     paper, MoRDor E4). -/
 def weRel (j : Justification) (e₁ e₂ : EventId) : Prop :=
-  es.weRelBlind j e₁ e₂ ∧ es.weNoRel e₁ e₂ ∧ es.weNoJoin e₁ e₂ ∧ ¬ es.RMWAcc e₁
+  es.weRelBlind j e₁ e₂ ∧ es.weNoRel e₁ e₂ ∧ es.weNoFork e₁ e₂ ∧ ¬ es.RMWAcc e₁
+
+/-- Write Elision's conditions give the join condition (`weNoFork_weNoJoin`). -/
+theorem weRel_weNoJoin (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
+    {j : Justification} {e₁ e₂ : EventId} (h : es.weRel j e₁ e₂) : es.weNoJoin e₁ e₂ :=
+  es.weNoFork_weNoJoin hpo_trans h.2.2.1 h.1.1.2.1
 
 /-! ## Closed relabel-equivalence (Definition `def:rel-eq`) -/
 

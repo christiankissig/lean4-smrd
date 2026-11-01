@@ -183,7 +183,7 @@ theorem remap_stay_up' {Ω : Pred} (hx : x.IsExecution es Ω)
       rintro (rfl | hce)
       · exact .inr (.inl (.step he hr))
       · rcases edge_cases hx he with ⟨hf, hqe⟩ | ⟨-, heq⟩
-        · rcases edge_poCmp hx he hce hqe with rfl | hcq | hqc
+        · rcases edge_poCmp hx hpo_trans he hce hqe with rfl | hcq | hqc
           · exact .inr (.inl hr)
           · exact ih (.inr hcq)
           · exact .inr (.inr ⟨q, e, hf, hqc, hce, .step he hr⟩)
@@ -212,7 +212,7 @@ theorem remap_enter_up' {Ω : Pred} (hx : x.IsExecution es Ω)
             · exact absurd (.inl rfl) hc
             · exact absurd (.inr hce) hc
             · exact .inr ⟨q, e, hw, hec, hcq, .step he hr⟩
-      · exact ih hc' (edge_noJoin hx he c hj) hq
+      · exact ih hc' (edge_noJoin hx hpo_trans he c hj) hq
 
 /-! ## The condition -/
 
@@ -536,7 +536,7 @@ theorem ppoM_po_E {Ω : Pred} (hx : x.IsExecution es Ω)
       · exact absurd (hfun ra rb) hne
       · exact h
     · exact hal.1
-  rcases remap_poCmp hx (.inr (.inl hbase)) ra rb (joinable_of_anchored hA) with h | h | h
+  rcases remap_poCmp hx hpo_trans (.inr (.inl hbase)) ra rb (joinable_of_anchored hA) with h | h | h
   · exact absurd h hne
   · exact h
   · refine absurd h ?_

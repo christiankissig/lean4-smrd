@@ -8,7 +8,7 @@ import Smrd.CoherenceT
 `x := 1`, with no forwarding. It is `PpoNecessity`'s `x := 0; (x := 1 ∥ x := 2)`
 (N2) with code after the join.
 
-* Every condition of Write Elision but its join restriction holds
+* Every condition of Write Elision but its fork restriction holds
   (`we_01_blind`): `x := 0` is the immediate `≼`-predecessor of `x := 1`, and
   nothing lies between. So does the join restriction as it reads for
   Forwarding, every event `⊑`-below the eliding write comparable with the
@@ -19,14 +19,17 @@ import Smrd.CoherenceT
   different threads that `⊑` does not order: `DP ∪ ≼ ⊄ ⊑`
   (`not_dep_po`), without forwarding. Without `y := 3` the pair is not
   anchored (N2).
-* Write Elision's join restriction (`EventStructure.weNoJoin`) refutes the
-  elision (`not_weNoJoin`): `x := 2` is `⊑`-above `x := 0`, joinable with
-  `x := 1` (at `y := 3`) and not comparable with it.
+* Write Elision's fork restriction (`EventStructure.weNoFork`, MoRDor's
+  write-elision restriction) refutes the elision (`not_weNoFork`): `x := 2`
+  is `⊑`-after `x := 0` and not comparable with `x := 1`. So does the weaker
+  join condition it implies (`EventStructure.weNoJoin`, `not_weNoJoin`):
+  `x := 2` is joinable with `x := 1` (at `y := 3`).
 
 So `≼` relates `⊑`-incomparable events without forwarding, and Write
-Elision needs a join restriction too, of the other shape than Forwarding's:
-the elision moves `x := 0` forward past a fork, Forwarding moves its target
-backward past a join. Before remapping, `≼` relates no incomparable events:
+Elision needs a restriction of the other shape than Forwarding's join
+restriction: the elision moves `x := 0` forward past a fork, Forwarding moves
+its target backward past a join. Without the join, `Smrd.WEPastFork` shows
+that the fork restriction is still needed. Before remapping, `≼` relates no incomparable events:
 its parts are `⊑`-pairs (`Execution.ppoStep_po` without `F ∪ WE` edges).
 -/
 
@@ -65,7 +68,7 @@ def jPre : Justification := pj e1
 def jWE : Justification := { jPre with δ := { jPre.δ with we := jPre.δ.we ++ [(1, 0)] } }
 
 /-- **Write Elision of `x := 0` into `x := 1`, under every condition but the
-    join restriction.** -/
+    fork restriction.** -/
 theorem we_01_blind : esQ.weRelBlind jPre 0 1 ∧ esQ.weNoRel 0 1 ∧ ¬ esQ.RMWAcc 0 := by
   have hδ0 : ∀ a b, ¬ jPre.δ.edge a b := by
     intro a b h; rcases h with h | h <;> cases h
@@ -92,7 +95,7 @@ theorem below_cmp : ∀ c, esQ.poR c 1 → esQ.PoCmp c 0 := fun c h => by
   have key : ∀ p ∈ poL, p.2 = 1 → p.1 = 0 := by decide
   exact .inl (key _ h rfl)
 
-/-- **Write Elision's join restriction fails**: `x := 2` is `⊑`-above
+/-- **The join condition fails too**: `x := 2` is `⊑`-above
     `x := 0`, joinable with `x := 1` at `y := 3`, and not comparable with it. -/
 theorem not_weNoJoin : ¬ esQ.weNoJoin 0 1 := fun h => by
   rcases h 2 (esQ.joinCmp_of_poCmp (.inr (.inr (po_of (by decide)))))
@@ -101,8 +104,16 @@ theorem not_weNoJoin : ¬ esQ.weNoJoin 0 1 := fun h => by
   · exact not_po_21 h
   · exact not_po_12 h
 
+/-- **Write Elision's fork restriction fails**: `x := 2` is `⊑`-after
+    `x := 0` and not comparable with `x := 1`. -/
+theorem not_weNoFork : ¬ esQ.weNoFork 0 1 := fun h => by
+  rcases h 2 (po_of (by decide)) (by decide) with h | h | h
+  · cases h
+  · exact not_po_21 h
+  · exact not_po_12 h
+
 theorem not_weRel (j : Justification) : ¬ esQ.weRel j 0 1 :=
-  fun h => not_weNoJoin h.2.2.1
+  fun h => not_weNoFork h.2.2.1
 
 /-- **No generated justification elides `x := 0` into `x := 1`.** -/
 theorem not_generated {Ω : Pred} {j : Justification} (h : esQ.Generated Ω j) :
@@ -152,7 +163,7 @@ theorem ppo_12 : xQ.ppo esQ 1 2 := by
 theorem not_dep_po : ¬ ∀ a b, xQ.dep esQ a b → xQ.poX esQ a b :=
   fun h => not_po_12 (h 1 2 (.inl ppo_12)).2.2
 
-/-- **Were the join restriction dropped, `xQ` would be an execution**:
+/-- **Were the fork restriction dropped, `xQ` would be an execution**:
     everything an execution asks holds once `jWE` is generated, as Write
     Elision would generate it from `x := 1`'s pre-justification along
     `we_01_blind`. -/
@@ -170,6 +181,11 @@ theorem isExecution_Q (gen_jWE : esQ.Generated (fun _ => True) jWE) :
   inX j hj := by
     simp only [xQ, JQ, List.mem_cons, List.mem_nil_iff, or_false] at hj
     rcases hj with rfl | rfl | rfl <;> exact X_Q
+  notElided j hj := fun h => by
+    obtain ⟨a, ha⟩ := (xQ.elided_iff _).1 h
+    have h0 := (edge_Q ha).2
+    simp only [xQ, JQ, List.mem_cons, List.mem_nil_iff, or_false] at hj
+    rcases hj with rfl | rfl | rfl <;> exact absurd h0 (by decide)
   consistent := ⟨fun _ => .num 0, fun j hj => by
       simp only [xQ, JQ, List.mem_cons, List.mem_nil_iff, or_false] at hj
       rcases hj with rfl | rfl | rfl <;> simp [jWE, jPre, pj, e1, e2, e3, PpoNecessity.W, Event.valres,
@@ -216,13 +232,13 @@ theorem not_isExecution {Ω : Pred} : ¬ xQ.IsExecution esQ Ω := fun hx => by
   have hg := hx.generated jWE (by simp [xQ, JQ])
   exact not_generated hg (by simp [jWE, jPre, pj, FwdCtx.empty])
 
-/-- **Without Write Elision's join restriction, `≼` relates `⊑`-incomparable
+/-- **Without Write Elision's fork restriction, `≼` relates `⊑`-incomparable
     events of two threads without forwarding**, in the event structure of a
     program: the elision of `x := 0` into `x := 1` meets every other
     condition of Write Elision, and the shape of Forwarding's join
     restriction (`below_cmp`); `xQ` is an execution if it is generated; and
-    `≼` relates `x := 1` to `x := 2`. The join restriction refutes the
-    elision. -/
+    `≼` relates `x := 1` to `x := 2`. The join condition refutes the
+    elision, and so does the fork restriction. -/
 theorem fork_join :
     denote (fun _ => 0) prog = esQ ∧
     (esQ.weRelBlind jPre 0 1 ∧ esQ.weNoRel 0 1 ∧ ¬ esQ.RMWAcc 0) ∧
@@ -231,8 +247,8 @@ theorem fork_join :
     (∀ p ∈ xQ.δ.f, False) ∧
     xQ.ppo esQ 1 2 ∧ ¬ esQ.poR 1 2 ∧ ¬ esQ.poR 2 1 ∧
     ¬ (∀ a b, xQ.dep esQ a b → xQ.poX esQ a b) ∧
-    ¬ esQ.weNoJoin 0 1 ∧ (∀ Ω : Pred, ¬ xQ.IsExecution esQ Ω) :=
+    ¬ esQ.weNoJoin 0 1 ∧ ¬ esQ.weNoFork 0 1 ∧ (∀ Ω : Pred, ¬ xQ.IsExecution esQ Ω) :=
   ⟨denote_prog, we_01_blind, below_cmp, isExecution_Q, noFwd_Q, ppo_12, not_po_12, not_po_21,
-    not_dep_po, not_weNoJoin, fun _ => not_isExecution⟩
+    not_dep_po, not_weNoJoin, not_weNoFork, fun _ => not_isExecution⟩
 
 end WEAcrossFork

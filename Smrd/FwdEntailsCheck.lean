@@ -14,7 +14,9 @@ import Smrd.FwdAcrossAlias
   `x := 0` / `x := 1` elided: the elision is generated against a
   pre-justification whose predicate is valid, so every scope holds
   (`fwdEntailsAll_WW`, `fwdEntailsAll_C`, by `fwdEntailsOn_of_valid`). The other
-  positive executions have no edge (`fwdEntailsOn_of_noEdge`).
+  positive executions have no edge (`fwdEntailsOn_of_noEdge`). Write
+  Elision's fork restriction refuses `xWW`'s elision, so `fwdEntailsAll_WW`
+  takes it as a hypothesis (as `PpoNecessity.ppo_cross_thread` does).
 -/
 
 open EventStructure PpoKit Execution
@@ -67,7 +69,7 @@ end FwdAcrossAlias
 namespace PpoNecessity
 
 /-- `x := 0 -WE→ x := 1` against `x := 1`'s pre-justification. -/
-theorem we_WW : esWW.weRel (pj (W 1 0 [1, 0] .rlx "x" 1)) 0 1 := by
+theorem we_WW (hF : esWW.weNoFork 0 1) : esWW.weRel (pj (W 1 0 [1, 0] .rlx "x" 1)) 0 1 := by
   have hδ0 : ∀ a b, ¬ (pj (W 1 0 [1, 0] .rlx "x" 1)).δ.edge a b := by
     intro a b h; rcases h with h | h <;> cases h
   have hppo : ∀ a b, esWW.ppo (pj (W 1 0 [1, 0] .rlx "x" 1)).P.holds
@@ -81,7 +83,7 @@ theorem we_WW : esWW.weRel (pj (W 1 0 [1, 0] .rlx "x" 1)) 0 1 := by
       _, _, _, _, rfl, rfl, rfl, rfl, fun _ _ _ _ h₁ h₂ => by rw [h₁] at h₂; cases h₂; rfl⟩,
     ⟨_, rfl, rfl⟩, ⟨_, rfl, rfl⟩, fun ⟨e, he, hp⟩ => by cases he; simp [W, Event.isVol] at hp⟩,
     weNoRel_of (by decide) (by decide),
-    Execution.weNoJoin_of_poForest (poForest_of (by decide)) _ _,
+    hF,
     EventStructure.not_rmwAcc_of_nil _ rfl _⟩
   rintro ⟨e'', h₁, h₂⟩
   have m₁ := hppo _ _ h₁
@@ -91,11 +93,11 @@ theorem we_WW : esWW.weRel (pj (W 1 0 [1, 0] .rlx "x" 1)) 0 1 := by
   exact key _ m₁ _ m₂ rfl rfl rfl
 
 /-- **`x := 0; (x := 1 ∥ x := 2)` with `x := 0` elided satisfies every scope.** -/
-theorem fwdEntailsAll_WW : FwdEntailsAll esWW xWW :=
+theorem fwdEntailsAll_WW (hF : esWW.weNoFork 0 1) : FwdEntailsAll esWW xWW :=
   fwdEntailsOn_of_valid (fun s t he => by
     obtain ⟨rfl, rfl⟩ := edge_WW he
     exact ⟨pj (W 1 0 [1, 0] .rlx "x" 1), 0, 1,
-      ⟨.inr ⟨by rw [δWW]; simp, rfl, rfl, we_WW⟩, fun p hp => (by cases hp), fun p hp => (by cases hp)⟩,
+      ⟨.inr ⟨by rw [δWW]; simp, rfl, rfl, we_WW hF⟩, fun p hp => (by cases hp), fun p hp => (by cases hp)⟩,
       fun f => SWW.holds (e := W 1 0 [1, 0] .rlx "x" 1) (by simp [esWW]) f⟩) _
 
 /-- `x := 1 -WE→ x := 2` against `x := 2`'s pre-justification. -/
@@ -113,7 +115,7 @@ theorem we_C : esC.weRel (pj (W 1 0 [1] .rlx "x" 2)) 0 1 := by
       _, _, _, _, rfl, rfl, rfl, rfl, fun _ _ _ _ h₁ h₂ => by rw [h₁] at h₂; cases h₂; rfl⟩,
     ⟨_, rfl, rfl⟩, ⟨_, rfl, rfl⟩, fun ⟨e, he, hp⟩ => by cases he; simp [W, Event.isVol] at hp⟩,
     weNoRel_of (by decide) (by decide),
-    Execution.weNoJoin_of_poForest (poForest_of (by decide)) _ _,
+    weNoFork_of (by decide),
     EventStructure.not_rmwAcc_of_nil _ rfl _⟩
   rintro ⟨e'', h₁, h₂⟩
   have m₁ := hppo _ _ h₁

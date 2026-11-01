@@ -231,6 +231,7 @@ theorem isExecution_C (hg : esC.Generated (fun _ => True) jL) :
   fwdWF := by rw [δC]; exact FwdCtx.WF.empty
   rf_wr _ _ h := h.elim
   rf_func _ _ _ h := h.elim
+  notElided j _ := not_elided_of_δ_empty _ δC j.w.id
   justified w hw he _ := by
     rcases X_C.1 hw with rfl | rfl | rfl
     · exact absurd (cls_clsB.1 he) (by decide)

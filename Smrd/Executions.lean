@@ -75,6 +75,10 @@ theorem elided_iff (e : EventId) : x.elided e ↔ ∃ a, x.δ.edge a e := by
   · rintro ⟨⟨a, b⟩, h, rfl⟩; exact ⟨a, h⟩
   · rintro ⟨a, h⟩; exact ⟨(a, e), h, rfl⟩
 
+/-- Without forwarding or write elision no event is elided. -/
+theorem not_elided_of_δ_empty (h : x.δ = .empty) (e : EventId) : ¬ x.elided e := by
+  rintro ⟨p, hp, -⟩; rw [h] at hp; rcases hp with hp | hp <;> nomatch hp
+
 /-- `⋀_{e ∈ X} valres(e)` -/
 def valresX : Pred := fun f => ∀ a e, x.X a → es.ev a = some e → e.valres.holds f
 
@@ -97,6 +101,9 @@ structure IsExecution (Ω : Pred) : Prop where
       writes only, and forwarded reads still need an `rf` (`phi`) -/
   justified : ∀ w, x.X w → es.cls Event.isEffect w → ¬ x.elided w →
     ∃ j ∈ x.J, j.w.id = w ∧ ∀ j' ∈ x.J, j'.w.id = w → j' = j
+  /-- `J` justifies no elided event (`def:executions`): its justifications are those of
+      events in `X ∖ †` -/
+  notElided : ∀ j ∈ x.J, ¬ x.elided j.w.id
 
 /-- A complete execution: `rf` assigns a write to every read. -/
 def IsComplete (Ω : Pred) : Prop :=
@@ -166,8 +173,8 @@ def ppoJ : Rel := fun a b =>
     `(P₁ ∥ P₂); κ` the down-set of an event of `κ` holds both threads, and
     Forwarding into `κ` from one thread yields anchored pairs across threads
     (`Smrd.FwdAcrossJoin`), as does Write Elision from before the block into one
-    thread (`Smrd.WEAcrossFork`); the join restrictions on Forwarding and Write
-    Elision (`fwdNoJoin`, `weNoJoin`) exclude both (`Execution.remap_poCmp`). -/
+    thread (`Smrd.WEAcrossFork`); Forwarding's join restriction (`fwdNoJoin`)
+    and Write Elision's fork restriction (`weNoFork`) exclude both (`Execution.remap_poCmp`). -/
 def Anchored (a b : EventId) : Prop :=
   ∃ e, x.XwF es e ∧ (a = e ∨ es.poR a e) ∧ (b = e ∨ es.poR b e)
 
@@ -218,7 +225,8 @@ def ppoStep : Rel := fun a b =>
     across threads: an initialising write `⊑`-before every thread, elided by
     one thread's write, moved its pairs with the other threads onto that
     write (`x := 0; (x := 1 ∥ x := 2)`, `Smrd.PpoNecessity.ppo_cross_thread`,
-    now the positive result), and `SB+sc` with both initialising writes
+    now the positive result, and the elision is refused by Write Elision's
+    fork restriction), and `SB+sc` with both initialising writes
     elided had a cyclic `≼`. With the cut every step of `≼` relates
     `⊑`-comparable events, and without forwarding it lies in `⊑` where no
     elision crosses an event (`Smrd.PpoTail`, `ppoStep_po_we`).

@@ -25,8 +25,8 @@ Lean version is pinned in `lean-toolchain`: `leanprover/lean4:v4.28.0`.
 ## Architecture
 
 This project mechanises the **SMRD (Symbolic Modular Relaxed Dependencies)** memory model
-(Richards et al., OOPSLA 2025), in the form restated in Appendix A of the episodic loops paper
-(`../episodic-loops-paper`), which refines it: effectful events (writes, allocations,
+(Richards et al., OOPSLA 2025), in the form restated in Appendix A of the episodic loops paper,
+which refines it: effectful events (writes, allocations,
 deallocations) are justified, `≼_rmw` is asymmetric for conditional RMWs, and loops carry per-loop
 step-counters and iteration labels. Docstrings cite that paper's LaTeX labels (`def:freeze`, …).
 
@@ -49,15 +49,16 @@ Smrd.Types                        expressions, values, events, event structures,
 └── Smrd.Forwardingcontext        δ = (F, WE), ψ_δ, remap_δ
       └── Smrd.Ppo                ≼_sync, ≼_rmw, ≼_alias, ≼^P_δ, pred, dependence on P
             ├── Smrd.PpoMordor        MoRDor's ppo templates (ppo_sync, ppo_loc, ForwardingContext.ppo)
-            └── Smrd.Justifications  (+ Smrd.Conjuncts) pre-justifications, elaborations, `Generated` (𝕁), Write Elision's release restriction (`weNoRel`), the join restrictions (`fwdNoJoin`, `weNoJoin`: `remap_δ` keeps joinable events comparable, `NoJoinMove`), no RMW access elided (`RMWAcc`, `Generated.not_rmwAcc_elided`)
+            └── Smrd.Justifications  (+ Smrd.Conjuncts) pre-justifications, elaborations, `Generated` (𝕁), Write Elision's release restriction (`weNoRel`) and fork restriction (`weNoFork`, MoRDor's `elision_blocked`; implies the join condition `weNoJoin`, `weNoFork_weNoJoin`), Forwarding's join restriction (`fwdNoJoin`; `remap_δ` keeps joinable events comparable, `NoJoinMove`), no RMW access elided (`RMWAcc`, `Generated.not_rmwAcc_elided`)
                   └── Smrd.Executions  (+ PpoMordor) executions, freeze (DP, ≼ = MoRDor's freeze_ppo cut to anchored pairs, ppoTrunc, ppoWin, φ), NTA, RC11 coherence, atomicity, UAF (sMRD `nta`, RC11 `ntaRC11`), RC11 no-thin-air (`NoThinAirRC11`), `Frozen`
                         └── Smrd.CoherenceRC11  preserved coherence and HB_v, reduced to RC11's axiom (FenceFree)
                               └── Smrd.PpoTail  MoRDor's ≼: ≼ ⊆ ⊑ without forwarding (elision allowed, `NoCross`), conditions (i)/(ii) off elided events, NTA same as ppoWin
-                                    ├── Smrd.CoherenceT  sMRD's coherence over X ∖ † (`CoherenceT`, `CoherentT`, `ConsistentT`); with Write Elision's release restriction (`weNoRel`, MoRDor #207) and Forwarding's acquire restriction (`fwdNoAcq`, MoRDor #210) remap(ppo_sync) ⊆ ⊑ with forwarding (`sync_not_back`); no RMW access elided (`rmw_not_elided`, `atomicityT_iff`); `DP ∪ ≼ ⊆ ⊑` under `NoRevLoc`, without `PoForest` (the join restrictions: `remap_poCmp`) (not implied by the restrictions, `Smrd.FwdAcrossAlias`); and `CoherenceT` ⇔ HB_v-coherence (no acquire read forwarded, `NoRevLoc`)
+                                    ├── Smrd.CoherenceT  sMRD's coherence over X ∖ † (`CoherenceT`, `CoherentT`, `ConsistentT`); with Write Elision's release restriction (`weNoRel`, MoRDor #207) and Forwarding's acquire restriction (`fwdNoAcq`, MoRDor #210) remap(ppo_sync) ⊆ ⊑ with forwarding (`sync_not_back`); no RMW access elided (`rmw_not_elided`, `atomicityT_iff`); `DP ∪ ≼ ⊆ ⊑` under `NoRevLoc`, without `PoForest` (`fwdNoJoin` and `weNoJoin`: `remap_poCmp`) (not implied by the restrictions, `Smrd.FwdAcrossAlias`); and `CoherenceT` ⇔ HB_v-coherence (no acquire read forwarded, `NoRevLoc`)
                                     ├── Smrd.PpoEval  ≼ computed for global-location executions (`ppoEval_iff`), for `smrd-es` / scripts/ppo_diff.py
+                                    ├── Smrd.AxiomEval  the axioms as functions of an execution's primitives (`Prims`), decided on finite lists (`PrimsL`: NTA, coherence order, CoherenceT/RC11/V/P, Atomicity; `*_decide`, certified closures), for `smrd-ax` / scripts/exec_diff.py
                                     └── Smrd.PpoKit  (+ Monotonicity) concrete executions, list bounds on ≼, sw, eco
                                           └── Smrd.PpoStability  truncated ≼ unstable (A), untruncated local/stable (B), no NTA change (C)
-                                                ├── Smrd.PpoNecessity  untruncated ≼ needed for HB_v = RC11 (N1: CoRR, CoWR, MP); no cross-thread ≼ under elision (N2), HB_v ⇏ RC11 at an elided write (N3)
+                                                ├── Smrd.PpoNecessity  untruncated ≼ needed for HB_v = RC11 (N1: CoRR, CoWR, MP); no cross-thread ≼ under elision (N2, under `weNoJoin` only: `weNoFork` refuses its elision), HB_v ⇏ RC11 at an elided write (N3)
                                                 │     └── Smrd.WEAcrossRelease  (+ CoherenceT) MoRDor's WE-across-release.lit: RC11 forbids, CoherenceT admits under blind elision, the release restriction forbids; `coww_elided` over X ∖ †
                                                 │           ├── Smrd.FwdAcrossAcquire  MoRDor's RSE-across-acquire.lit: RC11 forbids, CoherenceT admits under blind Forwarding across an acquire, the acquire restriction forbids
                                                 │           └── Smrd.RMWElision  lost update `x := 0; (FADD; x := 5 ∥ FADD)`: RC11 forbids, CoherenceT admits when the FADD's write is elided, the RMW rule forbids
@@ -73,9 +74,18 @@ Smrd.Types                        expressions, values, events, event structures,
                                                       └── Smrd.SymWFDenote  (+ Fresh) ⟨P⟩_n introduces symbols ⊑-before their uses (`denote_symWF`)
 Smrd.Labels  (Fresh + Monotonicity + Executions) labels are unique in P̄: distinct events of ⟨P⟩_n with one label conflict (`labels_unique`, `conflictFree_label_inj`), for distinct loop ids
 Smrd.RoutineHyps  (Fresh + PpoTail) ⊑ of ⟨P⟩_n a strict order (`denote_po_trans`, `denote_po_irrefl`); sameLoc (under P ∧ φ_rf, as partial values) transitive and ⊇ rf outright (`sameLoc_trans`, `rfLoc` in CoherenceRC11); locations of ⟨P⟩_n Total for programs that do not compute pointers (`denote_totalLocs`, `Stmt.PtrWF`), so LocModel from a model of P ∧ valres_X ∧ φ_rf (`locModel_of_denote`); with constant offsets `*(r + c)`, `*(r + rc)` (`Stmt.PtrOffWF`, RCU's `rcu1_ptrOffWF`) from a model that also types the offset bases as non-booleans (`AddrTypedAt`, `locModel_of_denote_off`; needed: `locModel_of_offset_false`); counterexamples to LocModel from φ alone
-Smrd.RMWWFDenote  (RoutineHyps + FwdEntailsRMW) ⟨P⟩_n is `RMWWF` (`denote_rmwWF`); `dep_po_R_denote`, `dep_po_R_of_phi_denote` drop `RMWWF` and ⊑'s transitivity and irreflexivity; no `PoForest` (false for `(a ∥ b); c`), the join restrictions replace it
+Smrd.RMWWFDenote  (RoutineHyps + FwdEntailsRMW) ⟨P⟩_n is `RMWWF` (`denote_rmwWF`); `dep_po_R_denote`, `dep_po_R_of_phi_denote` drop `RMWWF` and ⊑'s transitivity and irreflexivity; no `PoForest` (false for `(a ∥ b); c`), `fwdNoJoin` and `weNoFork` replace it
       ├── Smrd.FwdAcrossJoin  (+ DPPast, PpoNecessity) `z := 0; (r1 :=_acq z ∥ x := 1); r2 := x; y := r2`, `r2` forwarded from `x := 1` across the join: under every condition but `fwdNoJoin` consistent with `≼` relating `r1` and `x := 1` (⊑-incomparable), `DP ∪ ≼ ⊄ ⊑`; `fwdNoJoin` excludes it, also with the source in the parent thread (`join_excluded`, `parent_excluded`)
-      └── Smrd.WEAcrossFork  (+ CoherenceT) `x := 0; (x := 1 ∥ x := 2); y := 3`, `x := 0` elided into `x := 1`: no forwarding, yet `≼` relates `x := 1` and `x := 2`; `weNoJoin` excludes it, Forwarding's join shape does not
+      ├── Smrd.WEAcrossFork  (+ CoherenceT) `x := 0; (x := 1 ∥ x := 2); y := 3`, `x := 0` elided into `x := 1`: no forwarding, yet `≼` relates `x := 1` and `x := 2`; `weNoFork` (and `weNoJoin`) exclude it, Forwarding's join shape does not
+      └── Smrd.WEPastFork  (+ PpoNecessity) `x := 0; x := 5; (x := 1 ∥ r := x)` (MoRDor's we-across-fork.lit), `x := 5` elided into `x := 1`: every condition but `weNoFork` holds, `weNoJoin` included; `weNoFork` excludes it
+Smrd.ElabDec.Kleene  (Justifications + Conjuncts) predicates as three-valued combinations of their atoms (`kval`), propositional equivalence `PEq` (decided, kept by replace/rename/conj/liftPred), sizes, enumerations, pigeonhole
+└── Smrd.ElabDec.Fragment  bounded arithmetic (`isTerm`, `isBPred`), the `Oracle`, closure of the fragment under the elaborations (store-store forwarding of a multiplying numeral leaves it: `replace_leaves_fragment`), `psiE`
+      └── Smrd.ElabDec.Closure  `GenR` (Strengthening from `Qs`, Weakening optional), invariants (`Inv`: WF, distinct targets, `D` = symbols of `w`), atoms and writes small, `GenR.finite`, computable `GenR.bound`; `strengthening_infinite`
+            └── Smrd.ElabDec.Remap  `remap_δ` and `WF` decided (`remap_iff`, `wfB_iff`)
+                  └── Smrd.ElabDec.Deciders  `Bounded` (C1–C3, `boundedB`), `≼`/`pred`/`fwdBase` decided via the oracle, `RelSplit`, `relabEqExpr` vacuous (`relabEqExpr_true`), closed relabel equivalence decided (`crB_iff`)
+                        ├── Smrd.ElabDec.RelSplitMain  `relSplit`: the event-only conditions of `fwdRel`/`weRel` (the only module unfolding them)
+                        └── Smrd.ElabDec.Saturate  `step`, `stage`, `decideJ_iff` (Weakening-free closure decided up to `JEq`); `weak_not_congr`
+                              └── Smrd.ElabDec.Examples  (+ Basic) conditions checked on the litmus tests and RCU's retry loop at bounds 0–2
 ```
 
 `Smrd.Basic` re-exports all of the above and is the library root (`Smrd.lean` imports it).

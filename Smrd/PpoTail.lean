@@ -21,7 +21,8 @@ module records what follows.
   release write); Write Elision's release restriction excludes that one, and
   `Smrd.CoherenceT` weakens `NoCross` to `NoCrossLoc`. The initialising write of `x := 0; (x := 1 ∥ x := 2)` elided
   into `x := 1` is no longer a counterexample (`Smrd.PpoNecessity`,
-  `ppo_cross_thread`).
+  `ppo_cross_thread`; Write Elision's fork restriction now refuses the
+  elision altogether).
 * `coherenceV_of_coherence_we` (RC11 to `HB_v`, under the hypotheses of
   `dep_po_we`), `coherence_of_coherenceV_canon` (`HB_v` to RC11, forwarding
   and elision allowed where no event of the path is elided; it fails at an

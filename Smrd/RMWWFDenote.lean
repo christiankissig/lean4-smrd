@@ -13,8 +13,9 @@ With `denote_po_trans` and `denote_po_irrefl` (`Smrd.RoutineHyps`), this
 drops three hypotheses of `dep_po_R` for the event structures of programs
 (`dep_po_R_denote`, `dep_po_R_of_phi_denote`). `PoForest` is not needed
 either: `⊑` of `⟨(a ∥ b); c⟩_n` puts both threads below `c` without ordering
-them, and the join restrictions on Forwarding and Write Elision
-(`fwdNoJoin`, `weNoJoin`) keep `≼` from relating them
+them, and Forwarding's join restriction (`fwdNoJoin`) and Write Elision's
+fork restriction (`weNoFork`, through the join condition `weNoJoin` it
+implies) keep `≼` from relating them
 (`Smrd.FwdAcrossJoin`, `Smrd.WEAcrossFork`).
 -/
 

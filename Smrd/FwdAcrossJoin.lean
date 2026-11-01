@@ -271,6 +271,8 @@ theorem isExecution_P (gen_jW : esP.Generated (fun _ => True) jW) :
     · exact gen_jW
   inX j hj := by
     rcases mem_JP hj with rfl | rfl | rfl <;> (try rw [jW_eq]) <;> exact X_P.2 (by decide)
+  notElided j hj := by
+    rcases mem_JP hj with rfl | rfl | rfl <;> (try rw [jW_eq]) <;> exact fun h => absurd (elided_P.1 h) (by decide)
   consistent := ⟨fOut, fun j hj => holds_JP hj fOut, fun a e _ he => SP.holds (ev_inv he).1 _⟩
   fwdWF := by rw [δP]; exact wf23
   rf_wr w r h := by
