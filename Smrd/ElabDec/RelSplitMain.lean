@@ -41,15 +41,25 @@ def noJoinP (u v : EventId) : Prop :=
   ∀ c ∈ es.po.map Prod.fst ++ es.po.map Prod.snd,
     (es.joinableP c u → es.poCmpP c u) → es.joinableP c v → es.poCmpP c v
 
+/-- `Diverged` on the events' guards. -/
+def divergedP (a b : EventId) : Prop :=
+  match es.ev a, es.ev b with
+  | some ea, some eb =>
+      ∃ g₁ ∈ ea.guards, ∃ g₂ ∈ eb.guards, g₁.branch = g₂.branch ∧ g₁.cond = g₂.cond ∧ g₁.pos ≠ g₂.pos
+  | _, _ => False
+
 /-- `weNoFork` with the later event among the events of `⊑`. -/
 def noForkP (e₁ e₂ : EventId) : Prop :=
-  ∀ c ∈ es.po.map Prod.snd, (e₁, c) ∈ es.po → c ≠ e₂ → es.poCmpP c e₂
+  ∀ c ∈ es.po.map Prod.snd, (e₁, c) ∈ es.po → c ≠ e₂ →
+    (es.divergedP c e₂ → es.joinableP c e₂) → es.poCmpP c e₂
 
 instance (e₁ e₂ : EventId) : Decidable (es.noAcqP e₁ e₂) := by unfold noAcqP; infer_instance
 instance (e₁ e₂ : EventId) : Decidable (es.noRelP e₁ e₂) := by unfold noRelP; infer_instance
 instance (a b : EventId) : Decidable (es.poCmpP a b) := by unfold poCmpP; infer_instance
 instance (a b : EventId) : Decidable (es.joinableP a b) := by unfold joinableP; infer_instance
 instance (u v : EventId) : Decidable (es.noJoinP u v) := by unfold noJoinP; infer_instance
+instance (a b : EventId) : Decidable (es.divergedP a b) := by
+  unfold divergedP; split <;> infer_instance
 instance (e₁ e₂ : EventId) : Decidable (es.noForkP e₁ e₂) := by unfold noForkP; infer_instance
 
 variable {es}
@@ -92,8 +102,22 @@ theorem noJoinMove_iff {u v : EventId} : es.NoJoinMove u v ↔ es.noJoinP u v :=
         · exact absurd (List.mem_append_right _ (mem_snd_of_poR hvd)) hm
       · exact absurd (List.mem_append_left _ (mem_fst_of_poR hcd)) hm
 
-theorem weNoFork_iff {e₁ e₂ : EventId} : es.weNoFork e₁ e₂ ↔ es.noForkP e₁ e₂ :=
-  ⟨fun h c _ => h c, fun h c h1 => h c (mem_snd_of_poR h1) h1⟩
+theorem diverged_iff {a b : EventId} : es.Diverged a b ↔ es.divergedP a b := by
+  unfold Diverged divergedP
+  constructor
+  · rintro ⟨ea, eb, ha, hb, h⟩; rw [ha, hb]; exact h
+  · intro h
+    split at h
+    · exact ⟨_, _, ‹_›, ‹_›, h⟩
+    · exact h.elim
+
+theorem weNoFork_iff {e₁ e₂ : EventId} : es.weNoFork e₁ e₂ ↔ es.noForkP e₁ e₂ := by
+  unfold weNoFork noForkP
+  constructor
+  · intro h c _ h1 hne hj
+    exact h c h1 hne fun hd => joinable_iff.2 (hj (diverged_iff.1 hd))
+  · intro h c h1 hne hj
+    exact h c (mem_snd_of_poR h1) h1 hne fun hd => joinable_iff.1 (hj (diverged_iff.2 hd))
 
 variable (es)
 

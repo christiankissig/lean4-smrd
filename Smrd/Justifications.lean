@@ -90,8 +90,12 @@ predicate `Generated`, whose derivations are the elements of `⋃ᵢ 𝕁ᵢ`.
   `⊑`-after the elided write is comparable with the eliding one. A fork
   synchronises like a release; eliding a write into one thread of a parallel
   block would let a sibling thread read a coherence-earlier write once elided
-  writes are out of coherence (`Smrd.WEPastFork`). Unlike MoRDor's, it does
-  not exempt events of another branch of a choice. It implies the join
+  writes are out of coherence (`Smrd.WEPastFork`). Events on another outcome
+  of a branching than the eliding write (`Diverged`) are exempt where they
+  have no common upper bound with it, so a write before an `if` may be elided
+  into one branch (`Smrd.WEIntoBranch`); MoRDor exempts them without the
+  proviso, which differs only for branchings inside a thread of a parallel
+  block followed by code after the join (`weNoFork_iff_conflict`). It implies the join
   condition `weNoJoin` (`NoJoinMove` of the elided write onto the eliding one,
   `weNoFork_weNoJoin`), which keeps `≼` within `⊑` (`Smrd.WEAcrossFork`) and
   through which the proofs about `remap_δ` go.
@@ -264,21 +268,44 @@ def fwdNoJoin (e₁ e₂ : EventId) : Prop := es.NoJoinMove e₂ e₁
     `remap_δ` use this weaker form. -/
 def weNoJoin (e₁ e₂ : EventId) : Prop := es.NoJoinMove e₁ e₂
 
+/-- `a` and `b` lie on different outcomes of one branching: their guards hold
+    a branching condition and its negation (`Labels.Diverge` on the events).
+    Syntactic, the conflict of MoRDor's choice; it implies `Conflict`
+    (`Labels.diverged_conflict`). `Conflict` itself is semantic: not
+    decidable, and an event with unsatisfiable guards conflicts with every
+    event. -/
+def Diverged (a b : EventId) : Prop :=
+  ∃ ea eb, es.ev a = some ea ∧ es.ev b = some eb ∧
+    ∃ g₁ ∈ ea.guards, ∃ g₂ ∈ eb.guards, g₁.branch = g₂.branch ∧ g₁.cond = g₂.cond ∧ g₁.pos ≠ g₂.pos
+
 /-- The fork restriction on Write Elision, MoRDor's write-elision restriction
-    (`ForwardElab.elision_blocked`): every event `⊑`-after the elided write
+    (`ForwardElab.elision_blocked`): every event `c` `⊑`-after the elided write
     `e₁` other than the eliding write `e₂` is `⊑`-comparable with `e₂` -- `e₂`
     is on `e₁`'s thread, or after the join of every parallel block that
-    starts after `e₁`. A fork synchronises like a release (`weNoRel`): eliding
-    a write from before a parallel block into one of its threads sinks it past
-    the fork, and once elided writes are out of coherence
-    (`Execution.CoherenceT`), a read of a sibling thread that happens after
-    the elided write but not after the eliding one could read a write
-    coherence-before it (`Smrd.WEPastFork`). Stronger than the join condition
-    `weNoJoin` (`weNoFork_weNoJoin`), which admits the elision when the threads
-    do not join again. MoRDor's rule also exempts events in conflict with
-    `e₂` (the other branch of a choice); this one does not, so it is stricter
-    where `e₂` lies in one branch of an `if` (or loop test) after `e₁`. -/
-def weNoFork (e₁ e₂ : EventId) : Prop := ∀ c, es.poR e₁ c → c ≠ e₂ → es.PoCmp c e₂
+    starts after `e₁` -- unless `c` lies on another outcome of a branching
+    than `e₂` (`Diverged`) and has no common upper bound with it. A fork
+    synchronises like a release (`weNoRel`): eliding a write from before a
+    parallel block into one of its threads sinks it past the fork, and once
+    elided writes are out of coherence (`Execution.CoherenceT`), a read of a
+    sibling thread that happens after the elided write but not after the
+    eliding one could read a write coherence-before it (`Smrd.WEPastFork`).
+    An event of the other branch of an `if` or loop test never occurs with
+    `e₂` in an execution, so eliding a write from before the branching into
+    one branch is not restricted (`Smrd.WEIntoBranch`).
+
+    MoRDor exempts every event in conflict with `e₂`. Here a diverged event
+    is exempt where it has no common upper bound with `e₂`; the two agree
+    where diverged events have none (`NoJoinDiverge`, `weNoFork_iff_conflict`), which
+    fails in `⟨P⟩_n` only for a branching inside a thread of a parallel block
+    with code after the join, where `(… ∥ …); κ` puts both branches below
+    `κ`. There this rule is stricter than MoRDor's. The proviso makes it imply
+    the join condition `weNoJoin` outright (`weNoFork_weNoJoin`), which admits
+    the elision when the threads do not join again. -/
+def weNoFork (e₁ e₂ : EventId) : Prop :=
+  ∀ c, es.poR e₁ c → c ≠ e₂ → (es.Diverged c e₂ → es.Joinable c e₂) → es.PoCmp c e₂
+
+/-- Diverged events have no common upper bound in `⊑`. -/
+def NoJoinDiverge : Prop := ∀ a b, es.Diverged a b → ¬ es.Joinable a b
 
 theorem PoCmp.symm {a b : EventId} (h : es.PoCmp a b) : es.PoCmp b a := by
   rcases h with rfl | h | h
@@ -332,8 +359,19 @@ theorem weNoJoin_iff (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.po
     bounds `e₁` too. -/
 theorem weNoFork_weNoJoin (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
     {e₁ e₂ : EventId} (h : es.weNoFork e₁ e₂) (h₁₂ : es.poR e₁ e₂) : es.weNoJoin e₁ e₂ :=
-  (es.weNoJoin_iff hpo_trans h₁₂).2 fun c hc _ =>
-    if hce : c = e₂ then .inl hce else h c hc hce
+  (es.weNoJoin_iff hpo_trans h₁₂).2 fun c hc hj =>
+    if hce : c = e₂ then .inl hce else h c hc hce fun _ => hj
+
+/-- **Where diverged events have no common upper bound, the fork restriction
+    is MoRDor's**: every event `⊑`-after `e₁`, other than `e₂` and not in
+    conflict with it, is comparable with `e₂`. -/
+theorem weNoFork_iff_conflict (hD : es.NoJoinDiverge) {e₁ e₂ : EventId} :
+    es.weNoFork e₁ e₂ ↔ ∀ c, es.poR e₁ c → c ≠ e₂ → ¬ es.Diverged c e₂ → es.PoCmp c e₂ :=
+  ⟨fun h c hc hne hd => h c hc hne fun hd' => absurd hd' hd,
+   fun h c hc hne hj => by
+    by_cases hd : es.Diverged c e₂
+    · exact absurd (hj hd) (hD c e₂ hd)
+    · exact h c hc hne hd⟩
 
 /-- `e₁ -F_j→ e₂`: Forwarding's conditions (`fwdRelBlind`) under the acquire
     restriction (`fwdNoAcq`) and the join restriction (`fwdNoJoin`), where the

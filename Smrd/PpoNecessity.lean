@@ -481,7 +481,8 @@ theorem pre_WW (w : Event) (hw : w ∈ esWW.events) (hk : preJust w = some (pj w
     `x := 1`**: `x := 2` is `⊑`-after `x := 0` and not comparable with
     `x := 1`. -/
 theorem not_weNoFork_WW : ¬ esWW.weNoFork 0 1 := fun h => by
-  rcases h 2 (show (0, 2) ∈ esWW.po by decide) (by decide) with h | h | h
+  rcases h 2 (show (0, 2) ∈ esWW.po by decide) (by decide)
+      (fun hd => absurd hd (not_diverged_of (by decide))) with h | h | h
   · cases h
   · exact absurd (show (2, 1) ∈ esWW.po from h) (by decide)
   · exact absurd (show (1, 2) ∈ esWW.po from h) (by decide)

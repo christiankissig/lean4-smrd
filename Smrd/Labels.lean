@@ -68,6 +68,13 @@ theorem Diverge.not_sat {e₁ e₂ : Event} (h : Diverge e₁ e₂) :
   subst hc
   cases p₁ <;> cases p₂ <;> simp_all [Expr.eval]
 
+/-- Events on different outcomes of one branching (`EventStructure.Diverged`,
+    the exemption of Write Elision's fork restriction) are in conflict. -/
+theorem diverged_conflict {es : EventStructure} {a b : EventId} (h : es.Diverged a b) :
+    es.Conflict a b := by
+  obtain ⟨ea, eb, ha, hb, hd⟩ := h
+  exact ⟨ea, eb, ha, hb, Diverge.not_sat hd⟩
+
 /-- Two events with the same program counter and iterations are one event, or
     diverge. -/
 def LU (k : EventStructure) : Prop :=
