@@ -59,7 +59,7 @@ predicate `Generated`, whose derivations are the elements of `⋃ᵢ 𝕁ᵢ`.
   (`Execution.CoherenceT`, `X ∖ †`): eliding an RMW's write turns the RMW
   into a plain read and a later store, about which Atomicity says nothing
   (`Smrd.RMWElision`). Hence `Generated.not_rmwAcc_elided`. The paper's
-  `def:fwd-rels` does not exclude them yet (Todoist 6hpW3hjc4W2839jX).
+  `def:fwd-rels` does not exclude them yet.
 * Write Elision carries MoRDor's release restriction (`weNoRel`, MoRDor #207):
   a releasing write is elided only into a releasing write, and no release
   write, release or `sc` fence, or `sc` read lies `⊑`-between the two. The
