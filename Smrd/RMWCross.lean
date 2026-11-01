@@ -247,6 +247,8 @@ theorem isExecution_X : xX.IsExecution esX (fun _ => True) where
     · exact pre_X (w := e3) (by simp [esX]) rfl
   inX j hj := by
     rcases mem_JX hj with rfl | rfl | rfl <;> exact X_X.2 (by decide)
+  notElided j hj := by
+    rcases mem_JX hj with rfl | rfl | rfl <;> exact fun h => absurd (elided_X.1 h) (by decide)
   consistent := ⟨fun _ => .num 0, fun j hj => (J_X hj).1 _,
     fun a e _ he => holdsX (ev_inv he).1 _⟩
   fwdWF := by
