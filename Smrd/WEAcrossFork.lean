@@ -107,7 +107,8 @@ theorem not_weNoJoin : ¬ esQ.weNoJoin 0 1 := fun h => by
 /-- **Write Elision's fork restriction fails**: `x := 2` is `⊑`-after
     `x := 0` and not comparable with `x := 1`. -/
 theorem not_weNoFork : ¬ esQ.weNoFork 0 1 := fun h => by
-  rcases h 2 (po_of (by decide)) (by decide) with h | h | h
+  rcases h 2 (po_of (by decide)) (by decide)
+      (fun hd => absurd hd (not_diverged_of (by decide))) with h | h | h
   · cases h
   · exact not_po_21 h
   · exact not_po_12 h

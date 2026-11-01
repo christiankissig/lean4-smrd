@@ -64,10 +64,17 @@ theorem weNoRel_of {es : EventStructure} {e₁ e₂ : EventId}
   have := h₂ (e₁, c) hc rfl hce
   rw [cls_clsB.1 hp] at this; cases this
 
+/-- No two events diverge where no event has a guard. -/
+theorem not_diverged_of {es : EventStructure} (h : ∀ e ∈ es.events, e.guards = [])
+    {a b : EventId} : ¬ es.Diverged a b := by
+  rintro ⟨ea, -, ha, -, g, hg, -⟩
+  rw [h ea (ev_inv ha).1] at hg
+  cases hg
+
 /-- Write Elision's fork restriction from a list check. -/
 theorem weNoFork_of {es : EventStructure} {e₁ e₂ : EventId}
     (h : ∀ p ∈ es.po, p.1 = e₁ → p.2 ≠ e₂ → (p.2, e₂) ∈ es.po ∨ (e₂, p.2) ∈ es.po) :
-    es.weNoFork e₁ e₂ := fun c hc hne =>
+    es.weNoFork e₁ e₂ := fun c hc hne _ =>
   .inr (h (e₁, c) hc rfl hne)
 
 /-- Forwarding's acquire restriction from list checks. -/

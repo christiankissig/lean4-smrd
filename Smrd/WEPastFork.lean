@@ -85,7 +85,8 @@ theorem we_12_join :
 /-- **The fork restriction fails**: `r := x` is `⊑`-after `x := 5` and not
     comparable with `x := 1`. -/
 theorem not_weNoFork : ¬ esF.weNoFork 1 2 := fun h => by
-  rcases h 3 (po_of (by decide)) (by decide) with h | h | h
+  rcases h 3 (po_of (by decide)) (by decide)
+      (fun hd => absurd hd (not_diverged_of (by decide))) with h | h | h
   · cases h
   · exact not_po_32 h
   · exact not_po_23 h

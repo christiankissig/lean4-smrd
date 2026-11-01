@@ -35,6 +35,7 @@ import Smrd.RMWWFDenote
 import Smrd.FwdAcrossJoin
 import Smrd.WEAcrossFork
 import Smrd.WEPastFork
+import Smrd.WEIntoBranch
 import Smrd.ElabDec.Saturate
 import Smrd.ElabDec.RelSplitMain
 
