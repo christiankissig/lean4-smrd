@@ -33,6 +33,8 @@ import Smrd.Labels
 import Smrd.RoutineHyps
 import Smrd.RMWWFDenote
 import Smrd.FwdAcrossJoin
+import Smrd.WEAcrossFork
+import Smrd.WEPastFork
 import Smrd.ElabDec.Saturate
 import Smrd.ElabDec.RelSplitMain
 

@@ -399,9 +399,9 @@ theorem noThinAir_iff_trunc_past {Ω : Pred}
     within the justification windows (`FwdWin`; vacuous without forwarding). -/
 theorem dep_po_T_past {Ω : Pred} (hx : x.IsExecution es Ω)
     (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
-    (hirr : ∀ a, ¬ es.poR a a) (hF : PoForest es) (hL : NoRevLoc es x) (hT : RMWTightR es x)
+    (hirr : ∀ a, ¬ es.poR a a) (hL : NoRevLoc es x) (hT : RMWTightR es x)
     (hwf : es.SymWF) (hFW : ∀ j ∈ x.J, es.FwdWin j) {a b : EventId} (h : x.dep es a b) :
     x.poX es a b :=
-  dep_po_T hx hpo_trans hirr hF hL hT (dp_po hx hwf hpo_trans hFW) h
+  dep_po_T hx hpo_trans hirr hL hT (dp_po hx hwf hpo_trans hFW) h
 
 end Execution

@@ -231,7 +231,8 @@ theorem fwd_69 : esP.fwdRel jS 6 9 := by
       ?_⟩, po_of (by decide), _, _, _, _, rfl, rfl, rfl, rfl, ?_⟩,
     .inr (.inr ⟨⟨_, rfl, rfl⟩, ⟨_, rfl, rfl⟩⟩),
     fun ⟨e, he, hp⟩ => by cases he; simp [e9, R, Event.isVol] at hp⟩,
-    fwdNoAcq_of (by decide) (by decide) (by decide), not_rmwAcc_of_nil _ rfl _⟩
+    fwdNoAcq_of (by decide) (by decide) (by decide),
+    Execution.fwdNoJoin_of_poForest (poForest_of FwdAcrossAlias.forestL_poL) _ _, not_rmwAcc_of_nil _ rfl _⟩
   · rintro ⟨e'', h₁, h₂⟩
     have p₁ := (ppo_empty h₁).1
     have p₂ := (ppo_empty h₂).1

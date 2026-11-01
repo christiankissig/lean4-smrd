@@ -43,7 +43,11 @@ before the cut to anchored pairs MoRDor's `≼` kept it, and with `CO`
 event of the path lies at or above both ends, the pair is dropped,
 `DP ∪ ≼ ⊆ ⊑` (from the general `dep_po_we`), and the execution is
 `HB_v`-coherent. The initialising write is an ordinary write in lean4-smrd's
-semantics (a sequential prefix of the program), and elidable.
+semantics (a sequential prefix of the program). Write Elision's fork
+restriction (`EventStructure.weNoFork`) now refuses this elision
+(`not_weNoFork_WW`), so the results about `xWW` take the fork restriction as
+a hypothesis `hF` (false, which makes them vacuous) and stand for Write
+Elision under the join condition alone (`weNoJoin_WW`).
 
 ## (N3) `HB_v` to RC11 fails at an elided write
 
@@ -473,9 +477,23 @@ theorem pre_WW (w : Event) (hw : w ∈ esWW.events) (hk : preJust w = some (pj w
     esWW.Generated (fun _ => True) (pj w) :=
   .pre hw hk ⟨fun _ => .num 0, SWW.holds hw _⟩
 
+/-- **Write Elision's fork restriction refutes eliding `x := 0` into
+    `x := 1`**: `x := 2` is `⊑`-after `x := 0` and not comparable with
+    `x := 1`. -/
+theorem not_weNoFork_WW : ¬ esWW.weNoFork 0 1 := fun h => by
+  rcases h 2 (show (0, 2) ∈ esWW.po by decide) (by decide) with h | h | h
+  · cases h
+  · exact absurd (show (2, 1) ∈ esWW.po from h) (by decide)
+  · exact absurd (show (1, 2) ∈ esWW.po from h) (by decide)
+
+/-- The join condition holds: `⊑` is a forest. -/
+theorem weNoJoin_WW : esWW.weNoJoin 0 1 :=
+  Execution.weNoJoin_of_poForest (poForest_of (by decide)) _ _
+
 /-- `x := 0` is the immediate `≼`-predecessor of `x := 1`, at its location:
-    the Write Elision of the paper applies. -/
-theorem gen_jWE : esWW.Generated (fun _ => True) jWE := by
+    the Write Elision of the paper applies, and so do all of this library's
+    restrictions but the fork restriction (`hF`, false: `not_weNoFork_WW`). -/
+theorem gen_jWE (hF : esWW.weNoFork 0 1) : esWW.Generated (fun _ => True) jWE := by
   have hpre := pre_WW (W 1 0 [1, 0] .rlx "x" 1) (by simp [esWW]) rfl
   have hδ0 : ∀ a b, ¬ (pj (W 1 0 [1, 0] .rlx "x" 1)).δ.edge a b := by
     intro a b h; rcases h with h | h <;> cases h
@@ -489,7 +507,9 @@ theorem gen_jWE : esWW.Generated (fun _ => True) jWE := by
       show (0, 1) ∈ esWW.po by decide,
       _, _, _, _, rfl, rfl, rfl, rfl, fun _ _ _ _ h₁ h₂ => by rw [h₁] at h₂; cases h₂; rfl⟩,
     ⟨_, rfl, rfl⟩, ⟨_, rfl, rfl⟩, fun ⟨e, he, hp⟩ => by cases he; simp [W, Event.isVol] at hp⟩,
-    weNoRel_of (by decide) (by decide), EventStructure.not_rmwAcc_of_nil _ rfl _⟩ ?_ ?_
+    weNoRel_of (by decide) (by decide),
+    hF,
+    EventStructure.not_rmwAcc_of_nil _ rfl _⟩ ?_ ?_
   · rintro ⟨e'', h₁, h₂⟩
     have m₁ := hppo _ _ h₁
     have m₂ := hppo _ _ h₂
@@ -529,14 +549,14 @@ theorem elided_WW {a : EventId} : xWW.elided a ↔ a = 0 := by
   · intro h; obtain ⟨b, hb⟩ := (xWW.elided_iff a).1 h; exact (edge_WW hb).2
   · rintro rfl; exact ⟨(1, 0), .inr (by rw [δWW]; simp), rfl⟩
 
-theorem isExecution_WW : xWW.IsExecution esWW (fun _ => True) where
+theorem isExecution_WW (hF : esWW.weNoFork 0 1) : xWW.IsExecution esWW (fun _ => True) where
   maximal := ⟨fun _ h => h, fun a b _ _ ⟨ea, eb, ha, hb, hn⟩ =>
       hn ⟨fun _ => .num 0, SWW.holds (ev_inv ha).1 _, SWW.holds (ev_inv hb).1 _⟩,
     fun _ hc hn => absurd hc hn⟩
   generated j hj := by
     simp only [xWW, JWW, List.mem_cons, List.mem_nil_iff, or_false] at hj
     rcases hj with rfl | rfl
-    · exact gen_jWE
+    · exact gen_jWE hF
     · exact pre_WW _ (by simp [esWW]) rfl
   inX j hj := by
     simp only [xWW, JWW, List.mem_cons, List.mem_nil_iff, or_false] at hj
@@ -627,9 +647,9 @@ theorem poIrr_WW : ∀ a, ¬ esWW.poR a a := poIrr_of (by decide)
 
 /-- `DP ∪ ≼ ⊆ ⊑`, from `dep_po_we`: no forwarding, and the elision of `x := 0`
     into `x := 1` crosses no event. -/
-theorem dep_po_WW {a b : EventId} (h : xWW.dep esWW a b) : xWW.poX esWW a b := by
-  refine dep_po_we isExecution_WW.inX ⟨fun p hp => ?_, fun p hp => ?_⟩
-    isExecution_WW.fwdWF.uniq poTrans_WW poIrr_WW (poForest_of (by decide)) ?_ ?_
+theorem dep_po_WW (hF : esWW.weNoFork 0 1) {a b : EventId} (h : xWW.dep esWW a b) : xWW.poX esWW a b := by
+  refine dep_po_we (isExecution_WW hF).inX ⟨fun p hp => ?_, fun p hp => ?_⟩
+    (isExecution_WW hF).fwdWF.uniq poTrans_WW poIrr_WW (poForest_of (by decide)) ?_ ?_
     (fun _ _ h => (no_dp_WW h).elim) h
   · rw [δWW] at hp; cases hp
   · rw [δWW] at hp; simp at hp; subst hp; show (0, 1) ∈ esWW.po; decide
@@ -644,13 +664,16 @@ theorem dep_po_WW {a b : EventId} (h : xWW.dep esWW a b) : xWW.poX esWW a b := b
 
 /-- **(N2) With the anchored cut, write elision without forwarding keeps
     `DP ∪ ≼ ⊆ ⊑`**: the execution of `x := 0; (x := 1 ∥ x := 2)` in which
-    `x := 1` elides `x := 0` is an execution with `φ`; the pair
+    `x := 1` elides `x := 0` is an execution with `φ` once the elision is
+    generated, which takes Write Elision without its fork restriction (`hF`
+    is false, `not_weNoFork_WW`; every other condition holds, the join
+    condition included, `weNoJoin_WW`); the pair
     `(x := 0, x := 2)` of `ppo_loc`, remapped to `(x := 1, x := 2)`, is cut,
     as no event of the path lies at or above both; `DP ∪ ≼ ⊆ ⊑`; and under
     `CO = 0 < 2 < 1` it is RC11-coherent, atomic and `HB_v`-coherent. (Before
     the cut `≼` related `x := 1` to `x := 2` and the execution was not
     `HB_v`-coherent.) -/
-theorem ppo_cross_thread :
+theorem ppo_cross_thread (hF : esWW.weNoFork 0 1) :
     xWW.IsExecution esWW (fun _ => True) ∧ xWW.phi esWW ∧ (∀ p ∈ xWW.δ.f, False) ∧
     ¬ xWW.ppo esWW 1 2 ∧ (∀ a b, xWW.dep esWW a b → xWW.poX esWW a b) ∧
     xWW.CoherenceOrder esWW (relL coWW) ∧ xWW.Coherence esWW (relL coWW) ∧
@@ -671,9 +694,9 @@ theorem ppo_cross_thread :
     · intro a b h
       refine eco_mem (x := xWW) (L := coWW) (fun _ _ h => False.elim h) (fun _ _ h => h)
         (fun _ _ h => by obtain ⟨_, h, _⟩ := h; exact False.elim h) (by decide) h
-  refine ⟨isExecution_WW, phi_WW, hf, fun h => hnr (dep_po_WW (.inl h)).2.2,
-    fun _ _ h => dep_po_WW h, ?_, hcoh, ?_, xWW.coherenceV_of_coherence esWW
-      (fun _ _ h => dep_po_WW h) hcoh⟩
+  refine ⟨isExecution_WW hF, phi_WW, hf, fun h => hnr (dep_po_WW hF (.inl h)).2.2,
+    fun _ _ h => dep_po_WW hF h, ?_, hcoh, ?_, xWW.coherenceV_of_coherence esWW
+      (fun _ _ h => dep_po_WW hF h) hcoh⟩
   · refine ⟨fun a b h => ?_, fun a h => ?_, fun a b c h₁ h₂ => ?_, fun a b ha hb _ _ hne _ => ?_⟩
     · have hw : ∀ p ∈ coWW, clsB esWW Event.isWrite p.1 = true ∧
           clsB esWW Event.isWrite p.2 = true ∧ (p.1 = 0 ∨ p.1 = 1 ∨ p.1 = 2) ∧
@@ -747,7 +770,9 @@ theorem gen_jC : esC.Generated (fun _ => True) jC := by
       show (0, 1) ∈ esC.po by decide,
       _, _, _, _, rfl, rfl, rfl, rfl, fun _ _ _ _ h₁ h₂ => by rw [h₁] at h₂; cases h₂; rfl⟩,
     ⟨_, rfl, rfl⟩, ⟨_, rfl, rfl⟩, fun ⟨e, he, hp⟩ => by cases he; simp [W, Event.isVol] at hp⟩,
-    weNoRel_of (by decide) (by decide), EventStructure.not_rmwAcc_of_nil _ rfl _⟩ ?_ ?_
+    weNoRel_of (by decide) (by decide),
+    weNoFork_of (by decide),
+    EventStructure.not_rmwAcc_of_nil _ rfl _⟩ ?_ ?_
   · rintro ⟨e'', h₁, h₂⟩
     have m₁ := hppo _ _ h₁
     have m₂ := hppo _ _ h₂
