@@ -412,12 +412,22 @@ theorem weRel_weNoJoin (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.
 
 /-! ## Closed relabel-equivalence (Definition `def:rel-eq`) -/
 
-/-- `P₁ : x₁ ≅^Λ_δ P₂ : x₂` on expressions:
-    `∃ x. (⟦P₁ ⇒ x₁ = x⟧_Λ ∧ (P₂ ⇒ x₂ = x)) ≡_{ψ_δ} ⊤`. -/
+/-- `P₁ : x₁ ≅^Λ_δ P₂ : x₂` on expressions: some witness `x` agrees with
+    `⟦x₁⟧_Λ` under `ψ_δ ∧ ⟦P₁⟧_Λ` and with `x₂` under `ψ_δ ∧ P₂` (`AgreesUnder`).
+
+    The witness must denote a value wherever the premise holds and the
+    expression it stands for denotes one. Read through `≡_{ψ_δ}` alone, as
+    `(⟦P₁ ⇒ x₁ = x⟧_Λ ∧ (P₂ ⇒ x₂ = x)) ≡_{ψ_δ} ⊤`, the condition is vacuous: an
+    ill-typed witness such as `⊤ + ⊤` denotes no value, and `≡` compares only
+    where both sides denote one. Asking instead that `x` denote a value under
+    every model of `ψ_δ` would be too strong, as valuations are untyped: a
+    symbol may hold a boolean, so `x = α + 1` would not do for two writes of
+    `α + 1`. The witness is not relabelled: it lives with the symbols of the
+    second branch. Not trivial: `relabEqExpr_not_trivial`. -/
 def relabEqExpr (δ : FwdCtx) (Λ : Relabelling) (P₁ x₁ P₂ x₂ : Expr) : Prop :=
   ∃ x : Expr,
-    EquivUnder (δ.psi es)
-      (.and ((Expr.imp P₁ (.eq x₁ x)).rename Λ) (Expr.imp P₂ (.eq x₂ x))) Expr.tt
+    AgreesUnder (Pred.and (δ.psi es) (P₁.rename Λ).holds) (x₁.rename Λ) x ∧
+    AgreesUnder (Pred.and (δ.psi es) P₂.holds) x₂ x
 
 /-- Relabel equivalence of two events, by the shape of their actions. -/
 def relabEq (δ : FwdCtx) (Λ : Relabelling) (P₁ : Expr) (e₁ : Event) (P₂ : Expr)

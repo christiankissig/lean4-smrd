@@ -7,7 +7,10 @@ For a finite event structure `es` meeting `Bounded es Qs M` (Conditions C1–C3)
 global guarantees given by a bounded predicate `ΩE`, an `Oracle` for bounded
 arithmetic and a `RelSplit` for the event-only conditions of Forwarding and
 Write Elision, membership in the Weakening-free closure `GenR ΩE.holds Qs false`
-is decidable up to equivalence (`JEq`):
+is decidable up to equivalence (`JEq`). `GenR`'s Lifting takes the second
+premise's expressions as the witnesses of relabel equivalence
+(`ClosedRelabEqC`); with arbitrary witnesses (`ClosedRelabEq`) decidability is
+open (`Smrd.ElabDec.Deciders`).
 
 * `step L` applies every elaboration to the justifications of `L` with every
   relevant choice of its parameters, keeping the applications whose side
@@ -17,8 +20,8 @@ is decidable up to equivalence (`JEq`):
   `Qs` and the sublists of the `⊑`-sources for Strengthening (only the members
   of `S` matter); pairs of events for Forwarding and Write Elision; pairs of
   justifications and relabellings of the premise's symbols and dependencies
-  onto the `⊑`-sources and the other dependencies for Lifting (only `Λ` on
-  those matters, and closed relabel equivalence does not depend on `Λ`).
+  onto the `⊑`-sources and the other dependencies for Lifting (`GenR`'s
+  Lifting relabels no other symbol, so these are all its relabellings).
 * Every elaboration respects `JEq` in its premises (`step_complete`), so a
   list closed under `step` up to `JEq` contains a representative of every
   justification of the closure.
@@ -92,11 +95,11 @@ def weOne (r : Justification) (p : EventId × EventId) : Option Justification :=
 
 def liftOK (r₁ r₂ : Justification) (Λ : Relabelling) (dom : List Sym) : Bool :=
   dom.all (fun a => dom.all fun b => (Λ a).isNone || Λ a != Λ b || a == b) &&
-  es.crB O r₁.P r₂.P r₁.δ r₁.w r₂.w &&
+  es.crB O r₁.P r₂.P r₁.δ Λ r₁.w r₂.w &&
   r₂.D.all (fun e => r₁.D.any fun α => Λ.app α == e) &&
   r₁.D.all (fun α => decide (Λ.app α ∈ r₂.D)) &&
   r₁.D.all (fun α => match es.ev α, es.ev (Λ.app α) with
-    | some ev₁, some ev₂ => es.crB O r₁.P r₂.P r₁.δ ev₁ ev₂
+    | some ev₁, some ev₂ => es.crB O r₁.P r₂.P r₁.δ Λ ev₁ ev₂
     | _, _ => false) &&
   !decide (es.cls Event.isVol r₁.w.id) && !decide (es.cls Event.isVol r₂.w.id) &&
   (r₁.D ++ r₂.D).all (fun α => !decide (es.cls Event.isVol α)) &&
@@ -334,7 +337,8 @@ theorem liftOne_sound {r₁ r₂ j : Justification} {l : List (Sym × Option Sym
     simp only [liftOK, Bool.and_eq_true, beq_iff_eq, List.all_eq_true, List.any_eq_true,
       Bool.or_eq_true, Bool.not_eq_true', decide_eq_true_eq, decide_eq_false_iff_not] at hc
     obtain ⟨hδ, ⟨⟨⟨⟨⟨⟨⟨⟨⟨hinj, hcr⟩, hD1⟩, hD2⟩, hDcr⟩, hv1⟩, hv2⟩, hv3⟩, hpo⟩, hs⟩⟩ := hc
-    refine .lift (relOf l) hr₁ hr₂ hδ ?_ ((crB_iff hb hP₁ hP₂ hwf _).1 hcr) ?_ ?_ hv1 hv2 hv3 hpo
+    refine .lift (relOf l) hr₁ hr₂ hδ ?_ (fun α c hα => List.mem_append.1 (relOf_dom hl hα))
+      ((crB_iff hb hP₁ hP₂ hwf _ (hr₁.wterm hb) (hr₂.wterm hb)).1 hcr) ?_ ?_ hv1 hv2 hv3 hpo
       ((O.satAnd_iff (isBPred_liftPred (by rw [isBPred_rename]; exact hP₁) hP₂) hΩ).1 hs)
     · intro a b c ha hb'
       have hda := relOf_dom hl ha
@@ -356,7 +360,8 @@ theorem liftOne_sound {r₁ r₂ j : Justification} {l : List (Sym × Option Sym
         | none => simp
         | some ev₂ =>
           intro hc
-          exact ⟨ev₁, ev₂, rfl, rfl, (crB_iff hb hP₁ hP₂ hwf _).1 hc⟩
+          exact ⟨ev₁, ev₂, rfl, rfl, (crB_iff hb hP₁ hP₂ hwf _ (hb.termEv (mem_events_of_ev h₁))
+            (hb.termEv (mem_events_of_ev h₂))).1 hc⟩
   · cases h
 
 theorem step_sound {L : List Justification} (hL : ∀ r ∈ L, es.GenR ΩE.holds Qs false r) :
@@ -539,7 +544,7 @@ theorem step_complete {L : List Justification} (hL : ∀ r ∈ L, es.GenR ΩE.ho
       simp only [Bool.and_eq_true]
       exact ⟨⟨⟨(fwdBaseB_iff hb hP hwf).2 hfb', hfr⟩, FwdCtx.wfB_iff.2 (by rw [← hδ]; exact hwf')⟩,
         (O.satAnd_iff hP hΩ).2 (by rw [← hh]; exact hs)⟩
-  | @lift j₁ j₂ Λ hg₁ hg₂ hδ12 hinj hcr hD12 hDcr hv1 hv2 hv3 hpo hs ih₁ ih₂ =>
+  | @lift j₁ j₂ Λ hg₁ hg₂ hδ12 hinj hsupp hcr hD12 hDcr hv1 hv2 hv3 hpo hs ih₁ ih₂ =>
       obtain ⟨r₁, hr₁, hpeq₁, hD₁, hδ₁, hw₁⟩ := ih₁
       obtain ⟨r₂, hr₂, hpeq₂, hD₂, hδ₂, hw₂⟩ := ih₂
       have hh₁ := holds_eq_of_peq hpeq₁
@@ -577,9 +582,26 @@ theorem step_complete {L : List Justification} (hL : ∀ r ∈ L, es.GenR ΩE.ho
         ⟨hpl, hD₂, hδ₂, hw₂⟩
       simp only [step, List.mem_append, List.mem_flatMap]
       refine Or.inr ⟨(r₁, r₂), mem_prodL hr₁ hr₂, List.mem_filterMap.2 ⟨l, hl, ?_⟩⟩
-      have hcr' : ∀ {a₁ a₂ : Event}, es.ClosedRelabEq j₁.δ Λ j₁.P a₁ j₂.P a₂ →
-          es.crB O r₁.P r₂.P r₁.δ a₁ a₂ = true := fun h =>
-        (crB_iff hb hP₁ hP₂ hwf Λ).2 (by rw [← hδ₁]; exact ClosedRelabEq.congr hh₁ hh₂ h)
+      -- `Λ` relabels only symbols of `dom`, so `relOf l` is `Λ`
+      have hrel : relOf l = Λ := by
+        funext a
+        by_cases ha : a ∈ dom
+        · exact hagree a ha
+        · cases hl' : relOf l a with
+          | some c => exact absurd (relOf_dom hl hl') ha
+          | none =>
+            cases hΛ : Λ a with
+            | none => rfl
+            | some c =>
+              exfalso; apply ha
+              rcases hsupp a c hΛ with h | h
+              · exact List.mem_append_left _ ((hPs a).2 h)
+              · exact List.mem_append_right _ ((hD₁ a).1 h)
+      have hcr' : ∀ {a₁ a₂ : Event}, es.ClosedRelabEqC j₁.δ Λ j₁.P a₁ j₂.P a₂ →
+          TermEv M a₁ → TermEv M a₂ → es.crB O r₁.P r₂.P r₁.δ (relOf l) a₁ a₂ = true :=
+        fun h t₁ t₂ => by
+          rw [hrel]
+          exact (crB_iff hb hP₁ hP₂ hwf Λ t₁ t₂).2 (by rw [← hδ₁]; exact ClosedRelabEqC.congr hh₁ hh₂ h)
       unfold liftOne
       rw [if_pos]
       simp only [liftOK, Bool.and_eq_true, beq_iff_eq, List.all_eq_true, List.any_eq_true,
@@ -593,7 +615,9 @@ theorem step_complete {L : List Justification} (hL : ∀ r ∈ L, es.GenR ΩE.ho
             by_cases hab : Λ a = Λ b
             · right; rw [hΛa] at hab; simpa using hinj a b c hΛa hab.symm
             · exact Or.inl (Or.inr (by rw [hΛa] at hab; simpa using hab))
-      · rw [← hw₁, ← hw₂]; exact hcr' hcr
+      · rw [← hw₁, ← hw₂]
+        exact hcr' hcr (by rw [hw₁]; exact (hL r₁ hr₁).wterm hb)
+          (by rw [hw₂]; exact (hL r₂ hr₂).wterm hb)
       · intro e he
         obtain ⟨α, hα, h⟩ := (hD12 e).1 ((hD₂ e).2 he)
         exact ⟨α, (hD₁ α).1 hα, by rw [happ α (List.mem_append_right _ ((hD₁ α).1 hα))]; simpa using h⟩
@@ -603,7 +627,8 @@ theorem step_complete {L : List Justification} (hL : ∀ r ∈ L, es.GenR ΩE.ho
       · intro α hα
         rw [happ α (List.mem_append_right _ hα)]
         obtain ⟨ev₁, ev₂, he₁, he₂, hc⟩ := hDcr α ((hD₁ α).2 hα)
-        simp only [he₁, he₂]; exact hcr' hc
+        simp only [he₁, he₂]
+        exact hcr' hc (hb.termEv (mem_events_of_ev he₁)) (hb.termEv (mem_events_of_ev he₂))
       · rw [← hw₁]; exact hv1
       · rw [← hw₂]; exact hv2
       · intro α hα

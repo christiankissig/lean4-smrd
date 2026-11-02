@@ -51,12 +51,111 @@ equivalent to one of `U`.
 
 open Expr Smrd.ElabDec
 
+namespace Expr
+
+/-- Expressions that denote a value under every valuation: values, symbols
+    and equations between them. -/
+def isTotal : Expr → Bool
+  | .val _ => true
+  | .sym _ => true
+  | .eq a b => a.isTotal && b.isTotal
+  | _ => false
+
+theorem eval_isSome_of_isTotal {e : Expr} (h : e.isTotal = true) (f : Valuation) :
+    (e.eval f).isSome = true := by
+  induction e with
+  | val => rfl
+  | sym => rfl
+  | eq a b iha ihb =>
+      simp only [Expr.isTotal, Bool.and_eq_true] at h
+      obtain ⟨va, hva⟩ := Option.isSome_iff_exists.1 (iha h.1)
+      obtain ⟨vb, hvb⟩ := Option.isSome_iff_exists.1 (ihb h.2)
+      simp [Expr.eval, hva, hvb]
+  | _ => simp [Expr.isTotal] at h
+
+end Expr
+
 namespace EventStructure
 
 variable (es : EventStructure)
 
+/-! ## Relabel equivalence with the premise's own expression as witness
+
+Relabel equivalence on expressions (`relabEqExpr`) asks for some witness
+expression, and whether one exists is not reduced to the oracle: the witness
+may combine `⟦x₁⟧_Λ` and `x₂` by cases on the premises, and whether an
+expression does so is a question about the expressions the syntax can form.
+`GenR` restricts Lifting to the witness `x₂`, the second premise's own
+expression, when either `⟦x₁⟧_Λ` is `x₂` or `x₂` denotes a value under every
+valuation (`Expr.isTotal`) and agrees with `⟦x₁⟧_Λ` under `ψ_δ ∧ ⟦P₁⟧_Λ`.
+Both are decided (`relabExprB_iff`), and imply relabel equivalence
+(`relabEqExprC.sound`). -/
+
+/-- Relabel equivalence on expressions with witness `x₂`. -/
+def relabEqExprC (δ : FwdCtx) (Λ : Relabelling) (P₁ x₁ x₂ : Expr) : Prop :=
+  x₁.rename Λ = x₂ ∨
+    (x₂.isTotal = true ∧ EquivUnder (Pred.and (δ.psi es) (P₁.rename Λ).holds) (x₁.rename Λ) x₂)
+
+/-- Relabel equivalence of two events with the second's expressions as
+    witnesses: `relabEq` with `relabEqExprC`. -/
+def relabEqC (δ : FwdCtx) (Λ : Relabelling) (P₁ : Expr) (e₁ e₂ : Event) : Prop :=
+  let locs := ∃ l₁ l₂, e₁.loc = some l₁ ∧ e₂.loc = some l₂ ∧ es.relabEqExprC δ Λ P₁ l₁ l₂
+  let vals := ∃ v₁ v₂, e₁.val = some v₁ ∧ e₂.val = some v₂ ∧ es.relabEqExprC δ Λ P₁ v₁ v₂
+  if (e₁.isRead && e₂.isRead) || (e₁.isWrite && e₂.isWrite) || (e₁.isAlloc && e₂.isAlloc) then
+    locs ∧ vals
+  else if e₁.isDealloc && e₂.isDealloc then locs
+  else if e₁.isFence && e₂.isFence then True
+  else False
+
+/-- `ClosedRelabEq` with `relabEqC`. -/
+inductive ClosedRelabEqC (δ : FwdCtx) (Λ : Relabelling) : Expr → Event → Expr → Event → Prop
+  | mk {P₁ P₂ : Expr} {e₁ e₂ : Event} :
+      es.relabEqC δ Λ P₁ e₁ e₂ →
+      ((∀ x, ¬ es.pred δ e₁.id P₁.holds x) ↔ (∀ x, ¬ es.pred δ e₂.id P₂.holds x)) →
+      (∀ x₁ x₂ ev₁ ev₂, es.pred δ e₁.id P₁.holds x₁ → es.pred δ e₂.id P₂.holds x₂ →
+        es.ev x₁ = some ev₁ → es.ev x₂ = some ev₂ → ClosedRelabEqC δ Λ P₁ ev₁ P₂ ev₂) →
+      ClosedRelabEqC δ Λ P₁ e₁ P₂ e₂
+
+variable {es}
+
+theorem relabEqExprC.sound {δ : FwdCtx} {Λ : Relabelling} {P₁ x₁ P₂ x₂ : Expr}
+    (h : es.relabEqExprC δ Λ P₁ x₁ x₂) : es.relabEqExpr δ Λ P₁ x₁ P₂ x₂ := by
+  refine ⟨x₂, ?_, AgreesUnder.refl _ _⟩
+  rcases h with h | ⟨ht, he⟩
+  · rw [h]; exact AgreesUnder.refl _ _
+  · intro f hf v hv
+    obtain ⟨w, hw⟩ := Option.isSome_iff_exists.1 (Expr.eval_isSome_of_isTotal ht f)
+    rw [hw, he f hf v w hv hw]
+
+theorem relabEqC.sound {δ : FwdCtx} {Λ : Relabelling} {P₁ P₂ : Expr} {e₁ e₂ : Event}
+    (h : es.relabEqC δ Λ P₁ e₁ e₂) : es.relabEq δ Λ P₁ e₁ P₂ e₂ := by
+  unfold relabEqC at h
+  unfold relabEq
+  have hx : ∀ (o₁ o₂ : Option Expr), (∃ a b, o₁ = some a ∧ o₂ = some b ∧ es.relabEqExprC δ Λ P₁ a b) →
+      ∃ a b, o₁ = some a ∧ o₂ = some b ∧ es.relabEqExpr δ Λ P₁ a P₂ b :=
+    fun _ _ ⟨a, b, ha, hb, hr⟩ => ⟨a, b, ha, hb, hr.sound⟩
+  split
+  · rw [if_pos (by assumption)] at h; exact ⟨hx _ _ h.1, hx _ _ h.2⟩
+  · rw [if_neg (by assumption)] at h
+    split
+    · rw [if_pos (by assumption)] at h; exact hx _ _ h
+    · rw [if_neg (by assumption)] at h
+      split
+      · trivial
+      · rw [if_neg (by assumption)] at h; exact h
+
+theorem ClosedRelabEqC.sound {δ : FwdCtx} {Λ : Relabelling} {P₁ P₂ : Expr} {e₁ e₂ : Event}
+    (h : es.ClosedRelabEqC δ Λ P₁ e₁ P₂ e₂) : es.ClosedRelabEq δ Λ P₁ e₁ P₂ e₂ := by
+  induction h with
+  | mk hr hiff _ ih => exact .mk hr.sound hiff ih
+
+variable (es)
+
 /-- The elaboration closure with Strengthening restricted to the predicates
-    `Qs` and Weakening to `wk = true`. -/
+    `Qs` and Weakening to `wk = true`. Lifting relabels only the symbols of
+    its first premise's predicate and dependencies, and its closed relabel
+    equivalence takes the second premise's expressions as witnesses
+    (`ClosedRelabEqC`). -/
 inductive GenR (Ω : Pred) (Qs : List Expr) (wk : Bool) : Justification → Prop
   | pre {w : Event} {j : Justification} :
       w ∈ es.events → preJust w = some j → Sat w.valres.holds →
@@ -103,10 +202,11 @@ inductive GenR (Ω : Pred) (Qs : List Expr) (wk : Bool) : Justification → Prop
       GenR Ω Qs wk j₁ → GenR Ω Qs wk j₂ →
       j₁.δ = j₂.δ →
       Λ.Injective →
-      es.ClosedRelabEq j₁.δ Λ j₁.P j₁.w j₂.P j₂.w →
+      (∀ α c, Λ α = some c → α ∈ j₁.P.syms ∨ α ∈ j₁.D) →
+      es.ClosedRelabEqC j₁.δ Λ j₁.P j₁.w j₂.P j₂.w →
       (∀ e, e ∈ j₂.D ↔ ∃ α ∈ j₁.D, Λ.app α = e) →
       (∀ α ∈ j₁.D, ∃ ev₁ ev₂, es.ev α = some ev₁ ∧ es.ev (Λ.app α) = some ev₂ ∧
-        es.ClosedRelabEq j₁.δ Λ j₁.P ev₁ j₂.P ev₂) →
+        es.ClosedRelabEqC j₁.δ Λ j₁.P ev₁ j₂.P ev₂) →
       ¬ es.cls Event.isVol j₁.w.id → ¬ es.cls Event.isVol j₂.w.id →
       (∀ α ∈ j₁.D ++ j₂.D, ¬ es.cls Event.isVol α) →
       (∀ α ∈ (j₁.P.rename Λ).syms, es.poR α j₂.w.id) →
@@ -130,8 +230,9 @@ theorem GenR.generated {Ω : Pred} {Qs : List Expr} {wk : Bool} {j : Justificati
   | str Q S _ _ h1 h2 h3 h4 ih => exact .str Q S ih h1 h2 h3 h4
   | fwd _ hk hf h1 h2 h3 h4 hwf hs ih => exact .fwd ih hk hf h1 h2 h3 h4 hwf hs
   | we _ hw hwf hs ih => exact .we ih hw hwf hs
-  | lift Λ _ _ h1 h2 h3 h4 h5 h6 h7 h8 h9 h10 ih₁ ih₂ =>
-      exact .lift Λ ih₁ ih₂ h1 h2 h3 h4 h5 h6 h7 h8 h9 h10
+  | lift Λ _ _ h1 h2 _ h3 h4 h5 h6 h7 h8 h9 h10 ih₁ ih₂ =>
+      exact .lift Λ ih₁ ih₂ h1 h2 h3.sound h4
+        (fun α hα => let ⟨a, b, ha, hb, hc⟩ := h5 α hα; ⟨a, b, ha, hb, hc.sound⟩) h6 h7 h8 h9 h10
   | weak _ _ h1 h2 h3 ih => exact .weak ih h1 h2 h3
 
 variable (es)
@@ -241,7 +342,7 @@ theorem GenR.inv {Ω : Pred} {Qs : List Expr} {wk : Bool} {j : Justification}
         · exact ih.ends p (List.mem_append_left _ hp)
         · exact ih.ends p (List.mem_append_right _ hp)
         · exact ⟨hb.2.2.2, hb.2.2.1⟩
-  | lift _ _ _ _ _ _ _ _ _ _ _ _ _ _ ih₂ => exact ⟨ih₂.wf, ih₂.nodupT, ih₂.ends, ih₂.dmem⟩
+  | lift _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ ih₂ => exact ⟨ih₂.wf, ih₂.nodupT, ih₂.ends, ih₂.dmem⟩
   | weak _ _ _ _ _ ih => exact ⟨ih.wf, ih.nodupT, ih.ends, ih.dmem⟩
 
 /-- The forwarding context of a justification of `GenR` has at most `|E|`
@@ -511,7 +612,7 @@ theorem GenR.atoms_small {Ω : Pred} {Qs : List Expr} {wk : Bool} (hva : es.Vals
       rw [← Nat.pow_succ] at hs
       exact hs
   | we _ _ _ _ ih => exact ih
-  | @lift j₁ j₂ Λ _ _ hδ _ _ _ _ _ _ _ hpo _ ih₁ ih₂ =>
+  | @lift j₁ j₂ Λ _ _ hδ _ _ _ _ _ _ _ _ hpo _ ih₁ ih₂ =>
       intro a ha
       rcases atoms_liftPred ha with rfl | ha | ha
       · exact small_of_base (List.mem_cons_self ..) (by simp [tt, atoms]) _
@@ -621,7 +722,7 @@ theorem GenR.wshape {Ω : Pred} {Qs : List Expr} {wk : Bool}
   | we _ _ _ _ ih =>
       obtain ⟨ev, hev, hw, hc⟩ := ih
       exact ⟨ev, hev, hw, hc⟩
-  | lift _ _ _ _ _ _ _ _ _ _ _ _ _ _ ih₂ => exact ih₂
+  | lift _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ ih₂ => exact ih₂
   | weak _ _ _ _ _ ih => exact ih
 
 theorem effSyms_base {Qs : List Expr} {ev : Event} (hev : ev ∈ es.events) :
