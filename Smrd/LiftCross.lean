@@ -109,32 +109,11 @@ theorem pre₂ : esC.Generated (fun _ => True) j₂ :=
 /-- `x := 1` is closed relabel-equivalent to `x := 1` under `Λ₀`. -/
 theorem relabEq_12 : esC.ClosedRelabEq .empty Λ₀ j₁.P e2 j₂.P e3 := by
   refine .mk ?_ ⟨fun _ _ => no_pred, fun _ _ => no_pred⟩ (fun _ _ _ _ h => (no_pred h).elim)
-  have key : ∀ P₁ P₂ : Expr, (∀ f, ∃ b, P₁.eval f = some (.bool b)) →
-      (∀ f, ∃ b, P₂.eval f = some (.bool b)) →
-      esC.relabEqExpr .empty Λ₀ P₁ (.val (.num 1)) P₂ (.val (.num 1)) ∧
-      esC.relabEqExpr .empty Λ₀ P₁ (Expr.glob "x") P₂ (Expr.glob "x") := by
-    intro P₁ P₂ h₁ h₂
-    have ren : ∀ E : Expr, E.rename Λ₀ = E := by
-      intro E
-      induction E with
-      | val => rfl
-      | sym => rfl
-      | bin _ _ _ iha ihb | eq _ _ iha ihb | le _ _ iha ihb | and _ _ iha ihb
-      | or _ _ iha ihb => simp [Expr.rename, iha, ihb]
-      | not _ iha => simp [Expr.rename, iha]
-    refine ⟨⟨.val (.num 1), ?_⟩, ⟨Expr.glob "x", ?_⟩⟩ <;>
-    · intro f _ v₁ v₂ hv₁ hv₂
-      obtain ⟨b₁, hb₁⟩ := h₁ f
-      obtain ⟨b₂, hb₂⟩ := h₂ f
-      simp [ren, Expr.imp, Expr.eval, Expr.tt, Expr.glob, hb₁, hb₂] at hv₁ hv₂
-      rw [← hv₁, ← hv₂]
-  have b₁ : ∀ f, ∃ b, j₁.P.eval f = some (.bool b) := fun f =>
-    ⟨decide (f 0 = .num 0), by simp [j₁, PpoNecessity.pj, e2, PpoStability.W, Event.valres,
-      Expr.conj, Guard.expr, cond, Expr.eval, Expr.tt]⟩
-  have b₂ : ∀ f, ∃ b, j₂.P.eval f = some (.bool b) := fun _ =>
-    ⟨true, by simp [j₂, PpoNecessity.pj, e3, PpoStability.W, Event.valres, Expr.conj,
-      Expr.eval, Expr.tt]⟩
-  obtain ⟨hv, hl⟩ := key _ _ b₁ b₂
+  -- the witness is the written expression itself, a value
+  have hv : esC.relabEqExpr .empty Λ₀ j₁.P (.val (.num 1)) j₂.P (.val (.num 1)) :=
+    ⟨.val (.num 1), fun _ _ _ h => h, fun _ _ _ h => h⟩
+  have hl : esC.relabEqExpr .empty Λ₀ j₁.P (Expr.glob "x") j₂.P (Expr.glob "x") :=
+    ⟨Expr.glob "x", fun _ _ _ h => h, fun _ _ _ h => h⟩
   simp only [relabEq, e2, e3, PpoStability.W, Event.isRead, Event.isWrite, Event.isAlloc,
     Event.loc, Event.val]
   simp only [Bool.and_self, Bool.or_true]

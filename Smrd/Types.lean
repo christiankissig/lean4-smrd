@@ -248,6 +248,19 @@ def SemEquiv (e₁ e₂ : Expr) : Prop :=
 def EquivUnder (P : Pred) (e₁ e₂ : Expr) : Prop :=
   ∀ f, P f → ∀ v₁ v₂, e₁.eval f = some v₁ → e₂.eval f = some v₂ → v₁ = v₂
 
+/-- `e₂` agrees with `e₁` under `P`: wherever `P` holds and `e₁` denotes a
+    value, `e₂` denotes the same one. Unlike `EquivUnder`, which compares only
+    where both sides denote values and so holds of any expression that denotes
+    none, such as `⊤ + ⊤`, this asks `e₂` to denote a value wherever `e₁` does. -/
+def AgreesUnder (P : Pred) (e₁ e₂ : Expr) : Prop :=
+  ∀ f, P f → ∀ v, e₁.eval f = some v → e₂.eval f = some v
+
+theorem AgreesUnder.equivUnder {P : Pred} {e₁ e₂ : Expr} (h : AgreesUnder P e₁ e₂) :
+    EquivUnder P e₁ e₂ := fun f hf v₁ v₂ h₁ h₂ => by
+  rw [h f hf v₁ h₁] at h₂; exact Option.some.inj h₂
+
+theorem AgreesUnder.refl (P : Pred) (e : Expr) : AgreesUnder P e e := fun _ _ _ h => h
+
 /-! ## Memory orders and events -/
 
 /-- C11 memory orders `o ∈ {rlx, rel, acq}` of the program syntax, and `sc`,
