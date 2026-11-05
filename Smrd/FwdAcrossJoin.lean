@@ -485,6 +485,8 @@ theorem noRevLoc_P : NoRevLoc esP xP := by
 
 theorem rmwWF_P : RMWWF esP := fun _ h => (List.not_mem_nil h).elim
 
+theorem rmwTightWE_P : RMWTightWE esP xP := fun _ h => (List.not_mem_nil h).elim
+
 /-- **Without the join restriction, `DP ∪ ≼ ⊄ ⊑`**, for the event
     structure of a program: `⟨z := 0; (r1 :=_acq z ∥ x := 1); r2 := x;
     y := r2⟩` has an execution whose one Forwarding edge (`x := 1` into
@@ -498,13 +500,13 @@ theorem blind_join :
     (esP.fwdRelBlind j4 2 3 ∧ esP.fwdNoAcq 2 3 ∧ ¬ esP.RMWAcc 3 ∧ ¬ esP.fwdNoJoin 2 3) ∧
     (esP.Generated (fun _ => True) jW → xP.ConsistentT esP (fun _ => True)) ∧
     (∀ a b c, esP.poR a b → esP.poR b c → esP.poR a c) ∧ (∀ a, ¬ esP.poR a a) ∧
-    RMWTightR esP xP ∧ (∀ a b, xP.DP a b → esP.poR a b) ∧ LocsEval esP ∧
+    RMWTightR esP xP ∧ RMWTightWE esP xP ∧ (∀ a b, xP.DP a b → esP.poR a b) ∧ LocsEval esP ∧
     NoRevLoc esP xP ∧ NoRevRMW esP xP ∧ RMWWF esP ∧
     ¬ PoForest esP ∧
     xP.ppo esP 1 2 ∧ ¬ esP.poR 1 2 ∧ ¬ esP.poR 2 1 ∧
     ¬ (∀ a b, xP.dep esP a b → xP.poX esP a b) :=
   ⟨denote_prog, ⟨fwd_23_blind.1, fwd_23_blind.2.1, fwd_23_blind.2.2, not_fwdNoJoin⟩,
-    consistentT_P, po_trans_P, po_irr_P, rmwTightR_P,
+    consistentT_P, po_trans_P, po_irr_P, rmwTightR_P, rmwTightWE_P,
     fun _ _ h => absurd h dp_P, locsEval_P, noRevLoc_P,
     noRevRMW_of_nil rfl, rmwWF_P, not_poForest, ppo_12, not_po_12, not_po_21, not_dep_po⟩
 

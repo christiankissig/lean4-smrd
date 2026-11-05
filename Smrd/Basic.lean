@@ -32,6 +32,7 @@ import Smrd.SymWFDenote
 import Smrd.Labels
 import Smrd.RoutineHyps
 import Smrd.RMWWFDenote
+import Smrd.RMWTightDenote
 import Smrd.FwdAcrossJoin
 import Smrd.WEAcrossFork
 import Smrd.WEPastFork

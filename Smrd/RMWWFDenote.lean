@@ -75,21 +75,21 @@ variable {x : Execution}
 
 /-- `dep_po_R` for `⟨P⟩_n`: `RMWWF` and the order properties of `⊑` hold. -/
 theorem dep_po_R_denote {n : Bounds} {P : Stmt} {Ω : Pred} (hx : x.IsExecution (denote n P) Ω)
-    (hT : RMWTightR (denote n P) x)
+    (hT : RMWTightR (denote n P) x) (hWE : RMWTightWE (denote n P) x)
     (hDP : ∀ a b, x.DP a b → (denote n P).poR a b) (hsat : Sat (x.P (denote n P)))
     (hev : LocsEval (denote n P)) (hE : FwdEntailsImg (denote n P) x) {a b : EventId}
     (h : x.dep (denote n P) a b) : x.poX (denote n P) a b :=
-  dep_po_R hx (denote_po_trans n P) (denote_po_irrefl n P) hT hDP hsat hev hE
+  dep_po_R hx (denote_po_trans n P) (denote_po_irrefl n P) hT hWE hDP hsat hev hE
     (denote_rmwWF n P) h
 
 /-- `dep_po_R_of_phi` for `⟨P⟩_n`. -/
 theorem dep_po_R_of_phi_denote {n : Bounds} {P : Stmt} {Ω : Pred}
     (hx : x.IsExecution (denote n P) Ω) (hphi : x.phi (denote n P))
-    (hT : RMWTightR (denote n P) x)
+    (hT : RMWTightR (denote n P) x) (hWE : RMWTightWE (denote n P) x)
     (hDP : ∀ a b, x.DP a b → (denote n P).poR a b) (hev : LocsEval (denote n P))
     (hE : FwdEntailsImg (denote n P) x) {a b : EventId} (h : x.dep (denote n P) a b) :
     x.poX (denote n P) a b :=
-  dep_po_R_of_phi hx hphi (denote_po_trans n P) (denote_po_irrefl n P) hT hDP hev hE
+  dep_po_R_of_phi hx hphi (denote_po_trans n P) (denote_po_irrefl n P) hT hWE hDP hev hE
     (denote_rmwWF n P) h
 
 end RMWWFDenote

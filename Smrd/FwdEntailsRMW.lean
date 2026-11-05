@@ -26,11 +26,22 @@ hypothesis `NoRevRMW`: no `⊑`-ordered pair with an RMW access is reversed by
 
 A pair `(a, e_r)` with `a` in `ppo_sync` before `e_w`: an acquire `a` is not
 moved forward (`remap_acq_back`); for a release `e_w`, `a`'s chain enters the
-up-set of `e_r` by a Write Elision edge `p -WE→ q` across `e_r`. `q` is not
-`⊑`-between `e_r` and `e_w` (`RMWTightR`); if `e_w ⊑ q`, the elision crosses
+up-set of `e_r` by a Write Elision edge `p -WE→ q` across `e_r`. `q` is `e_w`
+or `⊑`-after it (`RMWTightWE`); if `e_w ⊑ q`, the elision crosses
 the release `e_w` (`weNoRel`); if `q = e_w`, then `p` is elided into the
 RMW's own write across its read, which is at `e_w`'s location, so `≼`-between
 `p` and `e_w` in the generating justification, against `pred` (`no_cross`).
+
+`RMWTightWE` is not the second clause of `RMWTightR`: that clause is asked
+only where the image of `e_w` is in `X ∪ X_F`, and the pair `(a, e_r)` ends
+at the read, so nothing puts `e_w` there. For a `CAS` that fails, `q` can be
+an event of the failure branch, `⊑`-after `e_r` and in conflict with `e_w`:
+in `y := 1; r := CAS_rel(x, 0, 1); y := 2`, `y := 1` elided into the copy of
+`y := 2` under the failure guard crosses the read and no release. The pair
+`(y := 1, e_r)` of `ppo_rmw` needs the `CAS`'s condition entailed by the
+predicate of the step, while `X` takes the failure branch; whether that can
+happen is not settled here, so `RMWTightWE` is kept as a hypothesis. It is
+vacuous without write elision (`rmwTightWE_of_noEdge`).
 
 A pair `(e_w, b)` with `e_r` in `ppo_sync` before `b`: a release `b` is not
 moved backward (`remap_rel_fwd`); for an acquire `e_r`, a Forwarding edge
@@ -54,6 +65,15 @@ variable {es : EventStructure} {x : Execution}
 def RMWWF (es : EventStructure) : Prop :=
   ∀ ent ∈ es.rmw, es.poR ent.r ent.w ∧ es.mustAlias ent.r ent.w
 
+/-- A write elision across the read of an RMW ends at its write or
+    `⊑`-after it. -/
+def RMWTightWE (es : EventStructure) (x : Execution) : Prop :=
+  ∀ ent ∈ es.rmw, ∀ q p, (q, p) ∈ x.δ.we → es.poR p ent.r → es.poR ent.r q →
+    q = ent.w ∨ es.poR ent.w q
+
+theorem rmwTightWE_of_noEdge (hnoδ : ∀ a b, ¬ x.δ.edge a b) : RMWTightWE es x :=
+  fun _ _ q p hw _ _ => absurd (.inr hw) (hnoδ q p)
+
 /-- An RMW access has no `F ∪ WE`-predecessor. -/
 theorem rmw_canon {Ω : Pred} (hx : x.IsExecution es Ω) {e : EventId} (hr : es.RMWAcc e) :
     ∀ a, ¬ x.δ.edge a e :=
@@ -73,7 +93,7 @@ theorem remap_last {δ : FwdCtx} {e e' : EventId} (h : δ.Remap e e') (hne : e �
     `a ≼_sync e_w`. -/
 theorem rmwR_not_back {Ω : Pred} (hx : x.IsExecution es Ω)
     (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
-    (hirr : ∀ a, ¬ es.poR a a) (hT : RMWTightR es x)
+    (hirr : ∀ a, ¬ es.poR a a) (hWE : RMWTightWE es x)
     (hev : LocsEval es) (hW : RMWWF es) {ent : RMWEntry} (hm : ent ∈ es.rmw)
     {a a' b' : EventId} {f : Valuation} (hs : es.ppoSyncM a ent.w) (hab : es.poR a ent.r)
     (ra : x.δ.Remap a a') (rb : x.δ.Remap ent.r b') (ha' : x.XwF es a') (hne : a' ≠ b')
@@ -98,8 +118,7 @@ theorem rmwR_not_back {Ω : Pred} (hx : x.IsExecution es Ω)
       with hrr | ⟨q, p, hw, hpr, hrq, hpa⟩
     · exact hne (hfun hrr (.canon (rmw_canon hx accR)))
     · have hqp : x.δ.edge q p := .inr hw
-      have hqa : x.δ.Remap q a' := remap_inv_step hu hqp hpa
-      rcases hT.2 ent hm q a' hqa ha' hrq with rfl | hwq
+      rcases hWE ent hm q p hw hpr hrq with rfl | hwq
       · -- `p` elided into the RMW's own write, across its read
         obtain ⟨j₀, u, v, hg, hf₀⟩ := H _ _ hqp hpa
         have hpq : es.poR p ent.w := we_po hx _ hw
@@ -124,7 +143,8 @@ theorem rmwW_not_back {Ω : Pred} (hx : x.IsExecution es Ω)
     (hirr : ∀ a, ¬ es.poR a a) (hT : RMWTightR es x)
     (hev : LocsEval es) (hW : RMWWF es) {ent : RMWEntry} (hm : ent ∈ es.rmw)
     {b a' b' : EventId} {f : Valuation} (hs : es.ppoSyncM ent.r b) (hwb : es.poR ent.w b)
-    (ra : x.δ.Remap ent.w a') (rb : x.δ.Remap b b') (hb' : x.XwF es b') (hne : a' ≠ b')
+    (ra : x.δ.Remap ent.w a') (rb : x.δ.Remap b b') (ha' : x.XwF es a') (hb' : x.XwF es b')
+    (hne : a' ≠ b')
     (H : ∀ s t, x.δ.edge s t → x.δ.Remap t b' →
       ∃ j₀ u v, EdgeGen es x j₀ s t u v ∧ PredOf es j₀ f) :
     ¬ es.poR b' a' := by
@@ -141,7 +161,7 @@ theorem rmwW_not_back {Ω : Pred} (hx : x.IsExecution es Ω)
       have hbr : b ≠ ent.r := fun h => by rw [h] at hs; exact hirr _ hs.1
       obtain ⟨t, het, hrt⟩ := remap_last rb hbr
       rcases edge_cases hx het with ⟨hf, hrt'⟩ | ⟨hw, -⟩
-      · rcases hT.2 ent hm t ent.r hrt hb' hrt' with rfl | hwt
+      · rcases hT.2 ent hm _ ra ha' t ent.r hrt hb' hrt' with rfl | hwt
         · exact rmw_canon hx accW _ het
         · obtain ⟨j₀, u, v, hg, hf₀⟩ := H _ _ het hrt
           obtain ⟨rfl, rfl⟩ : u = ent.r ∧ v = t := by
@@ -160,7 +180,7 @@ theorem rmwW_not_back {Ω : Pred} (hx : x.IsExecution es Ω)
     rcases remap_stay_up' hx hpo_trans rb (c := ent.r) (.inr hs.1) with
       (heq | hrb') | hrr | ⟨q, p, hf, hqr, hrp, -⟩
     · exact atR heq.symm
-    · rcases hT.2 ent hm b' b' (.canon (canon_of_remap rb)) hb' hrb' with h | h
+    · rcases hT.2 ent hm _ ra ha' b' b' (.canon (canon_of_remap rb)) hb' hrb' with h | h
       · exact hne h.symm
       · exact hirr _ (hpo_trans _ _ _ h hba)
     · exact atR (remap_rmwAcc hx hrr accR).symm
@@ -175,7 +195,7 @@ theorem rmwW_not_back {Ω : Pred} (hx : x.IsExecution es Ω)
     of the edges on the chains into `a'` and `b'`. -/
 theorem ppoM_po_R {Ω : Pred} (hx : x.IsExecution es Ω)
     (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
-    (hirr : ∀ a, ¬ es.poR a a) (hT : RMWTightR es x)
+    (hirr : ∀ a, ¬ es.poR a a) (hT : RMWTightR es x) (hWE : RMWTightWE es x)
     (hev : LocsEval es) (hW : RMWWF es)
     {Pa Pr : Pred} {a' b' : EventId} {f : Valuation}
     (H : ∀ s t, x.δ.edge s t → (x.δ.Remap t a' ∨ x.δ.Remap t b') →
@@ -194,7 +214,7 @@ theorem ppoM_po_R {Ω : Pred} (hx : x.IsExecution es Ω)
       · exact absurd (hfun ra rb) hne
       · exact h
     · subst hw hr'
-      rcases hT.2 ent hm b b' rb hb' hs.1 with rfl | h
+      rcases hT.2 ent hm a' ra ha' b b' rb hb' hs.1 with rfl | h
       · exact absurd (hfun ra rb) hne
       · exact h
     · exact hal.1
@@ -205,17 +225,17 @@ theorem ppoM_po_R {Ω : Pred} (hx : x.IsExecution es Ω)
     rcases hab with (hs | (⟨w, hs, ent, hm, hw, hr', -⟩ | ⟨r, ⟨ent, hm, hw, hr', -⟩, hs⟩)) | hal
     · exact sync_not_back hx hpo_trans hirr hs ra rb hne
     · subst hw hr'
-      exact rmwR_not_back hx hpo_trans hirr hT hev hW hm hs hbase ra rb ha' hne
+      exact rmwR_not_back hx hpo_trans hirr hWE hev hW hm hs hbase ra rb ha' hne
         fun s t he ht => H s t he (.inl ht)
     · subst hw hr'
-      exact rmwW_not_back hx hpo_trans hirr hT hev hW hm hs hbase ra rb hb' hne
+      exact rmwW_not_back hx hpo_trans hirr hT hev hW hm hs hbase ra rb ha' hb' hne
         fun s t he ht => H s t he (.inr ht)
     · exact hAl a b hbase hal.2 ra rb hne
 
 /-- **Each step of `≼` lies in `⊑` under `FwdEntailsImg` and `RMWWF`.** -/
 theorem ppoStep_po_R {Ω : Pred} (hx : x.IsExecution es Ω)
     (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
-    (hirr : ∀ a, ¬ es.poR a a) (hT : RMWTightR es x)
+    (hirr : ∀ a, ¬ es.poR a a) (hT : RMWTightR es x) (hWE : RMWTightWE es x)
     (hsat : Sat (x.P es)) (hev : LocsEval es) (hE : FwdEntailsImg es x) (hW : RMWWF es)
     {a b : EventId} (h : x.ppoStep es a b) : es.poR a b := by
   obtain ⟨ha, hb, ⟨j, hj, hp, hwa, hwb⟩ | ⟨hs | ⟨hp, hal'⟩, hA⟩⟩ := h
@@ -228,7 +248,7 @@ theorem ppoStep_po_R {Ω : Pred} (hx : x.IsExecution es Ω)
       · exact ⟨_, ht, hwa⟩
       · exact ⟨_, ht, hwb⟩
     obtain ⟨f₀, hf₀⟩ := hsat
-    refine ppoM_po_R hx hpo_trans hirr hT hev hW (Hj f₀ (PJ_of_P hf₀ hj)) ?_ ha hb
+    refine ppoM_po_R hx hpo_trans hirr hT hWE hev hW (Hj f₀ (PJ_of_P hf₀ hj)) ?_ ha hb
       (anchored_of_inWin hx.inX ⟨j, hj, hwa, hwb⟩) hp
     intro a₀ b₀ hab hal ra rb hne
     obtain ⟨f, hf, val, h₁, h₂⟩ : ∃ f, x.PJ es j f ∧ ∃ v, locVal es f a₀ = some v ∧
@@ -244,7 +264,7 @@ theorem ppoStep_po_R {Ω : Pred} (hx : x.IsExecution es Ω)
       obtain ⟨j₀, u, v, hg, -, hm⟩ := hE s t he
       exact ⟨j₀, u, v, hg, hm f hf⟩
     obtain ⟨f₀, hf₀, -⟩ := of_mayAlias hal'
-    refine ppoM_po_R hx hpo_trans hirr hT hev hW (Hm f₀ hf₀) ?_ ha hb hA hp
+    refine ppoM_po_R hx hpo_trans hirr hT hWE hev hW (Hm f₀ hf₀) ?_ ha hb hA hp
     intro a₀ b₀ hab hal ra rb hne
     obtain ⟨f, hf, val, h₁, h₂⟩ : ∃ f, x.Pm es f ∧ ∃ v, locVal es f a₀ = some v ∧
         locVal es f b₀ = some v := by
@@ -257,23 +277,23 @@ theorem ppoStep_po_R {Ω : Pred} (hx : x.IsExecution es Ω)
     with `NoRevRMW` replaced by `RMWWF`. -/
 theorem dep_po_R {Ω : Pred} (hx : x.IsExecution es Ω)
     (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
-    (hirr : ∀ a, ¬ es.poR a a) (hT : RMWTightR es x)
+    (hirr : ∀ a, ¬ es.poR a a) (hT : RMWTightR es x) (hWE : RMWTightWE es x)
     (hDP : ∀ a b, x.DP a b → es.poR a b) (hsat : Sat (x.P es)) (hev : LocsEval es)
     (hE : FwdEntailsImg es x) (hW : RMWWF es) {a b : EventId} (h : x.dep es a b) :
     x.poX es a b := by
   rcases h with hp | hd
   · exact ⟨.inl hp.1, .inl hp.2.1,
-      ppo_po hpo_trans (fun _ _ h => ppoStep_po_R hx hpo_trans hirr hT hsat hev hE hW h) hp⟩
+      ppo_po hpo_trans (fun _ _ h => ppoStep_po_R hx hpo_trans hirr hT hWE hsat hev hE hW h) hp⟩
   · exact ⟨.inl hd.1, .inl hd.2.1, hDP a b hd⟩
 
 /-- `dep_po_R` from a consistent execution: `φ` gives the model of `P`. -/
 theorem dep_po_R_of_phi {Ω : Pred} (hx : x.IsExecution es Ω) (hphi : x.phi es)
     (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
-    (hirr : ∀ a, ¬ es.poR a a) (hT : RMWTightR es x)
+    (hirr : ∀ a, ¬ es.poR a a) (hT : RMWTightR es x) (hWE : RMWTightWE es x)
     (hDP : ∀ a b, x.DP a b → es.poR a b) (hev : LocsEval es)
     (hE : FwdEntailsImg es x) (hW : RMWWF es) {a b : EventId} (h : x.dep es a b) :
     x.poX es a b :=
-  dep_po_R hx hpo_trans hirr hT hDP (by obtain ⟨-, -, f, hf, -⟩ := hphi; exact ⟨f, hf⟩)
+  dep_po_R hx hpo_trans hirr hT hWE hDP (by obtain ⟨-, -, f, hf, -⟩ := hphi; exact ⟨f, hf⟩)
     hev hE hW h
 
 /-! ## `NoRevRMW` itself -/
