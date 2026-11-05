@@ -1006,6 +1006,153 @@ theorem coherenceT_of_coherenceV {co : Rel} (hnf : x.FenceFree es)
     · have hl := x.eco_loc es hLtrans hrfL hcoL heco
       exact h a ⟨b, .single (.inl (poloc_dep_ne hnf hirr hm hna hnb ⟨hpo, hl⟩)), .inr heco⟩
 
+/-! ### With fences -/
+
+/-- **An `HB_T` path is an `HB_F` path or a single `⊑` edge of `X ∖ †`**,
+    with fences: condition (ii) holds for `≼_F` between events that are not
+    elided, at fences too. -/
+theorem hbT_cases_F
+    (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
+    (hirr : ∀ a, ¬ es.poR a a)
+    {a b : EventId} (h : x.hbT es a b) : x.hbF es a b ∨ x.poXT es a b := by
+  have potr : ∀ a b c, x.poXT es a b → x.poXT es b c → x.poXT es a c :=
+    fun _ _ _ ⟨⟨ha, _, h₁⟩, hna, _⟩ ⟨⟨_, hc, h₂⟩, _, hnc⟩ =>
+      ⟨⟨ha, hc, hpo_trans _ _ _ h₁ h₂⟩, hna, hnc⟩
+  have hrel : ∀ a w, x.poXT es a w → (es.cls Event.isRelW w ∨ es.cls Event.isRelF w) →
+      x.depF es a w :=
+    fun _ _ ⟨hp, hna, hnw⟩ hw => rel_depF_ne hirr hna hnw hp hw
+  have hacq : ∀ r b, (es.cls Event.isAcqR r ∨ es.cls Event.isAcqF r) → x.poXT es r b →
+      x.depF es r b :=
+    fun _ _ hr ⟨hp, hnr, hnb⟩ => acq_depF_ne hirr hnr hnb hr hp
+  have tgt : ∀ {c d}, x.sw es c d → es.cls Event.isAcqR d ∨ es.cls Event.isAcqF d := by
+    intro c d h
+    obtain ⟨-, -, -, -, -, -, -, -, -, h⟩ := h
+    exact h
+  have inv : x.poXT es a b ∨ ∃ r, x.hbF es a r ∧
+      (es.cls Event.isAcqR r ∨ es.cls Event.isAcqF r) ∧ (r = b ∨ x.poXT es r b) := by
+    induction h with
+    | single h =>
+      rcases h with hp | hs
+      · exact .inl hp
+      · exact .inr ⟨_, .single (.inr hs.1), tgt hs.1, .inl rfl⟩
+    | tail _ h ih =>
+      rcases h with hp | hs
+      · rcases ih with hpo | ⟨r, hr, hacqr, rfl | hpo⟩
+        · exact .inl (potr _ _ _ hpo hp)
+        · exact .inr ⟨r, hr, hacqr, .inr hp⟩
+        · exact .inr ⟨r, hr, hacqr, .inr (potr _ _ _ hpo hp)⟩
+      · have hc : x.hbF es _ _ := .single (.inr hs.1)
+        refine .inr ⟨_, ?_, tgt hs.1, .inl rfl⟩
+        rcases ih with hpo | ⟨r, hr, hacqr, rfl | hpo⟩
+        · exact transGen_trans (.single (.inl (hrel _ _ hpo hs.1.1))) hc
+        · exact transGen_trans hr hc
+        · exact transGen_trans (transGen_trans hr (.single (.inl (hacq _ _ hacqr hpo)))) hc
+  rcases inv with hpo | ⟨r, hr, hacqr, rfl | hpo⟩
+  · exact .inr hpo
+  · exact .inl hr
+  · exact .inl (transGen_trans hr (.single (.inl (hacq _ _ hacqr hpo))))
+
+/-- **`HB_F`-coherence implies `CoherenceT`, with fences**, for executions with
+    a location model, whatever `δ`. -/
+theorem coherenceT_of_coherenceF {co : Rel}
+    (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
+    (hirr : ∀ a, ¬ es.poR a a)
+    (hLtrans : ∀ a b c, x.sameLoc es a b → x.sameLoc es b c → x.sameLoc es a c)
+    (hrfL : ∀ a b, x.rf a b → x.sameLoc es a b)
+    (hcoL : ∀ a b, co a b → x.sameLoc es a b) (hm : LocModel es x)
+    (h : x.CoherenceF es co) : x.CoherenceT es co := by
+  rintro a ⟨b, hab, hba⟩
+  rcases hbT_cases_F hpo_trans hirr hab with hp | ⟨hpo, hna, hnb⟩
+  · exact h a ⟨b, hp, hba⟩
+  · rcases hba with rfl | heco
+    · exact hirr _ hpo.2.2
+    · have hl := x.eco_loc es hLtrans hrfL hcoL heco
+      exact h a ⟨b, .single (.inl (depF_of_dep (poloc_dep_ne' hirr hm hna hnb ⟨hpo, hl⟩))),
+        .inr heco⟩
+
+/-- A step of `DP ∪ ≼_F ∪ SW` ends at an event that is not elided. -/
+theorem stepF_tgt {Ω : Pred} (hx : x.IsExecution es Ω)
+    (hnoAcqF : ∀ p ∈ x.δ.f, ¬ es.cls Event.isAcqR p.2)
+    {c d : EventId}
+    (h : ((x.depF es).union (x.sw es)) c d) : ¬ x.elided d := by
+  rcases h with (hp | hd) | hs
+  · have last : ∀ c d, x.ppoStep es c d → ¬ x.elided d := by
+      rintro c d ⟨-, -, ⟨j, -, ⟨⟨_, _, _, -, rb⟩, -⟩, -⟩ | ⟨⟨⟨_, _, _, -, rb⟩, -⟩ |
+        ⟨⟨⟨_, _, _, -, rb⟩, -⟩, -⟩, -⟩⟩ <;> exact remap_not_elided rb
+    cases hp with
+    | single h => exact last _ _ h
+    | tail _ h => exact last _ _ h
+  · exact step_tgt hx hnoAcqF (.inl (.inr hd))
+  · exact step_tgt hx hnoAcqF (.inr hs)
+
+/-- **`CoherenceT` implies `HB_F`-coherence, with fences**, under the
+    hypotheses of `coherenceV_of_coherenceT`: every step of `≼_F` lies in
+    `⊑` (`ppoStep_po_T`). -/
+theorem coherenceF_of_coherenceT {Ω : Pred} {co : Rel} (hx : x.IsExecution es Ω)
+    (hphi : x.phi es) (hnoAcqF : ∀ p ∈ x.δ.f, ¬ es.cls Event.isAcqR p.2)
+    (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
+    (hirr : ∀ a, ¬ es.poR a a) (hL : NoRevLoc es x) (hT : RMWTightR es x)
+    (hDP : ∀ a b, x.DP a b → es.poR a b)
+    (hco : x.CoherenceOrderT es co) (h : x.CoherenceT es co) : x.CoherenceF es co := by
+  have poF : ∀ c d, x.ppoF es c d → es.poR c d := by
+    intro c d hp
+    induction hp with
+    | single h => exact ppoStep_po_T hx hpo_trans hirr hL hT h
+    | tail _ h ih => exact hpo_trans _ _ _ ih (ppoStep_po_T hx hpo_trans hirr hL hT h)
+  have stepT : ∀ c d, ¬ x.elided c → ((x.depF es).union (x.sw es)) c d →
+      ((x.poXT es).union (x.swT es)) c d := by
+    intro c d hc h
+    have hd := stepF_tgt hx hnoAcqF h
+    rcases h with (hp | hdp) | hs
+    · exact .inl ⟨⟨(ppoF_XwF hp).1, (ppoF_XwF hp).2, poF _ _ hp⟩, hc, hd⟩
+    · exact .inl ⟨⟨.inl hdp.1, .inl hdp.2.1, hDP _ _ hdp⟩, hc, hd⟩
+    · exact .inr ⟨hs, hc, hd⟩
+  rintro a ⟨b, hab, hba⟩
+  have ha : ¬ x.elided a := by
+    intro hel
+    rcases hba with rfl | heco
+    · cases hab with
+      | single s => exact stepF_tgt hx hnoAcqF s hel
+      | tail _ s => exact stepF_tgt hx hnoAcqF s hel
+    · have hr := eco_tgt hx hco heco hel
+      have first : ∀ c, x.hbF es a c → ∃ d, ((x.depF es).union (x.sw es)) a d := by
+        intro c h
+        induction h with
+        | single h => exact ⟨_, h⟩
+        | tail _ _ ih => exact ih
+      obtain ⟨d, hd⟩ := first b hab
+      rcases hd with (hp | hdp) | hs
+      · have first' : ∀ c, Relation.TransGen (x.ppoStep es) a c → ∃ d, x.ppoStep es a d := by
+          intro c h
+          induction h with
+          | single h => exact ⟨_, h⟩
+          | tail _ _ ih => exact ih
+        obtain ⟨d', ⟨-, -, ⟨j, -, ⟨⟨_, _, _, ra, -⟩, -⟩, -⟩ | ⟨⟨⟨_, _, _, ra, -⟩, -⟩ |
+          ⟨⟨⟨_, _, _, ra, -⟩, -⟩, -⟩, -⟩⟩⟩ := first' d hp <;> exact remap_not_elided ra hel
+      · exact no_step_elided_read hphi hel hr (.inl (.inr hdp))
+      · exact no_step_elided_read hphi hel hr (.inr hs)
+  have path : ∀ c, x.hbF es a c → x.hbT es a c ∧ ¬ x.elided c := by
+    intro c hc
+    induction hc with
+    | single s => exact ⟨.single (stepT _ _ ha s), stepF_tgt hx hnoAcqF s⟩
+    | tail _ s ih => exact ⟨.tail ih.1 (stepT _ _ ih.2 s), stepF_tgt hx hnoAcqF s⟩
+  exact h a ⟨b, (path b hab).1, hba⟩
+
+/-- **`HB_F`-coherence and `CoherenceT` coincide, with fences**, under the
+    hypotheses of `coherenceT_iff_coherenceV` but `FenceFree`. -/
+theorem coherenceT_iff_coherenceF {Ω : Pred} {co : Rel} (hx : x.IsExecution es Ω)
+    (hphi : x.phi es) (hnoAcqF : ∀ p ∈ x.δ.f, ¬ es.cls Event.isAcqR p.2)
+    (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
+    (hirr : ∀ a, ¬ es.poR a a) (hL : NoRevLoc es x) (hT : RMWTightR es x)
+    (hDP : ∀ a b, x.DP a b → es.poR a b)
+    (hLtrans : ∀ a b c, x.sameLoc es a b → x.sameLoc es b c → x.sameLoc es a c)
+    (hrfL : ∀ a b, x.rf a b → x.sameLoc es a b)
+    (hco : x.CoherenceOrderT es co) (hcoL : ∀ a b, co a b → x.sameLoc es a b)
+    (hm : LocModel es x) :
+    x.CoherenceT es co ↔ x.CoherenceF es co :=
+  ⟨coherenceF_of_coherenceT hx hphi hnoAcqF hpo_trans hirr hL hT hDP hco,
+   coherenceT_of_coherenceF hpo_trans hirr hLtrans hrfL hcoL hm⟩
+
 /-- **`HB_v`-coherence and `CoherenceT` coincide** for a coherence order of
     `X ∖ †`, for fence-free executions with a location model, with forwarding
     and write elision under their restrictions, where no acquire read is
