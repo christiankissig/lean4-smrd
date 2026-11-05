@@ -70,10 +70,23 @@ theorem P_of_Pm {f : Valuation} (h : x.Pm es f) : x.P es f :=
 /-! ## `≼` within `⊑` -/
 
 /-- The read and the write of each RMW are adjacent among the events of
-    `X ∪ X_F`: only the branch of a `CAS` lies between them in `denote`. -/
+    `X ∪ X_F`: no event of `X ∪ X_F` lies `⊑`-between them, and, where the
+    write is in `X ∪ X_F`, every event of `X ∪ X_F` `⊑`-after the read is the
+    write or `⊑`-after it. In `denote` only the branch of a `CAS` lies between
+    its read and its write, and the events `⊑`-after its read that are not
+    `⊑`-after its write are on the failure branch, in conflict with the write
+    (`Smrd.RMWTightDenote`, `denote_rmwTight`).
+
+    The second clause asks nothing of an RMW whose write is not in `X ∪ X_F`.
+    Asked of every RMW it is false for programs: in
+    `x := 0; r := CAS(x, 1, 2); y := 1` the copy of `y := 1` under the failure
+    guard is `⊑`-after the read and not after the write, and `X` takes it
+    whenever the `CAS` fails. `≼` asks the second clause at a pair
+    `(e_w, b)` of `ppo_rmw` only, which starts at the write (`ppoM_po`). -/
 def RMWTight (es : EventStructure) (x : Execution) : Prop :=
   (∀ ent ∈ es.rmw, ∀ a, x.XwF es a → es.poR a ent.w → a = ent.r ∨ es.poR a ent.r) ∧
-  (∀ ent ∈ es.rmw, ∀ b, x.XwF es b → es.poR ent.r b → b = ent.w ∨ es.poR ent.w b)
+  (∀ ent ∈ es.rmw, x.XwF es ent.w →
+    ∀ b, x.XwF es b → es.poR ent.r b → b = ent.w ∨ es.poR ent.w b)
 
 theorem ppoM_po (hnoδ : ∀ a b, ¬ x.δ.edge a b) (hT : RMWTight es x) {Pa Pr : Pred}
     {a b : EventId} (ha : x.XwF es a) (hb : x.XwF es b) (h : es.ppoM Pa Pr x.δ a b) :
@@ -87,7 +100,7 @@ theorem ppoM_po (hnoδ : ∀ a b, ¬ x.δ.edge a b) (hT : RMWTight es x) {Pa Pr 
     · exact absurd rfl hne
     · exact h
   · subst hw hr'
-    rcases hT.2 ent hm b hb hs.1 with rfl | h
+    rcases hT.2 ent hm ha b hb hs.1 with rfl | h
     · exact absurd rfl hne
     · exact h
   · exact hal.1
@@ -169,13 +182,14 @@ def NoCross (es : EventStructure) (x : Execution) : Prop :=
   ∀ a a' c, x.δ.Remap a a' → es.poR a c → es.poR c a' → x.δ.Remap c a'
 
 /-- `RMWTight` through `remap_δ`: an event `⊑`-before the write of an RMW
-    whose image is on the path is its read or `⊑`-before it, and an event
-    `⊑`-after the read whose image is on the path is its write or `⊑`-after
-    it. -/
+    whose image is on the path is its read or `⊑`-before it, and, where the
+    image of the write is on the path, an event `⊑`-after the read whose image
+    is on the path is its write or `⊑`-after it. -/
 def RMWTightR (es : EventStructure) (x : Execution) : Prop :=
   (∀ ent ∈ es.rmw, ∀ a a', x.δ.Remap a a' → x.XwF es a' → es.poR a ent.w →
     a = ent.r ∨ es.poR a ent.r) ∧
-  (∀ ent ∈ es.rmw, ∀ b b', x.δ.Remap b b' → x.XwF es b' → es.poR ent.r b →
+  (∀ ent ∈ es.rmw, ∀ w', x.δ.Remap ent.w w' → x.XwF es w' →
+    ∀ b b', x.δ.Remap b b' → x.XwF es b' → es.poR ent.r b →
     b = ent.w ∨ es.poR ent.w b)
 
 /-- `RMWTight` is `RMWTightR` where `δ` has no edge. -/
@@ -183,8 +197,9 @@ theorem rmwTightR_of_noEdge (hnoδ : ∀ a b, ¬ x.δ.edge a b) (hT : RMWTight e
     RMWTightR es x :=
   ⟨fun ent hm a a' hr ha' hpo => by
       rw [FwdCtx.Remap.eq_of_noEdge hnoδ hr] at ha'; exact hT.1 ent hm a ha' hpo,
-   fun ent hm b b' hr hb' hpo => by
-      rw [FwdCtx.Remap.eq_of_noEdge hnoδ hr] at hb'; exact hT.2 ent hm b hb' hpo⟩
+   fun ent hm w' hrw hw' b b' hr hb' hpo => by
+      rw [FwdCtx.Remap.eq_of_noEdge hnoδ hrw] at hw'
+      rw [FwdCtx.Remap.eq_of_noEdge hnoδ hr] at hb'; exact hT.2 ent hm hw' b hb' hpo⟩
 
 /-- Where `δ` has no edge, no elision crosses an event. -/
 theorem noCross_of_noEdge (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
@@ -231,7 +246,7 @@ theorem ppoM_po_we (hW : WEForward es x) (hu : ∀ a b e, x.δ.edge a e → x.δ
       · exact absurd (hfun ra rb) hne
       · exact h
     · subst hw hr'
-      rcases hT.2 ent hm b b' rb hb' hs.1 with rfl | h
+      rcases hT.2 ent hm a' ra ha' b b' rb hb' hs.1 with rfl | h
       · exact absurd (hfun ra rb) hne
       · exact h
     · exact hal.1

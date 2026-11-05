@@ -532,7 +532,7 @@ theorem ppoM_po_E {Ω : Pred} (hx : x.IsExecution es Ω)
       · exact absurd (hfun ra rb) hne
       · exact h
     · subst hw hr'
-      rcases hT.2 ent hm b b' rb hb' hs.1 with rfl | h
+      rcases hT.2 ent hm a' ra ha' b b' rb hb' hs.1 with rfl | h
       · exact absurd (hfun ra rb) hne
       · exact h
     · exact hal.1
