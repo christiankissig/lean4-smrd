@@ -419,7 +419,8 @@ theorem atomicity_X : xX.Atomicity esX (relL coX) := by
   exact key ent hm (w₀, ent.r) hrf (w₀, w') hco (w', ent.w) hco' rfl rfl rfl rfl
 
 theorem consistentT_X : xX.ConsistentT esX (fun _ => True) :=
-  ⟨isExecution_X, phi_X, ntaX, relL coX, coherenceOrderT_X, coherenceT_X, atomicity_X⟩
+  ⟨isExecution_X, phi_X, ntaX, relL coX, coherenceOrderT_X, coherenceT_X, atomicity_X,
+    xX.pscT_of_es esX (esX.scFree_of_all (by decide)) _⟩
 
 /-! ## The hypotheses -/
 

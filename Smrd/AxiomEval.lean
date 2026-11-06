@@ -706,17 +706,18 @@ theorem coherenceOrder_decide (h : Agrees es x q) :
   rw [coherenceOrder_iff, hX, h, coOrderB_iff]
 
 /-- **`CoherentT` and `ConsistentT`'s axioms, from a witness.** If the lists are
-    the primitives of `x` and the decided checks pass for the coherence order
-    `co`, then `x` satisfies No-Thin-Air and `CoherentT` (with `co` as the
-    witness). -/
+    the primitives of `x`, the decided checks pass for the coherence order
+    `co`, and no event of `X ∪ X_F` has mode `sc` (so that RC11's SC axiom
+    `PSCT` holds, `pscT_of_noSC`; it is not decided here), then `x` satisfies
+    No-Thin-Air and `CoherentT` (with `co` as the witness). -/
 theorem axioms_of_checks (h : Agrees es x q) (hok : q.certB = true)
     (hnta : q.ntaB = true) (hco : q.coOrderB q.XT = true) (hcoh : q.cohB q.hbTL = true)
-    (hat : q.atomB = true) : x.NoThinAir es ∧ x.CoherentT es := by
+    (hat : q.atomB = true) (hsc : x.SCFree es) : x.NoThinAir es ∧ x.CoherentT es := by
   have hok' := hok
   simp only [certB, Bool.and_eq_true] at hok'
   exact ⟨(noThinAir_decide h hok'.2).2 hnta,
     ⟨relL q.co, (coherenceOrderT_decide h).2 hco, (coherenceT_decide h hok).2 hcoh,
-      (atomicity_decide h).2 hat⟩⟩
+      (atomicity_decide h).2 hat, x.pscT_of_noSC es hsc _⟩⟩
 
 end PrimsL
 

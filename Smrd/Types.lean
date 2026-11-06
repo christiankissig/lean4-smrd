@@ -348,6 +348,13 @@ def isAcqR (e : Event) : Bool := match e.kind with | .read o .. => o.isAcqSc | _
 def isRelF (e : Event) : Bool := match e.kind with | .fence o => o.isRelSc | _ => false
 /-- `F_{acq,sc}` -/
 def isAcqF (e : Event) : Bool := match e.kind with | .fence o => o.isAcqSc | _ => false
+/-- `E_sc`: a read, write or fence in mode `sc`. -/
+def isSC (e : Event) : Bool :=
+  match e.kind with
+  | .read .sc .. | .write .sc .. | .fence .sc => true
+  | _ => false
+/-- `F_sc` -/
+def isSCF (e : Event) : Bool := match e.kind with | .fence .sc => true | _ => false
 /-- `R_rlx` -/
 def isRlxR (e : Event) : Bool := match e.kind with | .read .rlx .. => true | _ => false
 /-- `W_rlx` -/

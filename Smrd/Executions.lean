@@ -12,8 +12,10 @@ Executions `𝕏 = (X, J, rf)` (Definition `def:executions`), freezing
 `No-Thin-Air`, `Coherence` and `Atomicity` of MRD+C11 (Paragraph
 `def:mem-model-axiom`), and use-after-free (Definition `def:uaf`).
 
-`Coherent` asks for one coherence order under which both `Coherence` and
-`Atomicity` hold, as the paper's axioms share `CO`.
+`Coherent` asks for one coherence order under which `Coherence`, `Atomicity`
+and RC11's SC axiom `PSC` (`acyclic(psc_base ∪ psc_F)`, Lahav et al., PLDI
+2017) hold, as the paper's axioms share `CO`. Without `sc` events `PSC` holds
+for every coherence order (`psc_of_noSC`, under `SCFree`).
 
 ## Deviations from the paper
 
@@ -22,6 +24,10 @@ Executions `𝕏 = (X, J, rf)` (Definition `def:executions`), freezing
   the execution (as use-after-free does, under `φ`), where the paper's `⊑|loc`
   takes `≡_P`; and it compares them as partial values, so that it is
   transitive and contains `rf` without further hypotheses.
+* **SC axiom.** The paper's axioms are No-Thin-Air, Coherence and
+  Atomicity; `Coherent` also asks for RC11's SC axiom (`PSC`), which forbids
+  store buffering over `sc` accesses and over `sc` fences. It is vacuous for
+  programs without `sc` accesses and fences.
 
 `Frozen` abstracts an execution to the events and dependency relations the
 futures of Appendix A.7 are built from.
@@ -53,6 +59,21 @@ def MaximalConflictFree (X : EvSet) : Prop :=
   (∀ a, X a → es.Candidate a) ∧
   (∀ a b, X a → X b → ¬ es.Conflict a b) ∧
   (∀ a, es.Candidate a → ¬ X a → ∃ b, X b ∧ es.Conflict a b)
+
+end EventStructure
+
+namespace EventStructure
+
+variable (es : EventStructure)
+
+/-- No event of the event structure has mode `sc`. -/
+def SCFree : Prop := ∀ a, ¬ es.cls Event.isSC a
+
+/-- `SCFree` by evaluation over the events, e.g. by `decide`. -/
+theorem scFree_of_all (h : (es.events.all fun e => !e.isSC) = true) : es.SCFree := by
+  rintro a ⟨e, he, hp⟩
+  have := List.all_eq_true.1 h e (List.mem_of_find?_eq_some he)
+  simp [hp] at this
 
 end EventStructure
 
@@ -414,9 +435,90 @@ theorem hb_eco1_irrefl_iff_hbLoc {co L : Rel}
 def Atomicity (co : Rel) : Prop :=
   ∀ r w, x.rmwRel es r w → ¬ ∃ w', x.fr co r w' ∧ co w' w
 
-/-- `Coherence` and `Atomicity` under one coherence order. -/
+/-! ### RC11's SC axiom
+
+RC11's SC axiom (Lahav et al., *Repairing Sequential Consistency in C/C++11*,
+PLDI 2017): `psc ≜ psc_base ∪ psc_F` is acyclic, with
+
+* `scb ≜ sb ∪ sb|≠loc ; hb ; sb|≠loc ∪ hb|loc ∪ CO ∪ FR`;
+* `psc_base ≜ ([E_sc] ∪ [F_sc] ; hb?) ; scb ; ([E_sc] ∪ hb? ; [F_sc])`;
+* `psc_F ≜ [F_sc] ; (hb ∪ hb ; ECO ; hb) ; [F_sc]`.
+
+`sb` is `⊑` and `hb` is RC11's `HB ≜ (⊑ ∪ SW)⁺`, the coherence axiom's; not
+`HB_v` or `HB_F ≜ (DP ∪ ≼_F ∪ SW)⁺` of `Smrd.CoherenceRC11`. MoRDor's sMRD
+model checks `psc` over its own happens-before, which it relaxes to
+`(ppo ∪ dp ∪ sw)⁺`; here `psc` is RC11's as stated. The relations are stated
+once, for a program order `sb`, a happens-before `hb` and the set `D` the
+events of `E_sc` and `F_sc` are taken from (`PSCOf`), and instantiated over
+`X ∪ X_F` here (`PSC`) and over `(X ∖ †) ∪ X_F` in `Smrd.CoherenceT`
+(`Execution.PSCT`). `R|loc` and `R|≠loc` compare locations by `sameLoc`;
+fences have no location, so an `sb`-edge into or out of a fence is in
+`sb|≠loc`. Where no event of `D` has mode `sc`, `psc` is empty and the axiom
+holds for every coherence order (`pscOf_of_noSC`, `psc_of_noSC`). -/
+
+/-- `scb ≜ sb ∪ sb|≠loc ; hb ; sb|≠loc ∪ hb|loc ∪ CO ∪ FR` -/
+def scbOf (sb hb co : Rel) : Rel := fun a b =>
+  sb a b ∨
+  (∃ c d, sb a c ∧ ¬ x.sameLoc es a c ∧ hb c d ∧ sb d b ∧ ¬ x.sameLoc es d b) ∨
+  (hb a b ∧ x.sameLoc es a b) ∨ co a b ∨ x.fr co a b
+
+/-- `psc_base ≜ ([E_sc] ∪ [F_sc] ; hb?) ; scb ; ([E_sc] ∪ hb? ; [F_sc])`, with
+    `E_sc` and `F_sc` taken within `D`. -/
+def pscBaseOf (D : EvSet) (sb hb co : Rel) : Rel := fun a b =>
+  ∃ a' b', ((a' = a ∧ D a ∧ es.cls Event.isSC a) ∨
+      (D a ∧ es.cls Event.isSCF a ∧ (a' = a ∨ hb a a'))) ∧
+    x.scbOf es sb hb co a' b' ∧
+    ((b = b' ∧ D b ∧ es.cls Event.isSC b) ∨
+      (D b ∧ es.cls Event.isSCF b ∧ (b = b' ∨ hb b' b)))
+
+/-- `psc_F ≜ [F_sc] ; (hb ∪ hb ; ECO ; hb) ; [F_sc]`, with `F_sc` taken within
+    `D`. -/
+def pscFOf (D : EvSet) (hb co : Rel) : Rel := fun a b =>
+  D a ∧ es.cls Event.isSCF a ∧ D b ∧ es.cls Event.isSCF b ∧
+    (hb a b ∨ ∃ c d, hb a c ∧ x.eco co c d ∧ hb d b)
+
+/-- RC11's SC axiom for `sb`, `hb` and `D`: `psc_base ∪ psc_F` is acyclic. -/
+def PSCOf (D : EvSet) (sb hb co : Rel) : Prop :=
+  Rel.Acyclic ((x.pscBaseOf es D sb hb co).union (x.pscFOf es D hb co))
+
+/-- **RC11's SC axiom** over `X ∪ X_F`, with `sb = ⊑` and RC11's `HB`. -/
+def PSC (co : Rel) : Prop := x.PSCOf es (x.XwF es) (x.poX es) (x.hb es) co
+
+/-- No event of `X ∪ X_F` has mode `sc`. -/
+def SCFree : Prop := ∀ a, x.XwF es a → ¬ es.cls Event.isSC a
+
+theorem isSC_of_isSCF {e : Event} (h : e.isSCF = true) : e.isSC = true := by
+  obtain ⟨id, k, l, g⟩ := e
+  cases k with
+  | fence o => cases o <;> simp_all [Event.isSCF, Event.isSC]
+  | _ => simp_all [Event.isSCF]
+
+/-- **Without `sc` events in `D`, `psc` is empty**, so the SC axiom holds for
+    every `sb`, `hb` and coherence order. -/
+theorem pscOf_of_noSC {D : EvSet} (h : ∀ a, D a → ¬ es.cls Event.isSC a) (sb hb co : Rel) :
+    x.PSCOf es D sb hb co := by
+  have hF : ∀ a, D a → ¬ es.cls Event.isSCF a := fun a ha hf =>
+    h a ha (by obtain ⟨e, he, hp⟩ := hf; exact ⟨e, he, isSC_of_isSCF hp⟩)
+  have none : ∀ a b, ¬ ((x.pscBaseOf es D sb hb co).union (x.pscFOf es D hb co)) a b := by
+    rintro a b (⟨a', b', (⟨-, hD, hs⟩ | ⟨hD, hs, -⟩), -⟩ | ⟨hD, hs, -⟩)
+    · exact h a hD hs
+    · exact hF a hD hs
+    · exact hF a hD hs
+  intro a hc
+  cases hc with
+  | single s => exact none _ _ s
+  | tail _ s => exact none _ _ s
+
+/-- **Without `sc` events, RC11's SC axiom holds for every coherence order.** -/
+theorem psc_of_noSC (h : x.SCFree es) (co : Rel) : x.PSC es co :=
+  x.pscOf_of_noSC es h _ _ co
+
+/-- An `sc`-free event structure has `sc`-free executions. -/
+theorem scFree_of_es (h : es.SCFree) : x.SCFree es := fun a _ => h a
+
+/-- `Coherence`, `Atomicity` and RC11's SC axiom under one coherence order. -/
 def Coherent : Prop :=
-  ∃ co, x.CoherenceOrder es co ∧ x.Coherence es co ∧ x.Atomicity es co
+  ∃ co, x.CoherenceOrder es co ∧ x.Coherence es co ∧ x.Atomicity es co ∧ x.PSC es co
 
 /-- A consistent execution of MRD+C11. -/
 def Consistent (Ω : Pred) : Prop :=

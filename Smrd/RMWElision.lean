@@ -123,7 +123,7 @@ theorem lost_update {x : Execution} {co : Rel} {hb : Rel}
     read `x := 0` breaks `Coherent`. -/
 theorem rc11_forbids {Ω : Pred} {x : Execution} (hx : x.IsExecution esL Ω)
     (h01 : x.rf 0 1) (h04 : x.rf 0 4) : ¬ x.Coherent esL := by
-  rintro ⟨co, hco, hcoh, hat⟩
+  rintro ⟨co, hco, hcoh, hat, -⟩
   have X0 := all_in_X_L hx (e := e0) (by simp [esL])
   have X1 := all_in_X_L hx (e := e1) (by simp [esL])
   have X2 := all_in_X_L hx (e := e2) (by simp [esL])
@@ -164,7 +164,7 @@ theorem not_generated {Ω : Pred} {j : Justification} (h : esL.Generated Ω j) :
     read from, so the lost-update argument runs over `X ∖ †`. -/
 theorem forbidden_T {Ω : Pred} {x : Execution} (hx : x.IsExecution esL Ω) (hphi : x.phi esL)
     (h01 : x.rf 0 1) (h04 : x.rf 0 4) : ¬ x.CoherentT esL := by
-  rintro ⟨co, hco, hcoh, hat⟩
+  rintro ⟨co, hco, hcoh, hat, -⟩
   have X0 := all_in_X_L hx (e := e0) (by simp [esL])
   have X1 := all_in_X_L hx (e := e1) (by simp [esL])
   have X2 := all_in_X_L hx (e := e2) (by simp [esL])
@@ -534,7 +534,8 @@ theorem atomicity_B : xB.Atomicity esL (relL coB) := by
   exact key ent hm (w₀, ent.r) hrf (w₀, w') hco (w', ent.w) hco' rfl rfl rfl rfl
 
 theorem coherentT_B : xB.CoherentT esL :=
-  ⟨relL coB, coherenceOrderT_B, coherenceT_B, atomicity_B⟩
+  ⟨relL coB, coherenceOrderT_B, coherenceT_B, atomicity_B,
+    xB.pscT_of_es esL (esL.scFree_of_all (by decide)) _⟩
 
 /-- **Without the RMW clause, `CoherenceT` admits the lost update.** Write
     Elision under its other conditions (`weRelBlind`, `weNoRel`) elides the
