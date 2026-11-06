@@ -439,15 +439,16 @@ theorem rmwTightR_X : RMWTightR esX xX := by
   · have : ∀ p ∈ esX.po, p.1 = 2 → p.2 = 3 ∨ (3, p.2) ∈ esX.po := by decide
     exact this (2, b) hpo rfl
 
-/-- The elision of `x := 1` into `x := 2` ends `⊑`-after the FADD's write. -/
-theorem rmwTightWE_X : RMWTightWE esX xX := by
-  intro ent hm q p hw _ _
+/-- The FADD's write follows its read immediately: every event after the read
+    is the write or after it. -/
+theorem rmwFailGuard_X : RMWFailGuard esX := by
+  intro ent hm b hpo
   simp only [esX, List.mem_cons, List.mem_nil_iff, or_false] at hm
   subst hm
-  rw [δX] at hw
-  simp only [List.mem_cons, List.mem_nil_iff, or_false, Prod.mk.injEq] at hw
-  obtain ⟨rfl, rfl⟩ := hw
-  exact .inr (po_of (by decide))
+  have : ∀ p ∈ esX.po, p.1 = 2 → p.2 = 3 ∨ (3, p.2) ∈ esX.po := by decide
+  rcases this (2, b) hpo rfl with h | h
+  · exact .inl h
+  · exact .inr (.inl h)
 
 theorem dp_po_X : ∀ a b, xX.DP a b → esX.poR a b := fun a b h => by
   obtain ⟨rfl, rfl⟩ := dp_X h; exact po_of (by decide)
@@ -490,14 +491,14 @@ theorem not_noCrossRMW : ¬ NoCrossRMW esX xX := fun h =>
 theorem rmwCross :
     xX.ConsistentT esX (fun _ => True) ∧
     (∀ a b c, esX.poR a b → esX.poR b c → esX.poR a c) ∧ (∀ a, ¬ esX.poR a a) ∧
-    PoForest esX ∧ RMWTightR esX xX ∧ RMWTightWE esX xX ∧ (∀ a b, xX.DP a b → esX.poR a b) ∧
+    PoForest esX ∧ RMWTightR esX xX ∧ RMWFailGuard esX ∧ (∀ a b, xX.DP a b → esX.poR a b) ∧
     Sat (xX.P esX) ∧ LocsEval esX ∧ RMWWF esX ∧ FwdEntailsAll esX xX ∧
     ¬ NoRevRMW esX xX ∧ ¬ NoRevLoc esX xX ∧ ¬ NoCrossRMW esX xX ∧
     (∀ a b, xX.dep esX a b → xX.poX esX a b) :=
-  ⟨consistentT_X, poTrans_X, poIrr_X, poForest_X, rmwTightR_X, rmwTightWE_X, dp_po_X, sat_X,
+  ⟨consistentT_X, poTrans_X, poIrr_X, poForest_X, rmwTightR_X, rmwFailGuard_X, dp_po_X, sat_X,
     locsEval_X,
     rmwWF_X, fwdEntailsAll_X, not_noRevRMW, not_noRevLoc, not_noCrossRMW,
-    fun _ _ h => dep_po_R isExecution_X poTrans_X poIrr_X rmwTightR_X rmwTightWE_X dp_po_X sat_X
+    fun _ _ h => dep_po_R isExecution_X poTrans_X poIrr_X rmwTightR_X rmwFailGuard_X dp_po_X sat_X
       locsEval_X (fwdEntailsAll_X.on _) rmwWF_X h⟩
 
 /-- **`noRevLoc_of_fwdEntailsAll` needs an RMW hypothesis**: `FwdEntailsAll`
