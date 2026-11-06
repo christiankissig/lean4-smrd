@@ -263,18 +263,19 @@ theorem AgreesUnder.refl (P : Pred) (e : Expr) : AgreesUnder P e e := fun _ _ _ 
 
 /-! ## Memory orders and events -/
 
-/-- C11 memory orders `o ∈ {rlx, rel, acq}` of the program syntax, and `sc`,
-    which the classes of preserved program order mention. -/
+/-- C11 memory orders `o ∈ {rlx, rel, acq}` of the program syntax, `acqRel`
+    (`acq_rel`, of fences and read-modify-writes: acquires and releases, not `sc`),
+    and `sc`, which the classes of preserved program order mention. -/
 inductive MemOrd where
-  | rlx | acq | rel | sc
+  | rlx | acq | rel | sc | acqRel
   deriving Repr, DecidableEq
 
 def MemOrd.isRelSc : MemOrd → Bool
-  | .rel | .sc => true
+  | .rel | .sc | .acqRel => true
   | _ => false
 
 def MemOrd.isAcqSc : MemOrd → Bool
-  | .acq | .sc => true
+  | .acq | .sc | .acqRel => true
   | _ => false
 
 /-- The action of an event: reads `R_o loc α`, writes `W_o loc val`,
