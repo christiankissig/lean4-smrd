@@ -9,9 +9,11 @@ RMW in one step (`fadd`, `cas`), the read `⊑`-before the write, both at the
 location `Expr.glob x` of the one variable the statement names. An RMW's
 location is never a computed expression, so must-alias holds outright.
 
-With `denote_po_trans` and `denote_po_irrefl` (`Smrd.RoutineHyps`), this
-drops three hypotheses of `dep_po_R` for the event structures of programs
-(`dep_po_R_denote`, `dep_po_R_of_phi_denote`). `PoForest` is not needed
+With `denote_po_trans` and `denote_po_irrefl` (`Smrd.RoutineHyps`) and
+`denote_rmwFailGuard` (`Smrd.RMWTightDenote`), this drops four hypotheses of
+`dep_po_R` for the event structures of programs (`dep_po_R_denote`,
+`dep_po_R_of_phi_denote`, stated in `Smrd.RMWTightDenote`, which proves
+`RMWFailGuard` from the invariant it keeps). `PoForest` is not needed
 either: `⊑` of `⟨(a ∥ b); c⟩_n` puts both threads below `c` without ordering
 them, and Forwarding's join restriction (`fwdNoJoin`) and Write Elision's
 fork restriction (`weNoFork`, through the join condition `weNoJoin` it
@@ -70,26 +72,5 @@ theorem denote_rmwWF (n : Bounds) (P : Stmt) : Execution.RMWWF (denote n P) := b
   obtain ⟨hp, er, her, ew, hew, hr, hw, -, -, l, hl₁, hl₂⟩ := hok ent hent
   refine ⟨hp, er, ew, l, l, hr ▸ denote_ev n P her, hw ▸ denote_ev n P hew, hl₁, hl₂,
     fun _ _ _ h₁ h₂ => Option.some.inj (h₁.symm.trans h₂)⟩
-
-variable {x : Execution}
-
-/-- `dep_po_R` for `⟨P⟩_n`: `RMWWF` and the order properties of `⊑` hold. -/
-theorem dep_po_R_denote {n : Bounds} {P : Stmt} {Ω : Pred} (hx : x.IsExecution (denote n P) Ω)
-    (hT : RMWTightR (denote n P) x) (hWE : RMWTightWE (denote n P) x)
-    (hDP : ∀ a b, x.DP a b → (denote n P).poR a b) (hsat : Sat (x.P (denote n P)))
-    (hev : LocsEval (denote n P)) (hE : FwdEntailsImg (denote n P) x) {a b : EventId}
-    (h : x.dep (denote n P) a b) : x.poX (denote n P) a b :=
-  dep_po_R hx (denote_po_trans n P) (denote_po_irrefl n P) hT hWE hDP hsat hev hE
-    (denote_rmwWF n P) h
-
-/-- `dep_po_R_of_phi` for `⟨P⟩_n`. -/
-theorem dep_po_R_of_phi_denote {n : Bounds} {P : Stmt} {Ω : Pred}
-    (hx : x.IsExecution (denote n P) Ω) (hphi : x.phi (denote n P))
-    (hT : RMWTightR (denote n P) x) (hWE : RMWTightWE (denote n P) x)
-    (hDP : ∀ a b, x.DP a b → (denote n P).poR a b) (hev : LocsEval (denote n P))
-    (hE : FwdEntailsImg (denote n P) x) {a b : EventId} (h : x.dep (denote n P) a b) :
-    x.poX (denote n P) a b :=
-  dep_po_R_of_phi hx hphi (denote_po_trans n P) (denote_po_irrefl n P) hT hWE hDP hev hE
-    (denote_rmwWF n P) h
 
 end RMWWFDenote

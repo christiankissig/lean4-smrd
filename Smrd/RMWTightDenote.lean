@@ -156,17 +156,20 @@ theorem interp_gext :
 def IsBr (k : EventStructure) (a : EventId) : Prop :=
   ∃ e ∈ k.events, e.id = a ∧ e.isBranch = true
 
-/-- `w` and `b` are events of `k` on different outcomes of one branching. -/
-def Div (k : EventStructure) (w b : EventId) : Prop :=
-  ∃ ew ∈ k.events, ∃ eb ∈ k.events, ew.id = w ∧ eb.id = b ∧ Labels.Diverge ew eb
+/-- `w` and `b` are events of `k` on different outcomes of one branching, and
+    `b` is on the outcome where `c` fails. -/
+def Div (k : EventStructure) (w : EventId) (c : Expr) (b : EventId) : Prop :=
+  ∃ ew ∈ k.events, ∃ eb ∈ k.events, ew.id = w ∧ eb.id = b ∧ Labels.Diverge ew eb ∧
+    ∃ i, (⟨i, c, false⟩ : Guard) ∈ eb.guards
 
 /-- The shape of the RMWs of `k`: only a branch lies `⊑`-between the read and
     the write, and an event `⊑`-after the read is the write, `⊑`-after it, a
-    branch, or diverges from it. -/
+    branch, or diverges from it under the failure guard of the RMW's
+    condition. -/
 def Tight (k : EventStructure) : Prop :=
   ∀ ent ∈ k.rmw,
     (∀ a, (a, ent.w) ∈ k.po → a = ent.r ∨ (a, ent.r) ∈ k.po ∨ IsBr k a) ∧
-    (∀ b, (ent.r, b) ∈ k.po → b = ent.w ∨ (ent.w, b) ∈ k.po ∨ IsBr k b ∨ Div k ent.w b)
+    (∀ b, (ent.r, b) ∈ k.po → b = ent.w ∨ (ent.w, b) ∈ k.po ∨ IsBr k b ∨ Div k ent.w ent.cond b)
 
 /-- `Tight`, with what the combinators need to keep it: `⊑` and the RMWs
     relate events of `k`, and the ids are distinct. -/
@@ -184,8 +187,8 @@ theorem IsBr.mono {k k' : EventStructure} (hs : Sub k k') {a : EventId} (h : IsB
   obtain ⟨e, he, h₁, h₂⟩ := h
   exact ⟨e, hs.1 e he, h₁, h₂⟩
 
-theorem Div.mono {k k' : EventStructure} (hs : Sub k k') {w b : EventId} (h : Div k w b) :
-    Div k' w b := by
+theorem Div.mono {k k' : EventStructure} (hs : Sub k k') {w b : EventId} {c : Expr}
+    (h : Div k w c b) : Div k' w c b := by
   obtain ⟨ew, hew, eb, heb, h₁, h₂, h₃⟩ := h
   exact ⟨ew, hs.1 ew hew, eb, hs.1 eb heb, h₁, h₂, h₃⟩
 
@@ -196,9 +199,9 @@ theorem lift₁ {k k' : EventStructure} (hs : Sub k k') {a r : EventId}
   · exact .inr (.inl (hs.2 _ h))
   · exact .inr (.inr (h.mono hs))
 
-theorem lift₂ {k k' : EventStructure} (hs : Sub k k') {b w : EventId}
-    (h : b = w ∨ (w, b) ∈ k.po ∨ IsBr k b ∨ Div k w b) :
-    b = w ∨ (w, b) ∈ k'.po ∨ IsBr k' b ∨ Div k' w b := by
+theorem lift₂ {k k' : EventStructure} (hs : Sub k k') {b w : EventId} {c : Expr}
+    (h : b = w ∨ (w, b) ∈ k.po ∨ IsBr k b ∨ Div k w c b) :
+    b = w ∨ (w, b) ∈ k'.po ∨ IsBr k' b ∨ Div k' w c b := by
   rcases h with h | h | h | h
   · exact .inl h
   · exact .inr (.inl (hs.2 _ h))
@@ -328,7 +331,7 @@ theorem addRMW {k : EventStructure} (h : Inv k) {r w : EventId} {c : Expr}
     (hr : r ∈ k.ids) (hw : w ∈ k.ids)
     (hnew : k.ids.Nodup →
       (∀ a, (a, w) ∈ k.po → a = r ∨ (a, r) ∈ k.po ∨ IsBr k a) ∧
-      (∀ b, (r, b) ∈ k.po → b = w ∨ (w, b) ∈ k.po ∨ IsBr k b ∨ Div k w b)) :
+      (∀ b, (r, b) ∈ k.po → b = w ∨ (w, b) ∈ k.po ∨ IsBr k b ∨ Div k w c b)) :
     Inv (k.addRMW r c w) := by
   obtain ⟨hin, hrm, hT⟩ := h
   refine ⟨hin, fun ent hm => ?_, fun hnd ent hm => ?_⟩
@@ -412,10 +415,11 @@ theorem cas (er ec ew : Event) {kT kF : EventStructure} {φ : List Guard} {c : E
       · exact .inr (.inl (hsub.2 _ (mem_po_plus.2 (.inl (mem_po_prefix.2 (.inl ⟨rfl, hb⟩))))))
       · obtain ⟨eb, heb, rfl⟩ := List.mem_map.1 hb
         obtain ⟨G, hG'⟩ := hG eb heb
+        have hgF : (⟨ec.id, c, false⟩ : Guard) ∈ eb.guards := by
+          rw [hG']; exact List.mem_append_left _ (List.mem_append_right _ List.mem_cons_self)
         refine .inr (.inr (.inr ⟨ew, hewK, eb, hsub.1 _ (List.mem_append_right _ heb), rfl, rfl,
           ⟨⟨ec.id, c, true⟩, by rw [hew]; exact List.mem_append_right _ List.mem_cons_self,
-            ⟨ec.id, c, false⟩, by rw [hG']; exact List.mem_append_left _ (List.mem_append_right _
-              List.mem_cons_self), rfl, rfl, by simp⟩⟩))
+            ⟨ec.id, c, false⟩, hgF, rfl, rfl, by simp⟩, ec.id, hgF⟩))
     · rcases mem_po_prefix.1 hb with ⟨he, -⟩ | hb
       · exact absurd he her₁
       · rcases mem_po_plus.1 hb with hb | hb
@@ -533,7 +537,7 @@ theorem denote_rmwTight {n : Bounds} {P : Stmt} {x : Execution}
     · exact .inl h
     · exact .inr h
     · exact absurd ha (not_XwF_of_isBr hmax h)
-  · rcases (hT ent hm).2 b hpo with h | h | h | ⟨ew, hew, eb, heb, hwid, rfl, hd⟩
+  · rcases (hT ent hm).2 b hpo with h | h | h | ⟨ew, hew, eb, heb, hwid, rfl, hd, -⟩
     · exact .inl h
     · exact .inr h
     · exact absurd hb (not_XwF_of_isBr hmax h)
@@ -556,3 +560,49 @@ theorem denote_rmwTight {n : Bounds} {P : Stmt} {x : Execution}
       · exact absurd hc (hbF.2.2 _ hwX)
 
 end RMWTightDenote
+
+namespace RMWTightDenote
+
+open EventStructure Execution
+
+/-- **An event of `⟨P⟩_n` `⊑`-after the read of an RMW and not after its write
+    lies on the failure branch**: it is a branch, or its value restriction
+    carries the guard `¬c` of the RMW's condition `c`. -/
+theorem denote_rmwFailGuard (n : Bounds) (P : Stmt) : RMWFailGuard (denote n P) := by
+  have hT := denote_tight n P
+  intro ent hm b hpo
+  rcases (hT ent hm).2 b hpo with h | h | ⟨e, he, rfl, hb⟩ | ⟨-, -, eb, heb, -, rfl, -, i, hg⟩
+  · exact .inl h
+  · exact .inr (.inl h)
+  · exact .inr (.inr (.inl ⟨e, denote_ev n P he, hb⟩))
+  · exact .inr (.inr (.inr ⟨eb, denote_ev n P heb, i, hg⟩))
+
+end RMWTightDenote
+
+namespace RMWWFDenote
+
+open EventStructure Execution
+
+variable {x : Execution}
+
+/-- `dep_po_R` for `⟨P⟩_n`: `RMWWF`, `RMWFailGuard` and the order properties of
+    `⊑` hold. -/
+theorem dep_po_R_denote {n : Bounds} {P : Stmt} {Ω : Pred} (hx : x.IsExecution (denote n P) Ω)
+    (hT : RMWTightR (denote n P) x)
+    (hDP : ∀ a b, x.DP a b → (denote n P).poR a b) (hsat : Sat (x.P (denote n P)))
+    (hev : LocsEval (denote n P)) (hE : FwdEntailsImg (denote n P) x) {a b : EventId}
+    (h : x.dep (denote n P) a b) : x.poX (denote n P) a b :=
+  dep_po_R hx (denote_po_trans n P) (denote_po_irrefl n P) hT
+    (RMWTightDenote.denote_rmwFailGuard n P) hDP hsat hev hE (denote_rmwWF n P) h
+
+/-- `dep_po_R_of_phi` for `⟨P⟩_n`. -/
+theorem dep_po_R_of_phi_denote {n : Bounds} {P : Stmt} {Ω : Pred}
+    (hx : x.IsExecution (denote n P) Ω) (hphi : x.phi (denote n P))
+    (hT : RMWTightR (denote n P) x)
+    (hDP : ∀ a b, x.DP a b → (denote n P).poR a b) (hev : LocsEval (denote n P))
+    (hE : FwdEntailsImg (denote n P) x) {a b : EventId} (h : x.dep (denote n P) a b) :
+    x.poX (denote n P) a b :=
+  dep_po_R_of_phi hx hphi (denote_po_trans n P) (denote_po_irrefl n P) hT
+    (RMWTightDenote.denote_rmwFailGuard n P) hDP hev hE (denote_rmwWF n P) h
+
+end RMWWFDenote
