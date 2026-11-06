@@ -16,6 +16,7 @@ import Smrd.PpoKit
 import Smrd.PpoStability
 import Smrd.PpoNecessity
 import Smrd.FenceMP
+import Smrd.PSCExamples
 import Smrd.CoherenceT
 import Smrd.WEAcrossRelease
 import Smrd.FwdAcrossAcquire

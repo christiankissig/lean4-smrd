@@ -9,7 +9,11 @@ two writes, Forwarding the forwarded event. The transformed execution is
 is RC11's over it (`CoherenceT`): a coherence order over the writes of
 `X ∖ †` (`CoherenceOrderT`), and `HB_T ; ECO?` irreflexive with
 `HB_T ≜ (⊑ ∪ SW)⁺` restricted to `(X ∖ †) ∪ X_F` (`hbT`). RC11 itself does not
-elide; `Execution.Coherence` is its axiom over `X`.
+elide; `Execution.Coherence` is its axiom over `X`. `CoherentT` also asks for
+RC11's SC axiom over the transformed execution (`PSCT`, `Execution.PSCOf` with
+`sb` and `hb` over `(X ∖ †) ∪ X_F`), under the same coherence order; it holds
+for every coherence order where no event of `X ∪ X_F` has mode `sc`
+(`pscT_of_noSC`).
 
 Leaving elided writes out of coherence is sound only if no elision crosses a
 release: in `x := 1; flag :rel= 1; x := 2 ∥ r1 :acq= flag; r2 := x`, eliding
@@ -131,9 +135,24 @@ structure CoherenceOrderT (co : Rel) : Prop where
 def CoherenceT (co : Rel) : Prop :=
   ∀ a, ¬ ∃ b, x.hbT es a b ∧ (b = a ∨ x.eco co b a)
 
-/-- `CoherenceT` and `Atomicity` under one coherence order of `X ∖ †`. -/
+/-- **RC11's SC axiom, over the transformed execution** (`Execution.PSCOf`):
+    `psc_base ∪ psc_F` acyclic with `sb` and `hb` restricted to
+    `(X ∖ †) ∪ X_F` (`poXT`, `hbT`), and `E_sc`, `F_sc` taken within it. -/
+def PSCT (co : Rel) : Prop :=
+  x.PSCOf es (fun a => x.XwF es a ∧ ¬ x.elided a) (x.poXT es) (x.hbT es) co
+
+/-- **Without `sc` events, `PSCT` holds for every coherence order.** -/
+theorem pscT_of_noSC (h : x.SCFree es) (co : Rel) : x.PSCT es co :=
+  x.pscOf_of_noSC es (fun a ha => h a ha.1) _ _ co
+
+/-- `PSCT` for an event structure without `sc` events, e.g.
+    `x.pscT_of_es es (es.scFree_of_all (by decide)) co` for a literal one. -/
+theorem pscT_of_es (h : es.SCFree) (co : Rel) : x.PSCT es co :=
+  x.pscT_of_noSC es (x.scFree_of_es es h) co
+
+/-- `CoherenceT`, `Atomicity` and `PSCT` under one coherence order of `X ∖ †`. -/
 def CoherentT : Prop :=
-  ∃ co, x.CoherenceOrderT es co ∧ x.CoherenceT es co ∧ x.Atomicity es co
+  ∃ co, x.CoherenceOrderT es co ∧ x.CoherenceT es co ∧ x.Atomicity es co ∧ x.PSCT es co
 
 /-- A consistent execution of sMRD, coherence checked over `X ∖ †`. -/
 def ConsistentT (Ω : Pred) : Prop :=
@@ -174,16 +193,27 @@ theorem coherenceOrderT_iff (h : ∀ a, ¬ x.elided a) {co : Rel} :
       hc.irrefl, hc.trans,
       fun a b ha hb => hc.total a b ha.1 hb.1⟩
 
+/-- Without elided events, `PSCT` is RC11's `PSC`. -/
+theorem pscT_iff_psc (h : ∀ a, ¬ x.elided a) {co : Rel} : x.PSCT es co ↔ x.PSC es co := by
+  have hD : (fun a => x.XwF es a ∧ ¬ x.elided a) = x.XwF es :=
+    funext fun a => propext ⟨fun h' => h'.1, fun h' => ⟨h', h a⟩⟩
+  have hpo : x.poXT es = x.poX es :=
+    funext fun a => funext fun b => propext ⟨fun h' => h'.1, fun h' => ⟨h', h a, h b⟩⟩
+  have hhb : x.hbT es = x.hb es :=
+    funext fun a => funext fun b => propext (hbT_iff_hb h)
+  unfold PSCT PSC
+  rw [hD, hpo, hhb]
+
 /-- **Without elided events, `CoherentT` is RC11's `Coherent`.** -/
 theorem coherentT_iff_coherent (h : ∀ a, ¬ x.elided a) : x.CoherentT es ↔ x.Coherent es := by
   have hcoh : ∀ co, x.CoherenceT es co ↔ x.Coherence es co := fun co => by
     unfold CoherenceT Coherence
     simp only [hbT_iff_hb h]
   constructor
-  · rintro ⟨co, ho, hc, ha⟩
-    exact ⟨co, (coherenceOrderT_iff h).1 ho, (hcoh co).1 hc, ha⟩
-  · rintro ⟨co, ho, hc, ha⟩
-    exact ⟨co, (coherenceOrderT_iff h).2 ho, (hcoh co).2 hc, ha⟩
+  · rintro ⟨co, ho, hc, ha, hp⟩
+    exact ⟨co, (coherenceOrderT_iff h).1 ho, (hcoh co).1 hc, ha, (pscT_iff_psc h).1 hp⟩
+  · rintro ⟨co, ho, hc, ha, hp⟩
+    exact ⟨co, (coherenceOrderT_iff h).2 ho, (hcoh co).2 hc, ha, (pscT_iff_psc h).2 hp⟩
 
 end NoElided
 

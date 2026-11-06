@@ -493,8 +493,9 @@ theorem coherenceT_B : xB.CoherenceT esR (relL coB) := by
   · exact (hok _ (hH _ _ hab)).2 (hE _ _ hba)
 
 theorem coherentT_B : xB.CoherentT esR :=
-  ⟨relL coB, coherenceOrderT_B, coherenceT_B, fun r w h => by
-    obtain ⟨-, -, ent, hm, -⟩ := h; cases hm⟩
+  ⟨relL coB, coherenceOrderT_B, coherenceT_B, (fun r w h => by
+    obtain ⟨-, -, ent, hm, -⟩ := h; cases hm),
+    xB.pscT_of_es esR (esR.scFree_of_all (by decide)) _⟩
 
 /-- **Without the release restriction, `CoherenceT` admits `r1 = 1 ∧ r2 = 0`.**
     Write Elision blind to the memory order (`weRelBlind`) elides `x := 1` into

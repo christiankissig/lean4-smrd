@@ -402,7 +402,8 @@ theorem ntaP : xP.NoThinAir esP := by
 /-- Each location is written once in `X`, so the empty coherence order is one. -/
 theorem coherentT_P : xP.CoherentT esP := by
   refine ⟨fun _ _ => False, ⟨fun _ _ h => h.elim, fun _ h => h, fun _ _ _ h => h.elim,
-    fun a b ha hb hwa hwb hne hsl => ?_⟩, ?_, fun r w _ ⟨_, ⟨_, _, h⟩, _⟩ => h⟩
+    fun a b ha hb hwa hwb hne hsl => ?_⟩, ?_, fun r w _ ⟨_, ⟨_, _, h⟩, _⟩ => h,
+    xP.pscT_of_es esP (esP.scFree_of_all (by decide)) _⟩
   · obtain ⟨ea, eb, la, lb, ha', hb', hla, hlb, heq⟩ := hsl
     have := heq fOut P_P phiRf_P
     have key : ∀ a ∈ esP.ids, ∀ b ∈ esP.ids, clsB esP Event.isWrite a = true →

@@ -51,7 +51,9 @@ that form (status `cut`). `do B while c` is translated as `B; while c B`.
 `CoherenceV`, `CoherenceP` and Atomicity. `Smrd.AxiomEval` proves each decision equal to the
 axiom of `Smrd.Executions`, `Smrd.CoherenceRC11` or `Smrd.CoherenceT`, for an execution whose
 primitives (`⊑` within `X ∪ X_F`, `rf`, `rmw`, same location, `DP ∪ ≼`, the event classes and
-`†`) the lists are.
+`†`) the lists are. RC11's SC axiom (`PSC`, `PSCT`), which consistency
+(`Coherent`, `CoherentT`) also asks for, is not decided: it holds of every execution without `sc`
+accesses and fences (`psc_of_noSC`, `pscT_of_noSC`), and `axioms_of_checks` asks for that.
 
 `scripts/exec_diff.py` checks every execution MoRDor exports (`mordor executions`) against them,
 with MoRDor's own `dp`, `ppo`, `rf`, `rmw` and `co` as the primitives:
