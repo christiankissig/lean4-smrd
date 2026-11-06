@@ -473,6 +473,84 @@ theorem coherence_of_coherenceV_canon {co : Rel}
     (fun _ _ h hw => rel_dep_canon hnf hirr hcan h hw)
     (fun _ _ hr h => acq_dep_canon hnf hirr hcan hr h) h
 
+/-! ### With fences
+
+Condition (i) needs no `FenceFree`: a pair of `⊑|loc` has locations at both
+ends, and a fence has none, so both lie in `X`. Condition (ii), extended to
+fences, holds for `≼_F` (`Execution.ppoF`, the closure before its
+restriction to `X`): MoRDor's `ppo_sync` relates every event to a later
+releasing write or fence, and an acquiring read or fence to every later
+event. -/
+
+/-- An event of the path with a location is in `X`: fences have none. -/
+theorem X_of_loc {a : EventId} {e : Event} {l : Expr} (h : x.XwF es a) (he : es.ev a = some e)
+    (hl : e.loc = some l) : x.X a := by
+  rcases h with h | h
+  · exact h
+  · obtain ⟨-, ⟨e', he', hf⟩, -⟩ := h
+    rw [he] at he'; cases he'
+    obtain ⟨id, k, lab, g⟩ := e
+    cases k <;> simp_all [Event.isFence, Event.loc]
+
+/-- **Condition (i) between two events that are not elided**, with fences. -/
+theorem poloc_dep_ne' (hirr : ∀ a, ¬ es.poR a a) (hm : LocModel es x)
+    {a b : EventId} (hna : ¬ x.elided a) (hnb : ¬ x.elided b) (h : x.poloc es a b) :
+    x.dep es a b := by
+  obtain ⟨⟨hXa, hXb, hpo⟩, ea, eb, la, lb, hea, heb, hla, hlb, heq⟩ := h
+  have ha := X_of_loc hXa hea hla
+  have hb := X_of_loc hXb heb hlb
+  obtain ⟨f, hP, hrf, hdef⟩ := hm
+  obtain ⟨va, hva⟩ := Option.isSome_iff_exists.1 (hdef a ea la ha hea hla)
+  obtain ⟨vb, hvb⟩ := Option.isSome_iff_exists.1 (hdef b eb lb hb heb hlb)
+  have hv : va = vb := Option.some.inj (hva ▸ hvb ▸ heq f (P_of_Pm hP) hrf)
+  subst hv
+  have hal : es.mayAlias (x.Pm es) a b :=
+    ⟨ea, eb, la, lb, hea, heb, hla, hlb, f, hP, by
+      simp [Expr.holds, Expr.eval, hva, hvb]⟩
+  exact .inl (ppo_of_step ha hb ⟨hXa, hXb, .inr ⟨.inr ⟨⟨⟨a, b, .inr ⟨hpo, .inr hal⟩,
+    remap_self_of_not_elided hna, remap_self_of_not_elided hnb⟩,
+    fun h => hirr a (h ▸ hpo)⟩, hal⟩, anchored_of_po hXb hpo⟩⟩)
+
+/-- **Condition (ii), release half, with fences**, `⊑;[W_rel ∪ F_rel] ⊆ ≼_F`,
+    between two events that are not elided. -/
+theorem rel_depF_ne (hirr : ∀ a, ¬ es.poR a a)
+    {a w : EventId} (hna : ¬ x.elided a) (hnw : ¬ x.elided w) (h : x.poX es a w)
+    (hw : es.cls Event.isRelW w ∨ es.cls Event.isRelF w) : x.depF es a w := by
+  obtain ⟨hXa, hXw, hpo⟩ := h
+  have hrel : es.cls Event.isRelM w := by
+    rcases hw with ⟨e, he, h⟩ | ⟨e, he, h⟩ <;> exact ⟨e, he, by simp [Event.isRelM, h]⟩
+  exact .inl (.single ⟨hXa, hXw, .inr ⟨.inl ⟨⟨a, w, ⟨hpo, .inr hrel⟩,
+    remap_self_of_not_elided hna, remap_self_of_not_elided hnw⟩, fun h => hirr a (h ▸ hpo)⟩,
+    anchored_of_po hXw hpo⟩⟩)
+
+/-- **Condition (ii), acquire half, with fences**, `[R_acq ∪ F_acq];⊑ ⊆ ≼_F`,
+    between two events that are not elided. -/
+theorem acq_depF_ne (hirr : ∀ a, ¬ es.poR a a)
+    {r b : EventId} (hnr : ¬ x.elided r) (hnb : ¬ x.elided b)
+    (hr : es.cls Event.isAcqR r ∨ es.cls Event.isAcqF r) (h : x.poX es r b) :
+    x.depF es r b := by
+  obtain ⟨hXr, hXb, hpo⟩ := h
+  have hacq : es.cls Event.isAcqM r := by
+    rcases hr with ⟨e, he, h⟩ | ⟨e, he, h⟩ <;> exact ⟨e, he, by simp [Event.isAcqM, h]⟩
+  exact .inl (.single ⟨hXr, hXb, .inr ⟨.inl ⟨⟨r, b, ⟨hpo, .inl hacq⟩,
+    remap_self_of_not_elided hnr, remap_self_of_not_elided hnb⟩, fun h => hirr r (h ▸ hpo)⟩,
+    anchored_of_po hXb hpo⟩⟩)
+
+/-- **RC11 coherence from `HB_F`-coherence, with fences**, where no event of
+    the path is elided. -/
+theorem coherence_of_coherenceF_canon {co : Rel}
+    (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
+    (hirr : ∀ a, ¬ es.poR a a)
+    (hLtrans : ∀ a b c, x.sameLoc es a b → x.sameLoc es b c → x.sameLoc es a c)
+    (hrfL : ∀ a b, x.rf a b → x.sameLoc es a b)
+    (hcoL : ∀ a b, co a b → x.sameLoc es a b)
+    (hcan : ∀ a, x.XwF es a → ¬ x.elided a) (hm : LocModel es x)
+    (h : x.CoherenceF es co) : x.Coherence es co :=
+  coherence_of_coherenceF hpo_trans hirr hLtrans hrfL hcoL
+    (fun _ _ h => depF_of_dep (poloc_dep_ne' hirr hm (hcan _ h.1.1) (hcan _ h.1.2.1) h))
+    (fun _ _ h hw => rel_depF_ne hirr (hcan _ h.1) (hcan _ h.2.1) h hw)
+    (fun _ _ hr h => acq_depF_ne hirr (hcan _ h.1) (hcan _ h.2.1) hr h) h
+
 /-- **`DP ∪ ≼ ⊆ ⊑` without forwarding**, where no elision crosses an event. -/
 theorem dep_po_we (hinX : ∀ j ∈ x.J, x.X j.w.id) (hW : WEForward es x)
     (hu : ∀ a b e, x.δ.edge a e → x.δ.edge b e → a = b)
