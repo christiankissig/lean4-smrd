@@ -77,6 +77,7 @@ def memOrd : String → Except String MemOrd
   | "acq" => pure .acq
   | "rel" => pure .rel
   | "sc"  => pure .sc
+  | "acq_rel" | "relacq" => pure .acqRel
   | o     => throw s!"unknown memory order {o}"
 
 def ord (j : Json) (k : String) : Except String MemOrd := do memOrd (← str j k)
@@ -131,7 +132,7 @@ partial def stmt (j : Json) : Except String Stmt := do
 /-! ## Writing event structures -/
 
 def memOrdStr : MemOrd → String
-  | .rlx => "rlx" | .acq => "acq" | .rel => "rel" | .sc => "sc"
+  | .rlx => "rlx" | .acq => "acq" | .rel => "rel" | .sc => "sc" | .acqRel => "acq_rel"
 
 def arithOpStr : ArithOp → String
   | .add => "add" | .sub => "sub" | .mul => "mul" | .div => "div"
