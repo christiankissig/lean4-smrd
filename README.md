@@ -7,6 +7,38 @@ Lean4 Formalisation of Symbolic Modular Relaxed Dependencies per
 
 The definitions follow the restatement of SMRD in Appendix A of *Episodic Loops*.
 
+# Three consistency models
+
+The library states three consistency models side by side, over the same event structures and
+executions and with the same `rf`, `CO`, `ECO`, `SW`, `HB` and `psc` (`Smrd.Executions`). Each is
+No-Thin-Air, a coherence axiom, Atomicity and RC11's SC axiom under one coherence order; they
+differ in the No-Thin-Air order, the happens-before of coherence, and whether elaborations are
+admitted.
+
+| model | namespace | No-Thin-Air | coherence | elaborations |
+|---|---|---|---|---|
+| sMRD (`Execution.Consistent`, `ConsistentT`) | `Execution` | `DP ∪ ≼ ∪ rf` acyclic | RC11's, `HB = (⊑ ∪ SW)⁺`, over `X` (or `X ∖ †`) | Forwarding, Write Elision |
+| RC11 (`ConsistentRC11`, `Smrd/RC11.lean`) | `Smrd.RC11` | `⊑ ∪ rf` acyclic | RC11's | none, `† = ∅` |
+| relaxed coherence (`ConsistentV`, `Smrd/Relaxed.lean`) | `Smrd.Relaxed` | `DP ∪ ≼ ∪ rf` acyclic | `HB_v = (DP ∪ ≼ ∪ SW)⁺` | Forwarding, Write Elision |
+
+All three keep RC11's SC axiom over `⊑` and RC11's `HB` (`PSC`; `PSCT` over `X ∖ †`).
+`Smrd.Relaxed.PSCRelaxed` is the SC axiom over the relaxed happens-before, as MoRDor checks it;
+RC11's implies it where `DP ∪ ≼_F ⊆ ⊑` (`pscRelaxed_of_psc`).
+
+How they relate:
+
+* RC11 ⇒ sMRD where `DP ∪ ≼ ⊆ ⊑` (`RC11.consistent_of_consistentRC11`), and then RC11 is sMRD
+  without elaborations and with `acyclic(⊑ ∪ rf)` (`RC11.consistentRC11_iff`); load buffering
+  separates them (not mechanised here). RC11-consistent executions linearise `⊑ ∪ rf` (`RC11.linearisation`).
+* sMRD ⇔ relaxed coherence for fence-free executions under the `po|loc`, release and acquire
+  conditions and `DP ∪ ≼ ⊆ ⊑` (`Relaxed.consistentV_iff_consistent`); with fences over
+  `HB_F = (DP ∪ ≼_F ∪ SW)⁺` instead (`Relaxed.ConsistentF`, `consistentF_iff_consistent`). With
+  elided events the relaxed axiom matches sMRD over `X ∖ †` (`Relaxed.consistentVT_iff_consistentT`,
+  `consistentFT_iff_consistentT`), where no acquire read is forwarded.
+* Not equivalent: over `HB_v`, message passing through fences is admitted, which sMRD and RC11
+  forbid (`Relaxed.fenceMP_separates`); and at a fixed coherence order that orders an elided
+  write, `HB_v`-coherence does not imply RC11's (`PpoNecessity.coww_elided`).
+
 # Differential testing against MoRDor
 
 `smrd-es` runs the event structure semantics `denote` on a program given as JSON and prints the
