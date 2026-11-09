@@ -42,5 +42,7 @@ import Smrd.WEIntoBranch
 import Smrd.CasFailElision
 import Smrd.ElabDec.Saturate
 import Smrd.ElabDec.RelSplitMain
+import Smrd.RC11
+import Smrd.Relaxed
 
 def hello := "world"
