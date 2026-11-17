@@ -71,6 +71,13 @@ theorem not_diverged_of {es : EventStructure} (h : ∀ e ∈ es.events, e.guards
   rw [h ea (ev_inv ha).1] at hg
   cases hg
 
+/-- No two events diverge where every guard is positive (no `else` branch
+    has events). -/
+theorem not_diverged_of_pos {es : EventStructure}
+    (h : ∀ e ∈ es.events, ∀ g ∈ e.guards, g.pos = true) {a b : EventId} : ¬ es.Diverged a b := by
+  rintro ⟨ea, eb, ha, hb, g₁, hg₁, g₂, hg₂, -, -, hp⟩
+  exact hp ((h ea (ev_inv ha).1 g₁ hg₁).trans (h eb (ev_inv hb).1 g₂ hg₂).symm)
+
 /-- Write Elision's fork restriction from a list check. -/
 theorem weNoFork_of {es : EventStructure} {e₁ e₂ : EventId}
     (h : ∀ p ∈ es.po, p.1 = e₁ → p.2 ≠ e₂ → (p.2, e₂) ∈ es.po ∨ (e₂, p.2) ∈ es.po) :
@@ -535,7 +542,7 @@ theorem Generated.w_mem {es : EventStructure} {Ω : Pred} {j : Justification}
   | fwd _ _ _ _ _ _ _ _ _ ih =>
       obtain ⟨e, he, hid, hef⟩ := ih; exact ⟨e, he, hid, hef⟩
   | we _ _ _ _ ih => exact ih
-  | lift _ _ _ _ _ _ _ _ _ _ _ _ _ _ ih₂ => exact ih₂
+  | lift _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ ih₂ => exact ih₂
   | weak _ _ _ _ ih => exact ih
 
 /-- Without guards that can fail, an execution contains every candidate. -/
