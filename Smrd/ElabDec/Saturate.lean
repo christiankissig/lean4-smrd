@@ -101,13 +101,19 @@ def onSideB (g : Guard) (a : EventId) : Bool :=
   | some e => decide (g ∈ e.guards)
   | none => false
 
+/-- The event `a` introduces a symbol (a read or an allocation), decided. -/
+def symB (a : EventId) : Bool :=
+  match es.ev a with
+  | some e => e.isRead || e.isAlloc
+  | none => false
+
 /-- `LiftBranch Λ w₁ w₂` for a relabelling with domain in `dom`, decided. -/
 def liftBranchB (Λ : Relabelling) (dom : List Sym) (w₁ w₂ : EventId) : Bool :=
   match es.ev w₁, es.ev w₂ with
   | some e₁, some e₂ => e₁.guards.any fun g₁ => e₂.guards.any fun g₂ =>
       decide (g₁.branch = g₂.branch) && decide (g₁.cond = g₂.cond) && decide (g₁.pos ≠ g₂.pos) &&
       dom.all fun α => match Λ α with
-        | some β => es.onSideB g₁ α && es.onSideB g₂ β
+        | some β => es.onSideB g₁ α && es.onSideB g₂ β && es.symB β
         | none => true
   | _, _ => false
 
@@ -255,6 +261,14 @@ theorem onSideB_iff {g : Guard} {a : EventId} : es.onSideB g a = true ↔ es.OnS
   | some e => simp
 
 variable {es} in
+theorem symB_iff {a : EventId} :
+    es.symB a = true ↔ es.cls (fun e => e.isRead || e.isAlloc) a := by
+  unfold symB EventStructure.cls
+  cases h : es.ev a with
+  | none => simp
+  | some e => simp
+
+variable {es} in
 theorem liftBranchB_iff {Λ : Relabelling} {dom : List Sym} {w₁ w₂ : EventId}
     (hdom : ∀ α β, Λ α = some β → α ∈ dom) :
     es.liftBranchB Λ dom w₁ w₂ = true ↔ es.LiftBranch Λ w₁ w₂ := by
@@ -269,7 +283,7 @@ theorem liftBranchB_iff {Λ : Relabelling} {dom : List Sym} {w₁ w₂ : EventId
       have := hall α (hdom α β hαβ)
       rw [hαβ] at this
       simp only [Bool.and_eq_true] at this
-      exact ⟨onSideB_iff.1 this.1, onSideB_iff.1 this.2⟩
+      exact ⟨onSideB_iff.1 this.1.1, onSideB_iff.1 this.1.2, symB_iff.1 this.2⟩
     · cases h
   · rintro ⟨g₁, g₂, ⟨e₁, h₁, hg₁⟩, ⟨e₂, h₂, hg₂⟩, hb, hc, hp, hall⟩
     simp only [h₁, h₂, List.any_eq_true, Bool.and_eq_true, decide_eq_true_eq, List.all_eq_true]
@@ -277,9 +291,9 @@ theorem liftBranchB_iff {Λ : Relabelling} {dom : List Sym} {w₁ w₂ : EventId
     cases hαβ : Λ α with
     | none => rfl
     | some β =>
-      obtain ⟨ha, hb'⟩ := hall α β hαβ
+      obtain ⟨ha, hb', hs⟩ := hall α β hαβ
       simp only [Bool.and_eq_true]
-      exact ⟨onSideB_iff.2 ha, onSideB_iff.2 hb'⟩
+      exact ⟨⟨onSideB_iff.2 ha, onSideB_iff.2 hb'⟩, symB_iff.2 hs⟩
 
 theorem injOnB_iff {Λ : Relabelling} {dom : List Sym} : injOnB Λ dom = true ↔ Λ.InjOn dom := by
   unfold injOnB Relabelling.InjOn

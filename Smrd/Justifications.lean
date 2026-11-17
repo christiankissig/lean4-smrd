@@ -375,11 +375,20 @@ def OnSide (g : Guard) (a : EventId) : Prop := ∃ e, es.ev a = some e ∧ g ∈
     the branching where `w₁` and `w₂` do: a symbol of a third branch nested
     in `w₁`'s outcome is in conflict with `w₁` but is not "from a conflicting
     branch" of `w₂`'s. In `⟨P⟩_n` the two readings agree on symbols
-    `⊑`-before their writes, which carry the writes' guards. -/
+    `⊑`-before their writes, which carry the writes' guards.
+
+    `Λ` maps symbols to symbols: its images are events that introduce one, reads
+    and allocations (symbols are event ids, and other events, a branching
+    among them, have an id but bind no value). Without this a branching on
+    `w₂`'s outcome could stand in for a read of `w₁`'s, a conjunct over it
+    could be strengthened in, and the factored disjunction over a guard of
+    both outcomes could become valid and be dropped by Weakening, losing a
+    control dependency. -/
 def LiftBranch (Λ : Relabelling) (w₁ w₂ : EventId) : Prop :=
   ∃ g₁ g₂, es.OnSide g₁ w₁ ∧ es.OnSide g₂ w₂ ∧
     g₁.branch = g₂.branch ∧ g₁.cond = g₂.cond ∧ g₁.pos ≠ g₂.pos ∧
-    ∀ α β, Λ α = some β → es.OnSide g₁ α ∧ es.OnSide g₂ β
+    ∀ α β, Λ α = some β → es.OnSide g₁ α ∧ es.OnSide g₂ β ∧
+      es.cls (fun e => e.isRead || e.isAlloc) β
 
 variable {es} in
 theorem OnSide.diverged {g₁ g₂ : Guard} {a b : EventId} (ha : es.OnSide g₁ a)
@@ -403,7 +412,7 @@ theorem LiftBranch.dom_diverged {Λ : Relabelling} {w₁ w₂ α β : EventId}
     (h : es.LiftBranch Λ w₁ w₂) (hα : Λ α = some β) :
     es.Diverged α w₂ ∧ es.Diverged β w₁ := by
   obtain ⟨g₁, g₂, h₁, h₂, hbr, hc, hp, hΛ⟩ := h
-  obtain ⟨ha, hb⟩ := hΛ α β hα
+  obtain ⟨ha, hb, -⟩ := hΛ α β hα
   exact ⟨ha.diverged h₂ hbr hc hp,
     hb.diverged h₁ hbr.symm hc.symm (Ne.symm hp)⟩
 
