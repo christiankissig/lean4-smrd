@@ -26,6 +26,10 @@ exclude the edge: both endpoints are on the paths the execution takes.
   execution with `DP` edge `(0, 3)`, and `¬ 0 ⊑ 3`.
 * `not_generated`, `not_execution`: under the restriction of `Generated.lift`
   (origins of `⟦P₁⟧_Λ` `⊑`-before `w₂`) it is not, and `xC` is no execution.
+* `not_diverged`, `not_liftBranch`: the branching restriction of
+  `Generated.lift` (sMRD §4.7's "conflicting branches", `LiftBranch`) refuses
+  it as well, under every relabelling: the writes are in different threads,
+  not on two outcomes of a branching. Lifting no longer crosses threads.
 
 Within one thread, with `w₁` `⊑`-after `w₂` and a symbol of `P₁` between
 them, the recursion of closed relabel-equivalence through `pred` gets in the
@@ -119,7 +123,8 @@ theorem relabEq_12 : esC.ClosedRelabEq .empty Λ₀ j₁.P e2 j₂.P e3 := by
   simp only [Bool.and_self, Bool.or_true]
   exact ⟨⟨_, _, rfl, rfl, hl⟩, ⟨_, _, rfl, rfl, hv⟩⟩
 
-/-- Every condition of the paper's Lifting holds. -/
+/-- Every condition of the paper's Lifting holds (those of `LiftConds` but the
+    library's `⊑`-restriction `LiftConds.past`). -/
 theorem lift_conds :
     j₁.δ = j₂.δ ∧ Λ₀.Injective ∧ esC.ClosedRelabEq j₁.δ Λ₀ j₁.P j₁.w j₂.P j₂.w ∧
     (∀ e, e ∈ j₂.D ↔ ∃ α ∈ j₁.D, Λ₀.app α = e) ∧
@@ -160,6 +165,18 @@ theorem not_generated {Ω : Pred} : ¬ esC.Generated Ω jL := by
   exact guard_sym.2.2
     (h.past symWF hpo (fun p hp => by simp [jL, j₂, PpoNecessity.pj, FwdCtx.empty] at hp) 0
       (.inl guard_sym.2.1))
+
+/-- **The writes are not in conflict**: thread 1's write has no guard. -/
+theorem not_diverged : ¬ esC.Diverged j₁.w.id j₂.w.id := by
+  rintro ⟨ea, eb, -, hb, -, -, g, hg, -⟩
+  have h3 : esC.ev 3 = some e3 := PpoKit.ev_of_mem nodupC (e := e3) (by simp [esC])
+  have : j₂.w.id = 3 := rfl
+  rw [this, h3] at hb; cases hb; cases hg
+
+/-- **The branching restriction refuses the lift**, under every relabelling:
+    the writes are in different threads, on no two outcomes of a branching. -/
+theorem not_liftBranch (Λ : Relabelling) : ¬ esC.LiftBranch Λ j₁.w.id j₂.w.id :=
+  fun h => not_diverged h.diverged
 
 /-! ## The execution -/
 

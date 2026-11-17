@@ -21,7 +21,9 @@ open (`Smrd.ElabDec.Deciders`).
   of `S` matter); pairs of events for Forwarding and Write Elision; pairs of
   justifications and relabellings of the premise's symbols and dependencies
   onto the `⊑`-sources and the other dependencies for Lifting (`GenR`'s
-  Lifting relabels no other symbol, so these are all its relabellings).
+  Lifting relabels no other symbol, so these are all its relabellings); the
+  branching restriction and the one-to-one renaming are decided on them
+  (`liftBranchB_iff`, `injOnB_iff`).
 * Every elaboration respects `JEq` in its premises (`step_complete`), so a
   list closed under `step` up to `JEq` contains a representative of every
   justification of the closure.
@@ -93,6 +95,26 @@ def weOne (r : Justification) (p : EventId × EventId) : Option Justification :=
     some { r with δ := { r.δ with we := r.δ.we ++ [(p.2, p.1)] } }
   else none
 
+/-- `OnSide g a`, decided. -/
+def onSideB (g : Guard) (a : EventId) : Bool :=
+  match es.ev a with
+  | some e => decide (g ∈ e.guards)
+  | none => false
+
+/-- `LiftBranch Λ w₁ w₂` for a relabelling with domain in `dom`, decided. -/
+def liftBranchB (Λ : Relabelling) (dom : List Sym) (w₁ w₂ : EventId) : Bool :=
+  match es.ev w₁, es.ev w₂ with
+  | some e₁, some e₂ => e₁.guards.any fun g₁ => e₂.guards.any fun g₂ =>
+      decide (g₁.branch = g₂.branch) && decide (g₁.cond = g₂.cond) && decide (g₁.pos ≠ g₂.pos) &&
+      dom.all fun α => match Λ α with
+        | some β => es.onSideB g₁ α && es.onSideB g₂ β
+        | none => true
+  | _, _ => false
+
+/-- `Λ.InjOn dom`, decided. -/
+def injOnB (Λ : Relabelling) (dom : List Sym) : Bool :=
+  dom.all fun a => dom.all fun b => Λ.app a != Λ.app b || a == b
+
 def liftOK (r₁ r₂ : Justification) (Λ : Relabelling) (dom : List Sym) : Bool :=
   dom.all (fun a => dom.all fun b => (Λ a).isNone || Λ a != Λ b || a == b) &&
   es.crB O r₁.P r₂.P r₁.δ Λ r₁.w r₂.w &&
@@ -104,7 +126,8 @@ def liftOK (r₁ r₂ : Justification) (Λ : Relabelling) (dom : List Sym) : Boo
   !decide (es.cls Event.isVol r₁.w.id) && !decide (es.cls Event.isVol r₂.w.id) &&
   (r₁.D ++ r₂.D).all (fun α => !decide (es.cls Event.isVol α)) &&
   (r₁.P.rename Λ).syms.all (fun α => decide (es.poR α r₂.w.id)) &&
-  O.satAnd (Expr.liftPred (r₁.P.rename Λ) r₂.P) ΩE
+  O.satAnd (Expr.liftPred (r₁.P.rename Λ) r₂.P) ΩE &&
+  es.liftBranchB Λ dom r₁.w.id r₂.w.id && injOnB Λ dom
 
 def liftOne (r₁ r₂ : Justification) (l : List (Sym × Option Sym)) : Option Justification :=
   if r₁.δ == r₂.δ && es.liftOK O ΩE r₁ r₂ (relOf l) (r₁.P.syms ++ r₁.D) then
@@ -224,6 +247,51 @@ theorem addNew_same {L M : List Justification} (h : ∀ m ∈ M, ∃ r ∈ L, JE
 
 /-! ## Soundness of `step` -/
 
+variable {es} in
+theorem onSideB_iff {g : Guard} {a : EventId} : es.onSideB g a = true ↔ es.OnSide g a := by
+  unfold onSideB OnSide
+  cases h : es.ev a with
+  | none => simp
+  | some e => simp
+
+variable {es} in
+theorem liftBranchB_iff {Λ : Relabelling} {dom : List Sym} {w₁ w₂ : EventId}
+    (hdom : ∀ α β, Λ α = some β → α ∈ dom) :
+    es.liftBranchB Λ dom w₁ w₂ = true ↔ es.LiftBranch Λ w₁ w₂ := by
+  unfold liftBranchB
+  constructor
+  · intro h
+    split at h
+    · rename_i e₁ e₂ h₁ h₂
+      simp only [List.any_eq_true, Bool.and_eq_true, decide_eq_true_eq, List.all_eq_true] at h
+      obtain ⟨g₁, hg₁, g₂, hg₂, ⟨⟨⟨hb, hc⟩, hp⟩, hall⟩⟩ := h
+      refine ⟨g₁, g₂, ⟨e₁, h₁, hg₁⟩, ⟨e₂, h₂, hg₂⟩, hb, hc, hp, fun α β hαβ => ?_⟩
+      have := hall α (hdom α β hαβ)
+      rw [hαβ] at this
+      simp only [Bool.and_eq_true] at this
+      exact ⟨onSideB_iff.1 this.1, onSideB_iff.1 this.2⟩
+    · cases h
+  · rintro ⟨g₁, g₂, ⟨e₁, h₁, hg₁⟩, ⟨e₂, h₂, hg₂⟩, hb, hc, hp, hall⟩
+    simp only [h₁, h₂, List.any_eq_true, Bool.and_eq_true, decide_eq_true_eq, List.all_eq_true]
+    refine ⟨g₁, hg₁, g₂, hg₂, ⟨⟨⟨hb, hc⟩, hp⟩, fun α _ => ?_⟩⟩
+    cases hαβ : Λ α with
+    | none => rfl
+    | some β =>
+      obtain ⟨ha, hb'⟩ := hall α β hαβ
+      simp only [Bool.and_eq_true]
+      exact ⟨onSideB_iff.2 ha, onSideB_iff.2 hb'⟩
+
+theorem injOnB_iff {Λ : Relabelling} {dom : List Sym} : injOnB Λ dom = true ↔ Λ.InjOn dom := by
+  unfold injOnB Relabelling.InjOn
+  simp only [List.all_eq_true, Bool.or_eq_true, bne_iff_ne, ne_eq, beq_iff_eq]
+  constructor
+  · intro h a ha b hb hab
+    exact (h a ha b hb).resolve_left (fun h' => h' hab)
+  · intro h a ha b hb
+    by_cases hab : Λ.app a = Λ.app b
+    · exact .inr (h a ha b hb hab)
+    · exact .inl hab
+
 theorem relOf_dom {l : List (Sym × Option Sym)} {dom : List Sym} {vs : List (Option Sym)}
     (hl : l ∈ allFuns dom vs) {a : Sym} {c : Sym} (h : relOf l a = some c) : a ∈ dom := by
   unfold relOf at h
@@ -336,8 +404,10 @@ theorem liftOne_sound {r₁ r₂ j : Justification} {l : List (Sym × Option Sym
     cases h
     simp only [liftOK, Bool.and_eq_true, beq_iff_eq, List.all_eq_true, List.any_eq_true,
       Bool.or_eq_true, Bool.not_eq_true', decide_eq_true_eq, decide_eq_false_iff_not] at hc
-    obtain ⟨hδ, ⟨⟨⟨⟨⟨⟨⟨⟨⟨hinj, hcr⟩, hD1⟩, hD2⟩, hDcr⟩, hv1⟩, hv2⟩, hv3⟩, hpo⟩, hs⟩⟩ := hc
-    refine .lift (relOf l) hr₁ hr₂ hδ ?_ (fun α c hα => List.mem_append.1 (relOf_dom hl hα))
+    obtain ⟨hδ, ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hinj, hcr⟩, hD1⟩, hD2⟩, hDcr⟩, hv1⟩, hv2⟩, hv3⟩, hpo⟩, hs⟩, hlb⟩, hio⟩⟩ := hc
+    refine .lift (relOf l) hr₁ hr₂ hδ ?_
+      ((liftBranchB_iff fun α β h => relOf_dom hl h).1 hlb) (injOnB_iff.1 hio)
+      (fun α c hα => List.mem_append.1 (relOf_dom hl hα))
       ((crB_iff hb hP₁ hP₂ hwf _ (hr₁.wterm hb) (hr₂.wterm hb)).1 hcr) ?_ ?_ hv1 hv2 hv3 hpo
       ((O.satAnd_iff (isBPred_liftPred (by rw [isBPred_rename]; exact hP₁) hP₂) hΩ).1 hs)
     · intro a b c ha hb'
@@ -544,7 +614,7 @@ theorem step_complete {L : List Justification} (hL : ∀ r ∈ L, es.GenR ΩE.ho
       simp only [Bool.and_eq_true]
       exact ⟨⟨⟨(fwdBaseB_iff hb hP hwf).2 hfb', hfr⟩, FwdCtx.wfB_iff.2 (by rw [← hδ]; exact hwf')⟩,
         (O.satAnd_iff hP hΩ).2 (by rw [← hh]; exact hs)⟩
-  | @lift j₁ j₂ Λ hg₁ hg₂ hδ12 hinj hsupp hcr hD12 hDcr hv1 hv2 hv3 hpo hs ih₁ ih₂ =>
+  | @lift j₁ j₂ Λ hg₁ hg₂ hδ12 hinj hlb hio hsupp hcr hD12 hDcr hv1 hv2 hv3 hpo hs ih₁ ih₂ =>
       obtain ⟨r₁, hr₁, hpeq₁, hD₁, hδ₁, hw₁⟩ := ih₁
       obtain ⟨r₂, hr₂, hpeq₂, hD₂, hδ₂, hw₂⟩ := ih₂
       have hh₁ := holds_eq_of_peq hpeq₁
@@ -606,7 +676,8 @@ theorem step_complete {L : List Justification} (hL : ∀ r ∈ L, es.GenR ΩE.ho
       rw [if_pos]
       simp only [liftOK, Bool.and_eq_true, beq_iff_eq, List.all_eq_true, List.any_eq_true,
         Bool.or_eq_true, Bool.not_eq_true', decide_eq_true_eq, decide_eq_false_iff_not]
-      refine ⟨by rw [← hδ₁, ← hδ₂]; exact hδ12, ⟨⟨⟨⟨⟨⟨⟨⟨⟨?_, ?_⟩, ?_⟩, ?_⟩, ?_⟩, ?_⟩, ?_⟩, ?_⟩, ?_⟩, ?_⟩⟩
+      refine ⟨by rw [← hδ₁, ← hδ₂]; exact hδ12,
+        ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨?_, ?_⟩, ?_⟩, ?_⟩, ?_⟩, ?_⟩, ?_⟩, ?_⟩, ?_⟩, ?_⟩, ?_⟩, ?_⟩⟩
       · intro a ha b hb'
         rw [hagree a ha, hagree b hb']
         cases hΛa : Λ a with
@@ -640,6 +711,13 @@ theorem step_complete {L : List Justification} (hL : ∀ r ∈ L, es.GenR ΩE.ho
       · rw [O.satAnd_iff (isBPred_liftPred (by rw [isBPred_rename]; exact hP₁) hP₂) hΩ,
           ← holds_eq_of_peq hpl]
         exact hs
+      · rw [liftBranchB_iff fun α β h => relOf_dom hl h, hrel, ← hw₁, ← hw₂]
+        exact hlb
+      · rw [injOnB_iff, hrel]
+        refine hio.mono fun α hα => ?_
+        rcases List.mem_append.1 hα with h | h
+        · exact List.mem_append_left _ ((hPs α).1 h)
+        · exact List.mem_append_right _ ((hD₁ α).2 h)
   | weak hwk => cases hwk
 
 end complete

@@ -334,7 +334,7 @@ theorem generated_edge_gen {Ω : Pred} {j : Justification} (h : es.Generated Ω 
         · simp only [List.mem_singleton] at hp
           subst hp
           exact ⟨j₁, hg, hwe, fun q hq => hq, fun q hq => List.mem_append_left _ hq⟩
-  | lift _ _ _ _ _ _ _ _ _ _ _ _ _ _ ih₂ => exact ih₂
+  | lift _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ ih₂ => exact ih₂
   | weak _ _ _ _ ih => exact ih
 
 theorem mem_δ_f_of {j : Justification} (hj : j ∈ x.J) {p : EventId × EventId} (hp : p ∈ j.δ.f) :

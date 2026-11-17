@@ -152,7 +152,9 @@ theorem ClosedRelabEqC.sound {δ : FwdCtx} {Λ : Relabelling} {P₁ P₂ : Expr}
 variable (es)
 
 /-- The elaboration closure with Strengthening restricted to the predicates
-    `Qs` and Weakening to `wk = true`. Lifting relabels only the symbols of
+    `Qs` and Weakening to `wk = true`. Lifting carries `Generated.lift`'s
+    branching restriction (`LiftBranch`) and one-to-one renaming
+    (`Relabelling.InjOn`), relabels only the symbols of
     its first premise's predicate and dependencies, and its closed relabel
     equivalence takes the second premise's expressions as witnesses
     (`ClosedRelabEqC`). -/
@@ -202,6 +204,8 @@ inductive GenR (Ω : Pred) (Qs : List Expr) (wk : Bool) : Justification → Prop
       GenR Ω Qs wk j₁ → GenR Ω Qs wk j₂ →
       j₁.δ = j₂.δ →
       Λ.Injective →
+      es.LiftBranch Λ j₁.w.id j₂.w.id →
+      Λ.InjOn (j₁.P.syms ++ j₁.D) →
       (∀ α c, Λ α = some c → α ∈ j₁.P.syms ∨ α ∈ j₁.D) →
       es.ClosedRelabEqC j₁.δ Λ j₁.P j₁.w j₂.P j₂.w →
       (∀ e, e ∈ j₂.D ↔ ∃ α ∈ j₁.D, Λ.app α = e) →
@@ -230,8 +234,8 @@ theorem GenR.generated {Ω : Pred} {Qs : List Expr} {wk : Bool} {j : Justificati
   | str Q S _ _ h1 h2 h3 h4 ih => exact .str Q S ih h1 h2 h3 h4
   | fwd _ hk hf h1 h2 h3 h4 hwf hs ih => exact .fwd ih hk hf h1 h2 h3 h4 hwf hs
   | we _ hw hwf hs ih => exact .we ih hw hwf hs
-  | lift Λ _ _ h1 h2 _ h3 h4 h5 h6 h7 h8 h9 h10 ih₁ ih₂ =>
-      exact .lift Λ ih₁ ih₂ h1 h2 h3.sound h4
+  | lift Λ _ _ h1 h2 hb hi _ h3 h4 h5 h6 h7 h8 h9 h10 ih₁ ih₂ =>
+      exact .lift Λ ih₁ ih₂ h1 h2 hb hi h3.sound h4
         (fun α hα => let ⟨a, b, ha, hb, hc⟩ := h5 α hα; ⟨a, b, ha, hb, hc.sound⟩) h6 h7 h8 h9 h10
   | weak _ _ h1 h2 h3 ih => exact .weak ih h1 h2 h3
 
@@ -342,7 +346,7 @@ theorem GenR.inv {Ω : Pred} {Qs : List Expr} {wk : Bool} {j : Justification}
         · exact ih.ends p (List.mem_append_left _ hp)
         · exact ih.ends p (List.mem_append_right _ hp)
         · exact ⟨hb.2.2.2, hb.2.2.1⟩
-  | lift _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ ih₂ => exact ⟨ih₂.wf, ih₂.nodupT, ih₂.ends, ih₂.dmem⟩
+  | lift _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ ih₂ => exact ⟨ih₂.wf, ih₂.nodupT, ih₂.ends, ih₂.dmem⟩
   | weak _ _ _ _ _ ih => exact ⟨ih.wf, ih.nodupT, ih.ends, ih.dmem⟩
 
 /-- The forwarding context of a justification of `GenR` has at most `|E|`
@@ -612,7 +616,7 @@ theorem GenR.atoms_small {Ω : Pred} {Qs : List Expr} {wk : Bool} (hva : es.Vals
       rw [← Nat.pow_succ] at hs
       exact hs
   | we _ _ _ _ ih => exact ih
-  | @lift j₁ j₂ Λ _ _ hδ _ _ _ _ _ _ _ _ hpo _ ih₁ ih₂ =>
+  | @lift j₁ j₂ Λ _ _ hδ _ _ _ _ _ _ _ _ _ _ hpo _ ih₁ ih₂ =>
       intro a ha
       rcases atoms_liftPred ha with rfl | ha | ha
       · exact small_of_base (List.mem_cons_self ..) (by simp [tt, atoms]) _
@@ -722,7 +726,7 @@ theorem GenR.wshape {Ω : Pred} {Qs : List Expr} {wk : Bool}
   | we _ _ _ _ ih =>
       obtain ⟨ev, hev, hw, hc⟩ := ih
       exact ⟨ev, hev, hw, hc⟩
-  | lift _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ ih₂ => exact ih₂
+  | lift _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ ih₂ => exact ih₂
   | weak _ _ _ _ _ ih => exact ih
 
 theorem effSyms_base {Qs : List Expr} {ev : Event} (hev : ev ∈ es.events) :

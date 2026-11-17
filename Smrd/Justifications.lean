@@ -51,6 +51,24 @@ predicate `Generated`, whose derivations are the elements of `⋃ᵢ 𝕁ᵢ`.
   conjunct of `⟦P₁⟧_Λ` it does not share
   (`LiftElab.find_distinguishing_predicate`), so the symbols of `⟦P₁⟧_Λ` are
   symbols of `P₂`.
+* Lifting carries the restrictions sMRD's prose states (Richards et al.,
+  §4.7: Lifting applies to "equivalent writes in each branch", "invariant
+  stores on conflicting branches"; "A relabelling, Λ, is an environment that
+  maps symbols, one-to-one, from one branch into symbols from a conflicting
+  branch") and its Def. 4.16 omits: the lifted writes lie on different
+  outcomes of a branching and `Λ` maps symbols of `w₁`'s outcome only, into
+  symbols of `w₂`'s (`LiftBranch`); and the renaming `⟦·⟧_Λ`, not only `Λ` on
+  its domain, is one-to-one on the symbols of `P₁` and `D₁`
+  (`Relabelling.InjOn`). Without them an event is lifted into itself under a
+  relabelling of symbols read before the branching, `⟦P₁⟧_Λ ∨ P₁` turns into a
+  valid disjunction, Weakening drops it, and the justification loses the
+  symbol of the read its branch tests (`Smrd.GuardLoss`); the cross-thread
+  lift of `Smrd.LiftCross` is refused as well. Lifts of invariant stores
+  remain (`Smrd.LiftArms`). MoRDor lifts only writes in conflict, with
+  relabellings from the symbols in conflict with `w₂` to those in conflict
+  with `w₁`, injective by construction (`LiftElab.elab`,
+  `LiftElab.generate_relabelings`). `LiftConds` collects the other side
+  conditions.
 
 * Neither access of an RMW is in the elided position (`RMWAcc`, MoRDor
   `docs/DEPARTURES.md` E4): not the forwarded event `e₂` of a Forwarding
@@ -118,6 +136,38 @@ def Relabelling.app (Λ : Relabelling) (α : Sym) : Sym := (Λ α).getD α
 /-- `Λ` is one-to-one on its domain. -/
 def Relabelling.Injective (Λ : Relabelling) : Prop :=
   ∀ a b c, Λ a = some c → Λ b = some c → a = b
+
+/-- The renaming `⟦·⟧_Λ` is one-to-one on the symbols `S`. Stronger than
+    `Λ.Injective` on `S`: `[ra ↦ rb]` is one-to-one on its domain `{ra}`, but
+    `⟦·⟧_Λ` sends `ra` and `rb` to `rb` (`Smrd.GuardLoss`). -/
+def Relabelling.InjOn (Λ : Relabelling) (S : List Sym) : Prop :=
+  ∀ a ∈ S, ∀ b ∈ S, Λ.app a = Λ.app b → a = b
+
+theorem Relabelling.InjOn.mono {Λ : Relabelling} {S T : List Sym} (h : Λ.InjOn S)
+    (hT : ∀ a ∈ T, a ∈ S) : Λ.InjOn T :=
+  fun a ha b hb hab => h a (hT a ha) b (hT b hb) hab
+
+/-- `⟦·⟧_Λ` is one-to-one on `S` when `Λ` is one-to-one on its domain and no
+    symbol of `S` outside the domain is the image of one of `S` inside it. -/
+theorem Relabelling.injOn_of {Λ : Relabelling} {S : List Sym} (hΛ : Λ.Injective)
+    (h : ∀ a ∈ S, ∀ b ∈ S, Λ a = none → Λ b ≠ some a) : Λ.InjOn S := by
+  intro a ha b hb hab
+  unfold Relabelling.app at hab
+  cases hA : Λ a with
+  | none =>
+    cases hB : Λ b with
+    | none => simpa [hA, hB] using hab
+    | some c =>
+      rw [hA, hB] at hab; simp only [Option.getD_none, Option.getD_some] at hab
+      exact absurd (hab ▸ hB) (h a ha b hb hA)
+  | some c =>
+    cases hB : Λ b with
+    | none =>
+      rw [hA, hB] at hab; simp only [Option.getD_none, Option.getD_some] at hab
+      exact absurd (hab.symm ▸ hA) (h b hb a ha hB)
+    | some d =>
+      rw [hA, hB] at hab; simp only [Option.getD_some] at hab
+      exact hΛ a b c hA (hab ▸ hB)
 
 /-- The pre-justification of an effectful event, `𝕁₀`:
     `(valres(w), origin x ∪ origin e) ⊢^{(∅,∅)} (w : W x e)`,
@@ -303,6 +353,76 @@ def Diverged (a b : EventId) : Prop :=
     the elision when the threads do not join again. -/
 def weNoFork (e₁ e₂ : EventId) : Prop :=
   ∀ c, es.poR e₁ c → c ≠ e₂ → (es.Diverged c e₂ → es.Joinable c e₂) → es.PoCmp c e₂
+
+/-- `a` lies on the `g`-outcome of `g`'s branching: it carries the guard `g`. -/
+def OnSide (g : Guard) (a : EventId) : Prop := ∃ e, es.ev a = some e ∧ g ∈ e.guards
+
+/-- **The branching restriction on Lifting**: the lifted writes `w₁` and `w₂`
+    lie on different outcomes of one branching (guards `g₁` and `g₂` on its
+    condition), and the relabelling `Λ` maps symbols of `w₁`'s outcome only,
+    into symbols of `w₂`'s outcome. Symbols outside `Λ`'s domain -- those
+    read before the branching -- are left fixed by `⟦·⟧_Λ`.
+
+    sMRD's prose (Richards et al., §4.7) has Lifting apply to "equivalent
+    writes in each branch", "invariant stores on conflicting branches", and
+    says "A relabelling, Λ, is an environment that maps symbols, one-to-one,
+    from one branch into symbols from a conflicting branch"; its Def. 4.16,
+    and the paper's `def:elab-lift`, state neither. The conflict of the
+    writes is `Diverged` (`LiftBranch.diverged`), syntactic, MoRDor's
+    conflict. The relabelled symbols and their images are in conflict with
+    the other write (`LiftBranch.dom_diverged`), MoRDor's restriction on its
+    relabellings (`LiftElab.generate_relabelings`), and moreover diverge at
+    the branching where `w₁` and `w₂` do: a symbol of a third branch nested
+    in `w₁`'s outcome is in conflict with `w₁` but is not "from a conflicting
+    branch" of `w₂`'s. In `⟨P⟩_n` the two readings agree on symbols
+    `⊑`-before their writes, which carry the writes' guards. -/
+def LiftBranch (Λ : Relabelling) (w₁ w₂ : EventId) : Prop :=
+  ∃ g₁ g₂, es.OnSide g₁ w₁ ∧ es.OnSide g₂ w₂ ∧
+    g₁.branch = g₂.branch ∧ g₁.cond = g₂.cond ∧ g₁.pos ≠ g₂.pos ∧
+    ∀ α β, Λ α = some β → es.OnSide g₁ α ∧ es.OnSide g₂ β
+
+variable {es} in
+theorem OnSide.diverged {g₁ g₂ : Guard} {a b : EventId} (ha : es.OnSide g₁ a)
+    (hb : es.OnSide g₂ b) (hbr : g₁.branch = g₂.branch) (hc : g₁.cond = g₂.cond)
+    (hp : g₁.pos ≠ g₂.pos) : es.Diverged a b := by
+  obtain ⟨ea, hea, hga⟩ := ha
+  obtain ⟨eb, heb, hgb⟩ := hb
+  exact ⟨ea, eb, hea, heb, g₁, hga, g₂, hgb, hbr, hc, hp⟩
+
+variable {es} in
+/-- **The lifted writes are in conflict.** -/
+theorem LiftBranch.diverged {Λ : Relabelling} {w₁ w₂ : EventId} (h : es.LiftBranch Λ w₁ w₂) :
+    es.Diverged w₁ w₂ := by
+  obtain ⟨g₁, g₂, h₁, h₂, hbr, hc, hp, -⟩ := h
+  exact h₁.diverged h₂ hbr hc hp
+
+variable {es} in
+/-- **The relabelled symbols are in conflict with `w₂`, their images with
+    `w₁`.** -/
+theorem LiftBranch.dom_diverged {Λ : Relabelling} {w₁ w₂ α β : EventId}
+    (h : es.LiftBranch Λ w₁ w₂) (hα : Λ α = some β) :
+    es.Diverged α w₂ ∧ es.Diverged β w₁ := by
+  obtain ⟨g₁, g₂, h₁, h₂, hbr, hc, hp, hΛ⟩ := h
+  obtain ⟨ha, hb⟩ := hΛ α β hα
+  exact ⟨ha.diverged h₂ hbr hc hp,
+    hb.diverged h₁ hbr.symm hc.symm (Ne.symm hp)⟩
+
+variable {es} in
+/-- **The branching restriction makes the renaming one-to-one** on symbols
+    not in conflict with `w₁` -- for `Lifting`, the symbols of `P₁` and `D₁`,
+    which in `⟨P⟩_n` lie `⊑`-before `w₁`: an image is in conflict with `w₁`,
+    so it is no fixed symbol of the set. Not outright: an event structure may
+    have a symbol of `P₁` in conflict with `w₁`, hence the premise
+    `Λ.InjOn (syms(P₁) ∪ D₁)` of `Generated.lift`. -/
+theorem LiftBranch.injOn {Λ : Relabelling} {w₁ w₂ : EventId} {S : List Sym}
+    (hΛ : Λ.Injective) (h : es.LiftBranch Λ w₁ w₂) (hS : ∀ a ∈ S, ¬ es.Diverged a w₁) :
+    Λ.InjOn S :=
+  Relabelling.injOn_of hΛ fun _ ha _ _ _ hb => hS _ ha ((h.dom_diverged hb)).2
+
+variable {es} in
+/-- No event is lifted into itself, unless its own guards diverge. -/
+theorem not_liftBranch_self {Λ : Relabelling} {w : EventId} (h : ¬ es.Diverged w w) :
+    ¬ es.LiftBranch Λ w w := fun hb => h (hb.diverged)
 
 /-- Diverged events have no common upper bound in `⊑`. -/
 def NoJoinDiverge : Prop := ∀ a b, es.Diverged a b → ¬ es.Joinable a b
@@ -546,11 +666,17 @@ inductive Generated (Ω : Pred) : Justification → Prop
       of a dependency of either, is a volatile access.
 
       Every symbol of the relabelled premise `⟦P₁⟧_Λ` has its origin
-      `⊑`-before `w₂`, a deviation from the paper; see the module header. -/
+      `⊑`-before `w₂`; the writes lie on different outcomes of a branching
+      and `Λ` maps symbols of `w₁`'s outcome into `w₂`'s (`LiftBranch`); and
+      `⟦·⟧_Λ` is one-to-one on the symbols of `P₁` and `D₁`
+      (`Relabelling.InjOn`). These are deviations from the paper; see the
+      module header. -/
   | lift {j₁ j₂ : Justification} (Λ : Relabelling) :
       Generated Ω j₁ → Generated Ω j₂ →
       j₁.δ = j₂.δ →
       Λ.Injective →
+      es.LiftBranch Λ j₁.w.id j₂.w.id →
+      Λ.InjOn (j₁.P.syms ++ j₁.D) →
       es.ClosedRelabEq j₁.δ Λ j₁.P j₁.w j₂.P j₂.w →
       (∀ e, e ∈ j₂.D ↔ ∃ α ∈ j₁.D, Λ.app α = e) →
       (∀ α ∈ j₁.D, ∃ ev₁ ev₂, es.ev α = some ev₁ ∧ es.ev (Λ.app α) = some ev₂ ∧
@@ -571,6 +697,33 @@ inductive Generated (Ω : Pred) : Justification → Prop
       Sat (Pred.and P'.holds Ω) →
       Generated Ω { j₁ with P := P' }
 
+/-- The side conditions of Lifting but the branching restriction
+    (`LiftBranch`) and the one-to-one renaming (`Relabelling.InjOn`): those
+    of sMRD's Def. 4.16 and the paper's `def:elab-lift`, with the library's
+    restrictions that no volatile access is lifted and that every symbol of
+    `⟦P₁⟧_Λ` is `⊑`-before `w₂`. The unrestricted rule's derivations of
+    `Smrd.LiftCross` and `Smrd.GuardLoss` are stated through it. -/
+structure LiftConds (Ω : Pred) (Λ : Relabelling) (j₁ j₂ : Justification) : Prop where
+  δ : j₁.δ = j₂.δ
+  inj : Λ.Injective
+  cre : es.ClosedRelabEq j₁.δ Λ j₁.P j₁.w j₂.P j₂.w
+  D : ∀ e, e ∈ j₂.D ↔ ∃ α ∈ j₁.D, Λ.app α = e
+  Dcre : ∀ α ∈ j₁.D, ∃ ev₁ ev₂, es.ev α = some ev₁ ∧ es.ev (Λ.app α) = some ev₂ ∧
+    es.ClosedRelabEq j₁.δ Λ j₁.P ev₁ j₂.P ev₂
+  vol₁ : ¬ es.cls Event.isVol j₁.w.id
+  vol₂ : ¬ es.cls Event.isVol j₂.w.id
+  volD : ∀ α ∈ j₁.D ++ j₂.D, ¬ es.cls Event.isVol α
+  past : ∀ α ∈ (j₁.P.rename Λ).syms, es.poR α j₂.w.id
+  sat : Sat (Pred.and (Expr.liftPred (j₁.P.rename Λ) j₂.P).holds Ω)
+
+variable {es} in
+/-- Lifting from `LiftConds` and the two restrictions. -/
+theorem Generated.lift' {Ω : Pred} {Λ : Relabelling} {j₁ j₂ : Justification}
+    (h₁ : es.Generated Ω j₁) (h₂ : es.Generated Ω j₂) (hc : es.LiftConds Ω Λ j₁ j₂)
+    (hb : es.LiftBranch Λ j₁.w.id j₂.w.id) (hi : Λ.InjOn (j₁.P.syms ++ j₁.D)) :
+    es.Generated Ω { j₂ with P := Expr.liftPred (j₁.P.rename Λ) j₂.P } :=
+  .lift Λ h₁ h₂ hc.δ hc.inj hb hi hc.cre hc.D hc.Dcre hc.vol₁ hc.vol₂ hc.volD hc.past hc.sat
+
 /-- Every generated justification has a predicate consistent with `Ω`, or is
     a pre-justification with a satisfiable value restriction. -/
 theorem Generated.sat {Ω : Pred} {j : Justification} (h : es.Generated Ω j) :
@@ -581,7 +734,7 @@ theorem Generated.sat {Ω : Pred} {j : Justification} (h : es.Generated Ω j) :
       obtain ⟨f, hP, _⟩ := hs; exact Or.inl ⟨f, hP⟩
   | str _ _ _ _ _ _ hs | weak _ _ _ hs =>
       obtain ⟨f, hP, _⟩ := hs; exact Or.inl ⟨f, hP⟩
-  | lift _ _ _ _ _ _ _ _ _ _ _ _ hs =>
+  | lift _ _ _ _ _ _ _ _ _ _ _ _ _ _ hs =>
       obtain ⟨f, hP, _⟩ := hs; exact Or.inl ⟨f, hP⟩
 
 theorem δ_of_preJust {w : Event} {j : Justification} (h : preJust w = some j) : j.δ = .empty := by
@@ -611,7 +764,7 @@ theorem Generated.we_mem {Ω : Pred} {j : Justification} (h : es.Generated Ω j)
         subst hp
         obtain ⟨f, hP, -⟩ := hs
         exact ⟨j₁, hwe, ⟨f, hP⟩, fun q hq => hq⟩
-  | lift _ _ _ _ _ _ _ _ _ _ _ _ _ _ ih₂ => exact ih₂
+  | lift _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ ih₂ => exact ih₂
   | weak _ _ _ _ ih => exact ih
 
 /-- Every forwarding edge `(e₁, e₂)` of a generated justification was added
@@ -630,7 +783,7 @@ theorem Generated.fwd_mem {Ω : Pred} {j : Justification} (h : es.Generated Ω j
         subst hp
         exact ⟨j₁, hf⟩
   | we _ _ _ _ ih => exact ih
-  | lift _ _ _ _ _ _ _ _ _ _ _ _ _ _ ih₂ => exact ih₂
+  | lift _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ ih₂ => exact ih₂
   | weak _ _ _ _ ih => exact ih
 
 /-- **No RMW access is elided** (`rmw_not_elided`): in every generated

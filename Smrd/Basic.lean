@@ -24,6 +24,7 @@ import Smrd.RMWElision
 import Smrd.DPPast
 import Smrd.LiftCross
 import Smrd.GuardLoss
+import Smrd.LiftArms
 import Smrd.RelabEqRefl
 import Smrd.RelabEqBF
 import Smrd.FwdAcrossAlias

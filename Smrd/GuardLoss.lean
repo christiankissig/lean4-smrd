@@ -2,7 +2,7 @@ import Smrd.DPPast
 import Smrd.PpoNecessity
 
 /-!
-# Lifting drops a guard's symbol
+# Lifting drops a guard's symbol, under the unrestricted rule
 
 `A := 0; B := 0; y := 0; (ra := A; rb := B; if ra = 0 then (if rb = 0 then y := 1) ∥ A := 1)`,
 all accesses relaxed. Lifting the guarded write's pre-justification into itself under the
@@ -12,20 +12,34 @@ it under `Ω = ⊤`, and the justification `(⊤ ∧ rb = 0 ∧ rb = 0, ∅) ⊢
 of the read the outer branch tests. A consistent execution then runs `y := 1` while `ra` reads
 `1`, without `(ra, y := 1) ∈ DP`.
 
-Every side condition of `Generated.lift` holds: the two premises are the same generated
-justification (`δ`, `D = ∅` agree), `y := 1` is closed relabel-equivalent to itself (constant
-location and value; its only immediate `≼`-predecessor under either predicate is `y := 0`,
-related to itself; branch events are never `≼`-predecessors), no volatile access, and the
-symbol `rb` of `⟦P⟧_Λ` is `⊑`-before `y := 1`. `Λ` is `Relabelling.Injective` (one-to-one on its
-domain `{ra}`), but `⟦·⟧_Λ` is not: it sends both `ra` and `rb` to `rb`.
+Every side condition of sMRD's Def. 4.16 (with the library's `⊑`-restriction) holds
+(`lift_conds`, `LiftConds`): the two premises are the same generated justification (`δ`,
+`D = ∅` agree), `y := 1` is closed relabel-equivalent to itself (constant location and value;
+its only immediate `≼`-predecessor under either predicate is `y := 0`, related to itself; branch
+events are never `≼`-predecessors), no volatile access, and the symbol `rb` of `⟦P⟧_Λ` is
+`⊑`-before `y := 1`. `Λ` is `Relabelling.Injective` (one-to-one on its domain `{ra}`), but
+`⟦·⟧_Λ` is not: it sends both `ra` and `rb` to `rb`.
 
-* `gen_jW`: the weakened justification is generated; `jW_syms`: `ra ∉ symbols(P)`.
+The derivation is the reason for the restrictions on `Generated.lift` that sMRD's prose (§4.7)
+states and its Def. 4.16 omits, and it is kept here in the unrestricted form: the results below
+assume the lift generated (`hL`), and `gen_jL_of` shows that the restrictions are all that is
+missing.
+
+* `gen_jW_of`: the weakened justification would be generated; `jW_syms`: `ra ∉ symbols(P)`.
 * `consistent_x`, `consistentT_x`: the execution taking it, with `ra` reading `A := 1` and `rb`
-  reading `B := 0`, is consistent. `IsExecution.consistent` asks a model of
+  reading `B := 0`, would be consistent. `IsExecution.consistent` asks a model of
   `⋀ P_j ∧ ⋀ valres(X)` (`ra = 0` there) and `φ` a model of `⋀ (P_j ∧ ψ) ∧ φ_rf` (`ra = 1`
   there); the branch condition is tied to `rf` only through `J`.
 * `guard_lost`: `y := 1 ∈ X`, every model of `φ_rf` gives `ra = 1`, so the branch condition
   `ra = 0` fails, and `(ra, y := 1) ∉ DP`.
+
+Under the restricted rule:
+
+* `not_liftBranch`: the writes must lie on different outcomes of a branching, and no two events
+  of the structure do (in particular `y := 1` and itself); `not_injOn`: `⟦·⟧_Λ` is not one-to-one.
+* `guard_kept`: every generated justification of `y := 1` keeps the conjunct `ra = 0`, or has
+  `ra` forwarded, under any `Ω` not implying `ra = 0`; hence `not_gen_jL`, `not_gen_jW`, and `x`
+  is no execution (`not_execution`).
 
 Variants:
 
@@ -33,12 +47,14 @@ Variants:
   is shared with `P` and stays in `C` (`swap_keeps`).
 * `Swap`: with a third read `rc` the relabelling can be the permutation `(ra rc)`. Strengthening
   the second premise by `rc = 0` and lifting the pre-justification into it leaves
-  `rc = 0 ∧ rb = 0` after Weakening (`Swap.gen_jW`, `Swap.jW_syms`).
+  `rc = 0 ∧ rb = 0` after Weakening (`Swap.gen_jW_of`, `Swap.jW_syms`). `⟦·⟧_Λ` is one-to-one
+  here (`Swap.injOn`); the branching restriction refuses the lift (`Swap.not_liftBranch`).
 * `Free`: `free(r)` after `r := malloc(1)` in place of `y := 1`. Under the pre-justification the
   freed location may alias `A` and `B`, the reads are immediate `≼`-predecessors, and the
   all-pairs clause of closed relabel-equivalence fails; Strengthening by `r ≠ &A ∧ r ≠ &B`
-  leaves the allocation as the only predecessor, and the derivation and the consistent
-  execution go through (`Free.gen_jW`, `Free.guard_lost`).
+  leaves the allocation as the only predecessor, and the derivation and the execution go through
+  under the unrestricted rule (`Free.gen_jW_of`, `Free.guard_lost`); both restrictions refuse it
+  (`Free.not_lift`).
 -/
 
 namespace GuardLoss
@@ -172,9 +188,10 @@ theorem cre_7 : esG.ClosedRelabEq .empty Λ j7.P e7 j7.P e7 := by
   cases hv₁; cases hv₂
   exact cre_2
 
-/-- Every condition of Lifting holds. -/
-theorem gen_jL : esG.Generated (fun _ => True) jL := by
-  refine .lift Λ pre7 pre7 rfl Λ_inj cre_7 ?_ ?_ ?_ ?_ ?_ ?_ ⟨f₀, ?_, trivial⟩
+/-- Every condition of the unrestricted Lifting holds: those of sMRD's Def. 4.16 and the paper's
+    `def:elab-lift`, with the library's `⊑`-restriction and volatile condition. -/
+theorem lift_conds : esG.LiftConds (fun _ => True) Λ j7 j7 := by
+  refine ⟨rfl, Λ_inj, cre_7, ?_, ?_, ?_, ?_, ?_, ?_, ⟨f₀, ?_, trivial⟩⟩
   · intro e; show e ∈ ([] : List EventId) ↔ ∃ α ∈ ([] : List EventId), Λ.app α = e; simp
   · intro α h; nomatch h
   · intro h; have := cls_clsB.1 h; revert this; decide
@@ -192,9 +209,15 @@ theorem Pv_valid : Entails (fun _ => True) Pv.holds := by
   intro f _
   simp [Pv, Expr.holds, Expr.conj, Expr.eval, Expr.tt, c3]
 
-/-- **The weakened justification is generated**: Weakening drops the valid disjunction. -/
-theorem gen_jW : esG.Generated (fun _ => True) jW :=
-  .weak (j₁ := jL) (P' := PW) (Pw := Pv) gen_jL (by rw [jL_P]; exact Expr.ConjEq.refl _) Pv_valid
+/-- The two restrictions are all that stands between `lift_conds` and the lift. -/
+theorem gen_jL_of (hb : esG.LiftBranch Λ j7.w.id j7.w.id) (hi : Λ.InjOn (j7.P.syms ++ j7.D)) :
+    esG.Generated (fun _ => True) jL :=
+  .lift' pre7 pre7 lift_conds hb hi
+
+/-- **Were the lift generated, so would be the weakened justification**: Weakening drops the
+    valid disjunction. -/
+theorem gen_jW_of (hL : esG.Generated (fun _ => True) jL) : esG.Generated (fun _ => True) jW :=
+  .weak (j₁ := jL) (P' := PW) (Pw := Pv) hL (by rw [jL_P]; exact Expr.ConjEq.refl _) Pv_valid
     ⟨f₀, by unfold Expr.holds; decide, trivial⟩
 
 /-- `ra` is not a symbol of the weakened justification; `rb` is. -/
@@ -222,14 +245,15 @@ theorem δx : x.δ = .empty := foldr_empty (by
 
 theorem not_elided (a : EventId) : ¬ x.elided a := not_elided_of_δ_empty _ δx a
 
-theorem gen_Jx : ∀ j ∈ Jx, esG.Generated (fun _ => True) j := by
+theorem gen_Jx (hL : esG.Generated (fun _ => True) jL) :
+    ∀ j ∈ Jx, esG.Generated (fun _ => True) j := by
   intro j hj
   simp only [Jx, List.mem_cons, List.not_mem_nil, or_false] at hj
   rcases hj with rfl | rfl | rfl | rfl | rfl
   · exact .pre (w := e0) (by simp [esG]) rfl ⟨f₀, holds₀ (by simp [esG])⟩
   · exact .pre (w := e1) (by simp [esG]) rfl ⟨f₀, holds₀ (by simp [esG])⟩
   · exact .pre (w := e2) (by simp [esG]) rfl ⟨f₀, holds₀ (by simp [esG])⟩
-  · exact gen_jW
+  · exact gen_jW_of hL
   · exact .pre (w := e8) (by simp [esG]) rfl ⟨f₀, holds₀ (by simp [esG])⟩
 
 theorem cand_iff {a : EventId} : esG.Candidate a ↔ a ∈ [0, 1, 2, 3, 4, 7, 8] := by
@@ -267,11 +291,21 @@ theorem inj_of_nodup {J : List Justification} (hnd : (J.map (·.w.id)).Nodup) {a
       · exact absurd ⟨a, ha, by rw [← hb]; exact h⟩ hnd.1
       · exact ih hnd.2 ha hb
 
-theorem isExecution_x : x.IsExecution esG (fun _ => True) where
+theorem rf_wr_x :
+    ∀ w r, x.rf w r → esG.cls Event.isWrite w ∧ esG.cls Event.isRead r ∧ x.X w ∧ x.X r := by
+  intro w r h
+  have key : ∀ p ∈ rfL, clsB esG Event.isWrite p.1 = true ∧ clsB esG Event.isRead p.2 = true ∧
+      p.1 ∈ [0, 1, 2, 3, 4, 7, 8] ∧ p.2 ∈ [0, 1, 2, 3, 4, 7, 8] := by decide
+  obtain ⟨h₁, h₂, h₃, h₄⟩ := key _ h
+  exact ⟨cls_clsB.2 h₁, cls_clsB.2 h₂, cand_iff.2 h₃, cand_iff.2 h₄⟩
+
+/-- **Were the lift generated, `x` would be an execution.** -/
+theorem isExecution_x (hL : esG.Generated (fun _ => True) jL) :
+    x.IsExecution esG (fun _ => True) where
   maximal := ⟨fun _ h => h, fun a b _ _ ⟨ea, eb, ha, hb, hn⟩ =>
       hn ⟨f₀, holds₀ (ev_inv ha).1, holds₀ (ev_inv hb).1⟩,
     fun _ hc hn => absurd hc hn⟩
-  generated := gen_Jx
+  generated := gen_Jx hL
   inX j hj := by
     simp only [x, Jx, List.mem_cons, List.not_mem_nil, or_false] at hj
     rcases hj with rfl | rfl | rfl | rfl | rfl <;> exact cand_iff.2 (by decide)
@@ -280,11 +314,7 @@ theorem isExecution_x : x.IsExecution esG (fun _ => True) where
       rcases hj with rfl | rfl | rfl | rfl | rfl <;> unfold Expr.holds <;> decide,
     fun a e _ he => holds₀ (ev_inv he).1⟩
   fwdWF := by rw [δx]; exact FwdCtx.WF.empty
-  rf_wr w r h := by
-    have key : ∀ p ∈ rfL, clsB esG Event.isWrite p.1 = true ∧ clsB esG Event.isRead p.2 = true ∧
-        p.1 ∈ [0, 1, 2, 3, 4, 7, 8] ∧ p.2 ∈ [0, 1, 2, 3, 4, 7, 8] := by decide
-    obtain ⟨h₁, h₂, h₃, h₄⟩ := key _ h
-    exact ⟨cls_clsB.2 h₁, cls_clsB.2 h₂, cand_iff.2 h₃, cand_iff.2 h₄⟩
+  rf_wr := rf_wr_x
   rf_func w w' r h h' := by
     have key : ∀ p ∈ rfL, ∀ q ∈ rfL, p.2 = q.2 → p.1 = q.1 := by decide
     exact key _ h _ h' rfl
@@ -311,7 +341,7 @@ theorem P_iff {f : Valuation} : x.P esG f ↔ ∀ j ∈ Jx, j.P.holds f := by
 theorem phi_x : x.phi esG := by
   refine ⟨fun e _ hel => not_elided e hel, fun r => ⟨?_, ?_⟩, g₁, P_iff.2 ?_, ?_, ?_, ?_⟩
   · rintro ⟨w, hw⟩
-    exact ⟨(isExecution_x.rf_wr w r hw).2.2.2, (isExecution_x.rf_wr w r hw).2.1⟩
+    exact ⟨(rf_wr_x w r hw).2.2.2, (rf_wr_x w r hw).2.1⟩
   · rintro ⟨-, hr⟩
     obtain ⟨e, hm, rfl, hp⟩ := inE_of_cls hr
     have key : ∀ e ∈ esG.events, e.isRead = true → ∃ p ∈ rfL, p.2 = e.id := by decide
@@ -448,25 +478,156 @@ theorem coherent_x : x.Coherent esG :=
   ⟨PpoNecessity.relL coL, coOrder, coherence_x, atomicity_x _,
    x.psc_of_noSC esG (x.scFree_of_es esG (esG.scFree_of_all (by decide))) _⟩
 
-/-- **The execution is consistent.** -/
-theorem consistent_x : x.Consistent esG (fun _ => True) :=
-  ⟨isExecution_x, phi_x, noThinAir_x, coherent_x⟩
+/-- **Were the lift generated, the execution would be consistent.** -/
+theorem consistent_x (hL : esG.Generated (fun _ => True) jL) : x.Consistent esG (fun _ => True) :=
+  ⟨isExecution_x hL, phi_x, noThinAir_x, coherent_x⟩
 
 /-- … also with coherence over `X ∖ †` (nothing is elided). -/
-theorem consistentT_x : x.ConsistentT esG (fun _ => True) :=
-  ⟨isExecution_x, phi_x, noThinAir_x, (coherentT_iff_coherent not_elided).2 coherent_x⟩
+theorem consistentT_x (hL : esG.Generated (fun _ => True) jL) :
+    x.ConsistentT esG (fun _ => True) :=
+  ⟨isExecution_x hL, phi_x, noThinAir_x, (coherentT_iff_coherent not_elided).2 coherent_x⟩
 
-/-- **The guard is lost**: a consistent execution runs `y := 1`, guarded by `ra = 0`, while every
-    model of its constraints `P ∧ φ_rf` has `ra = 1`, and `(ra, y := 1) ∉ DP`. -/
-theorem guard_lost :
+/-- **The guard is lost under the unrestricted rule**: were the lift generated, a consistent
+    execution would run `y := 1`, guarded by `ra = 0`, while every model of its constraints
+    `P ∧ φ_rf` has `ra = 1`, and `(ra, y := 1) ∉ DP`. -/
+theorem guard_lost (hL : esG.Generated (fun _ => True) jL) :
     x.Consistent esG (fun _ => True) ∧ x.X 7 ∧
     e7.valres.holds = (Expr.and (Expr.and Expr.tt c3) c4).holds ∧
     (∀ f, x.P esG f → x.phiRf esG f → f 3 = .num 1 ∧ ¬ c3.holds f) ∧
     (∃ f, x.P esG f ∧ x.phiRf esG f) ∧ ¬ x.DP 3 7 := by
-  refine ⟨consistent_x, cand_iff.2 (by decide), rfl, fun f _ hφ => ra_one hφ, phi_x.2.2, ?_⟩
+  refine ⟨consistent_x hL, cand_iff.2 (by decide), rfl, fun f _ hφ => ra_one hφ, phi_x.2.2, ?_⟩
   rintro ⟨-, -, j, hj, hw, hs⟩
   have key : ∀ j ∈ Jx, j.w.id = 7 → 3 ∉ j.P.syms ++ j.D := by decide
   exact key j hj hw (List.mem_append.2 hs)
+
+/-! ## The restricted rule
+
+`Generated.lift` asks the lifted writes to lie on different outcomes of a branching, with `Λ`
+mapping symbols of one outcome into the other (`LiftBranch`), and `⟦·⟧_Λ` to be one-to-one on
+the symbols of `P₁` and `D₁` (`Relabelling.InjOn`). The lift above fails both: it lifts `y := 1`
+into itself, and no event of `esG` is in conflict with any (every guard is positive); `⟦·⟧_Λ`
+merges `ra` and `rb`. More: no generated justification of `y := 1` loses the conjunct `ra = 0`
+unless `ra` is forwarded (`guard_kept`), so `jW` is not generated (`not_gen_jW`) and `x` is no
+execution (`not_execution`). -/
+
+/-- No two events of `esG` diverge: every guard is positive. -/
+theorem not_diverged {a b : EventId} : ¬ esG.Diverged a b :=
+  PpoKit.not_diverged_of_pos (by decide)
+
+/-- **The branching restriction refuses every lift in `esG`**, in particular `y := 1` into
+    itself. -/
+theorem not_liftBranch (Λ' : Relabelling) (a b : EventId) : ¬ esG.LiftBranch Λ' a b :=
+  fun h => not_diverged h.diverged
+
+/-- **The one-to-one renaming refuses the lift too**: `⟦ra⟧_Λ = rb = ⟦rb⟧_Λ`. -/
+theorem not_injOn : ¬ Λ.InjOn (j7.P.syms ++ j7.D) := by
+  intro h
+  have := h 3 (by decide) 4 (by decide) (by decide)
+  cases this
+
+/-- The values forwarding can substitute, `[v₂ ↦ v₁]`, leave `ra = 0` intact. -/
+def keepsC3 (v₁ v₂ : Expr) : Bool :=
+  v₂ != c3 && v₂ != .sym 3 && (v₂ != .val (.num 0) || v₁ == .val (.num 0)) &&
+    (match v₂ with | .and _ _ => false | _ => true)
+
+theorem c3_replace {v₁ v₂ : Expr} (h : keepsC3 v₁ v₂ = true) :
+    c3.replace v₂ v₁ = c3 ∧ (∀ a b, v₂ ≠ .and a b) ∧ c3 ≠ v₂ := by
+  simp only [keepsC3, Bool.and_eq_true, bne_iff_ne, ne_eq, Bool.or_eq_true, beq_iff_eq] at h
+  obtain ⟨⟨⟨h1, h2⟩, h3⟩, h4⟩ := h
+  refine ⟨?_, (fun a b hab => by subst hab; cases h4), Ne.symm h1⟩
+  unfold c3 at h1 ⊢
+  rw [Expr.replace.eq_def, if_neg (Ne.symm h1)]
+  simp only
+  rw [Expr.replace.eq_def, if_neg (Ne.symm h2), Expr.replace.eq_def]
+  by_cases h0 : Expr.val (.num 0) = v₂
+  · rw [if_pos h0, (h3.resolve_left (fun h' => h' h0.symm))]
+  · rw [if_neg h0]
+
+/-- Forwarding into an event other than `ra` keeps `ra = 0`: the forwarded values are `0`, `1`
+    and `rb`, and a `0` comes only from a `0`. -/
+theorem fwd_keeps : ∀ ev₁ ∈ esG.events, ∀ ev₂ ∈ esG.events, (ev₁.id, ev₂.id) ∈ poL →
+    ev₂.id ≠ 3 →
+    (match ev₁.val, ev₂.val with | some v₁, some v₂ => keepsC3 v₁ v₂ | _, _ => true) = true := by
+  decide
+
+/-- The pre-justification of `y := 1` has the conjunct `ra = 0`. -/
+theorem pre_keeps : ∀ w ∈ esG.events,
+    (match preJust w with
+      | some j => decide (j.w.id = 7 → c3 ∈ j.P.conjuncts)
+      | none => true) = true := by
+  decide
+
+/-- **No generated justification of `y := 1` loses the guard `ra = 0`**, unless `ra` is
+    forwarded: every one has `ra = 0` among its conjuncts, or a forwarding edge into `ra`. Under
+    any global guarantees `Ω` that do not imply `ra = 0` (Weakening keeps the conjunct). The
+    branching restriction refuses every Lifting in `esG`; Value Assignment, Write Elision and
+    Strengthening keep the conjuncts; Forwarding replaces `val(e₂)`, which leaves `ra = 0`
+    unless `e₂` is `ra`. -/
+theorem guard_kept {Ω : Pred} (hΩ : ¬ Entails Ω c3.holds) {j : Justification}
+    (h : esG.Generated Ω j) : j.w.id = 7 → c3 ∈ j.P.conjuncts ∨ ∃ e, (e, 3) ∈ j.δ.f := by
+  induction h with
+  | @pre w j hw hj _ =>
+      intro h7; left
+      have := pre_keeps w hw
+      rw [hj] at this
+      exact of_decide_eq_true this h7
+  | va _ _ _ _ ih => exact ih
+  | str Q S _ _ _ _ _ ih =>
+      intro h7
+      rcases ih h7 with h | h
+      · exact .inl (conjuncts_strPred esG _ h)
+      · exact .inr h
+  | @fwd j₁ o x e b e₁ e₂ ev₁ ev₂ v₁ v₂ _ _ hf h₁ h₂ hv₁ hv₂ _ _ ih =>
+      intro h7
+      rcases ih h7 with h | ⟨e', he⟩
+      · by_cases h3 : e₂ = 3
+        · subst h3; exact .inr ⟨e₁, List.mem_append_right _ (List.mem_singleton_self _)⟩
+        · left
+          have hpo : (ev₁.id, ev₂.id) ∈ poL := by
+            rw [(ev_inv h₁).2, (ev_inv h₂).2]; exact hf.1.1.2.1
+          have hk := fwd_keeps ev₁ (ev_inv h₁).1 ev₂ (ev_inv h₂).1 hpo
+            (by rw [(ev_inv h₂).2]; exact h3)
+          rw [hv₁, hv₂] at hk
+          obtain ⟨hr, hnand, hne⟩ := c3_replace hk
+          have := Expr.mem_conjuncts_replace (q := v₁) hnand hne h
+          rwa [hr] at this
+      · exact .inr ⟨e', List.mem_append_left _ he⟩
+  | we _ _ _ _ ih => exact ih
+  | lift _ _ _ _ _ hb => exact absurd hb.diverged not_diverged
+  | @weak j₁ P' Pw _ hc hE _ ih =>
+      intro h7
+      rcases ih h7 with h | h
+      · left
+        have := (hc c3).1 h
+        simp only [Expr.conjuncts, List.mem_append] at this
+        rcases this with h' | h'
+        · exact h'
+        · exact absurd (fun f hf => (Expr.holds_iff_conjuncts Pw f).1 (hE f hf) c3 h') hΩ
+      · exact .inr h
+
+theorem not_entails_c3 : ¬ Entails (fun _ => True) c3.holds :=
+  fun h => absurd (h g₁ trivial) (by unfold Expr.holds; decide)
+
+/-- **The weakened justification is not generated.** -/
+theorem not_gen_jW : ¬ esG.Generated (fun _ => True) jW := by
+  intro h
+  rcases guard_kept not_entails_c3 h rfl with h | ⟨e, he⟩
+  · revert h; decide
+  · cases he
+
+/-- **Nor is the lifted one**: `ra = 0` is no conjunct of it. -/
+theorem not_gen_jL : ¬ esG.Generated (fun _ => True) jL := by
+  intro h
+  rcases guard_kept not_entails_c3 h rfl with h | ⟨e, he⟩
+  · revert h; decide
+  · cases he
+
+/-- **`x` is no execution.** -/
+theorem not_execution {Ω : Pred} (hΩ : ¬ Entails Ω c3.holds) : ¬ x.IsExecution esG Ω := by
+  intro hx
+  rcases guard_kept hΩ (hx.generated jW (by simp [x, Jx])) rfl with h | ⟨e, he⟩
+  · revert h; decide
+  · cases he
 
 /-! ## The same with `free(r)`
 
@@ -655,8 +816,9 @@ theorem cre_7 : esF.ClosedRelabEq .empty Λ jS.P e7 jS.P e7 := by
     cases hv₁; cases hv₂
     exact cre_2
 
-theorem gen_jL : esF.Generated (fun _ => True) jL := by
-  refine .lift Λ gen_jS gen_jS rfl Λ_inj cre_7 ?_ ?_ ?_ ?_ ?_ ?_ ⟨f₀, ?_, trivial⟩
+/-- Every condition of the unrestricted Lifting holds. -/
+theorem lift_conds : esF.LiftConds (fun _ => True) Λ jS jS := by
+  refine ⟨rfl, Λ_inj, cre_7, ?_, ?_, ?_, ?_, ?_, ?_, ⟨f₀, ?_, trivial⟩⟩
   · intro e
     show e ∈ [2] ↔ ∃ α ∈ [2], Λ.app α = e
     simp [Relabelling.app, Λ, eq_comm]
@@ -673,12 +835,20 @@ theorem gen_jL : esF.Generated (fun _ => True) jL := by
     exact key α h
   · unfold Expr.holds; decide
 
-/-- **The weakened justification of `free(r)` is generated.** -/
-theorem gen_jW : esF.Generated (fun _ => True) jW :=
-  .weak (j₁ := jL) (P' := PW) (Pw := Pv) gen_jL (by rw [jL_P]; exact Expr.ConjEq.refl _)
+/-- **Were the lift generated, so would be the weakened justification of `free(r)`.** -/
+theorem gen_jW_of (hL : esF.Generated (fun _ => True) jL) : esF.Generated (fun _ => True) jW :=
+  .weak (j₁ := jL) (P' := PW) (Pw := Pv) hL (by rw [jL_P]; exact Expr.ConjEq.refl _)
     Pv_valid ⟨f₀, by unfold Expr.holds; decide, trivial⟩
 
 theorem jW_syms : 3 ∉ jW.P.syms ∧ 4 ∈ jW.P.syms ∧ jW.D = [2] := by decide
+
+/-- **The restricted rule refuses the lift**: no two events of `esF` diverge, and `⟦·⟧_Λ`
+    merges `ra` and `rb`. -/
+theorem not_lift (Λ' : Relabelling) (a b : EventId) :
+    ¬ esF.LiftBranch Λ' a b ∧ ¬ Λ.InjOn (jS.P.syms ++ jS.D) := by
+  refine ⟨fun h => PpoKit.not_diverged_of_pos (by decide) h.diverged, fun h => ?_⟩
+  have := h 3 (by decide) 4 (by decide) (by decide)
+  cases this
 
 /-! ### The execution -/
 
@@ -693,14 +863,15 @@ theorem δx : x.δ = .empty := foldr_empty (by
 
 theorem not_elided (a : EventId) : ¬ x.elided a := not_elided_of_δ_empty _ δx a
 
-theorem gen_Jx : ∀ j ∈ Jx, esF.Generated (fun _ => True) j := by
+theorem gen_Jx (hL : esF.Generated (fun _ => True) jL) :
+    ∀ j ∈ Jx, esF.Generated (fun _ => True) j := by
   intro j hj
   simp only [Jx, List.mem_cons, List.not_mem_nil, or_false] at hj
   rcases hj with rfl | rfl | rfl | rfl | rfl
   · exact .pre (w := e0) (by simp [esF]) rfl ⟨f₀, holds₀ (by simp [esF])⟩
   · exact .pre (w := e1) (by simp [esF]) rfl ⟨f₀, holds₀ (by simp [esF])⟩
   · exact .pre (w := e2) (by simp [esF]) rfl ⟨f₀, holds₀ (by simp [esF])⟩
-  · exact gen_jW
+  · exact gen_jW_of hL
   · exact .pre (w := e8) (by simp [esF]) rfl ⟨f₀, holds₀ (by simp [esF])⟩
 
 theorem cand_iff {a : EventId} : esF.Candidate a ↔ a ∈ [0, 1, 2, 3, 4, 7, 8] := by
@@ -726,11 +897,20 @@ theorem inE_of_cls {p : Event → Bool} {a : EventId} (h : esF.cls p a) :
   obtain ⟨e, he, hp⟩ := h
   exact ⟨e, (ev_inv he).1, (ev_inv he).2, hp⟩
 
-theorem isExecution_x : x.IsExecution esF (fun _ => True) where
+theorem rf_wr_x :
+    ∀ w r, x.rf w r → esF.cls Event.isWrite w ∧ esF.cls Event.isRead r ∧ x.X w ∧ x.X r := by
+  intro w r h
+  have key : ∀ p ∈ rfL, clsB esF Event.isWrite p.1 = true ∧ clsB esF Event.isRead p.2 = true ∧
+      p.1 ∈ [0, 1, 2, 3, 4, 7, 8] ∧ p.2 ∈ [0, 1, 2, 3, 4, 7, 8] := by decide
+  obtain ⟨h₁, h₂, h₃, h₄⟩ := key _ h
+  exact ⟨cls_clsB.2 h₁, cls_clsB.2 h₂, cand_iff.2 h₃, cand_iff.2 h₄⟩
+
+theorem isExecution_x (hL : esF.Generated (fun _ => True) jL) :
+    x.IsExecution esF (fun _ => True) where
   maximal := ⟨fun _ h => h, fun a b _ _ ⟨ea, eb, ha, hb, hn⟩ =>
       hn ⟨f₀, holds₀ (ev_inv ha).1, holds₀ (ev_inv hb).1⟩,
     fun _ hc hn => absurd hc hn⟩
-  generated := gen_Jx
+  generated := gen_Jx hL
   inX j hj := by
     simp only [x, Jx, List.mem_cons, List.not_mem_nil, or_false] at hj
     rcases hj with rfl | rfl | rfl | rfl | rfl <;> exact cand_iff.2 (by decide)
@@ -739,11 +919,7 @@ theorem isExecution_x : x.IsExecution esF (fun _ => True) where
       rcases hj with rfl | rfl | rfl | rfl | rfl <;> unfold Expr.holds <;> decide,
     fun a e _ he => holds₀ (ev_inv he).1⟩
   fwdWF := by rw [δx]; exact FwdCtx.WF.empty
-  rf_wr w r h := by
-    have key : ∀ p ∈ rfL, clsB esF Event.isWrite p.1 = true ∧ clsB esF Event.isRead p.2 = true ∧
-        p.1 ∈ [0, 1, 2, 3, 4, 7, 8] ∧ p.2 ∈ [0, 1, 2, 3, 4, 7, 8] := by decide
-    obtain ⟨h₁, h₂, h₃, h₄⟩ := key _ h
-    exact ⟨cls_clsB.2 h₁, cls_clsB.2 h₂, cand_iff.2 h₃, cand_iff.2 h₄⟩
+  rf_wr := rf_wr_x
   rf_func w w' r h h' := by
     have key : ∀ p ∈ rfL, ∀ q ∈ rfL, p.2 = q.2 → p.1 = q.1 := by decide
     exact key _ h _ h' rfl
@@ -762,7 +938,7 @@ theorem phi_x : x.phi esF := by
   refine ⟨fun e _ hel => not_elided e hel, fun r => ⟨?_, ?_⟩, g₁, fun j hj => ⟨?_, ?_⟩, ?_,
     ?_, ?_⟩
   · rintro ⟨w, hw⟩
-    exact ⟨(isExecution_x.rf_wr w r hw).2.2.2, (isExecution_x.rf_wr w r hw).2.1⟩
+    exact ⟨(rf_wr_x w r hw).2.2.2, (rf_wr_x w r hw).2.1⟩
   · rintro ⟨-, hr⟩
     obtain ⟨e, hm, rfl, hp⟩ := inE_of_cls hr
     have key : ∀ e ∈ esF.events, e.isRead = true → ∃ p ∈ rfL, p.2 = e.id := by decide
@@ -904,19 +1080,21 @@ theorem coherent_x : x.Coherent esF :=
   ⟨PpoNecessity.relL coL, coOrder, coherence_x, atomicity_x _,
    x.psc_of_noSC esF (x.scFree_of_es esF (esF.scFree_of_all (by decide))) _⟩
 
-theorem consistent_x : x.Consistent esF (fun _ => True) :=
-  ⟨isExecution_x, phi_x, noThinAir_x, coherent_x⟩
+theorem consistent_x (hL : esF.Generated (fun _ => True) jL) : x.Consistent esF (fun _ => True) :=
+  ⟨isExecution_x hL, phi_x, noThinAir_x, coherent_x⟩
 
-theorem consistentT_x : x.ConsistentT esF (fun _ => True) :=
-  ⟨isExecution_x, phi_x, noThinAir_x, (coherentT_iff_coherent not_elided).2 coherent_x⟩
+theorem consistentT_x (hL : esF.Generated (fun _ => True) jL) :
+    x.ConsistentT esF (fun _ => True) :=
+  ⟨isExecution_x hL, phi_x, noThinAir_x, (coherentT_iff_coherent not_elided).2 coherent_x⟩
 
-/-- **The guard is lost with `free(r)`**: a consistent execution frees `r`, guarded by
-    `ra = 0`, while every model of `φ_rf` has `ra = 1`, and `(ra, free(r)) ∉ DP`. -/
-theorem guard_lost :
+/-- **The guard is lost with `free(r)` under the unrestricted rule**: were the lift generated,
+    a consistent execution would free `r`, guarded by `ra = 0`, while every model of `φ_rf` has
+    `ra = 1`, and `(ra, free(r)) ∉ DP`. -/
+theorem guard_lost (hL : esF.Generated (fun _ => True) jL) :
     x.Consistent esF (fun _ => True) ∧ x.X 7 ∧
     (∀ f, x.phiRf esF f → f 3 = .num 1 ∧ ¬ c3.holds f) ∧
     (∃ f, x.P esF f ∧ x.phiRf esF f) ∧ ¬ x.DP 3 7 := by
-  refine ⟨consistent_x, cand_iff.2 (by decide), fun f hφ => ra_one hφ, phi_x.2.2, ?_⟩
+  refine ⟨consistent_x hL, cand_iff.2 (by decide), fun f hφ => ra_one hφ, phi_x.2.2, ?_⟩
   rintro ⟨-, -, j, hj, hw, hs⟩
   have key : ∀ j ∈ Jx, j.w.id = 7 → 3 ∉ j.P.syms ++ j.D := by decide
   exact key j hj hw (List.mem_append.2 hs)
@@ -1072,8 +1250,9 @@ theorem cre_9 : esS.ClosedRelabEq .empty Λs j₁.P e9 j₂.P e9 := by
     cases hv₁; cases hv₂
     exact cre_3
 
-theorem gen_jL : esS.Generated (fun _ => True) jL := by
-  refine .lift Λs pre₁ gen_j₂ rfl Λs_inj cre_9 ?_ ?_ ?_ ?_ ?_ ?_ ⟨f₀, ?_, trivial⟩
+/-- Every condition of the unrestricted Lifting holds. -/
+theorem lift_conds : esS.LiftConds (fun _ => True) Λs j₁ j₂ := by
+  refine ⟨rfl, Λs_inj, cre_9, ?_, ?_, ?_, ?_, ?_, ?_, ⟨f₀, ?_, trivial⟩⟩
   · intro e; show e ∈ ([] : List EventId) ↔ ∃ α ∈ ([] : List EventId), Λs.app α = e; simp
   · intro α h; nomatch h
   · intro h; have := cls_clsB.1 h; revert this; decide
@@ -1088,12 +1267,20 @@ theorem Pv_valid : Entails (fun _ => True) Pv.holds := by
   intro f _
   simp [Pv, Expr.holds, Expr.conj, Expr.eval, Expr.tt, ca]
 
-/-- **Under a permutation the guard's symbol is lost too.** -/
-theorem gen_jW : esS.Generated (fun _ => True) jW :=
-  .weak (j₁ := jL) (P' := PW) (Pw := Pv) gen_jL (by rw [jL_P]; exact Expr.ConjEq.refl _)
+/-- **Under a permutation the guard's symbol would be lost too**, were the lift generated. -/
+theorem gen_jW_of (hL : esS.Generated (fun _ => True) jL) : esS.Generated (fun _ => True) jW :=
+  .weak (j₁ := jL) (P' := PW) (Pw := Pv) hL (by rw [jL_P]; exact Expr.ConjEq.refl _)
     Pv_valid ⟨f₀, by unfold Expr.holds; decide, trivial⟩
 
 theorem jW_syms : 4 ∉ jW.P.syms ∧ jW.P.syms = [6, 5] ∧ jW.D = [] := by decide
+
+/-- A permutation passes the one-to-one renaming: `⟦·⟧_{(ra rc)}` is one-to-one on the symbols
+    `ra`, `rb` of `P₁`. The renaming condition alone does not exclude the lift. -/
+theorem injOn : Λs.InjOn (j₁.P.syms ++ j₁.D) := by unfold Relabelling.InjOn; decide
+
+/-- **The branching restriction refuses it**: no two events of `esS` diverge. -/
+theorem not_liftBranch (Λ' : Relabelling) (a b : EventId) : ¬ esS.LiftBranch Λ' a b :=
+  fun h => PpoKit.not_diverged_of_pos (by decide) h.diverged
 
 end Swap
 

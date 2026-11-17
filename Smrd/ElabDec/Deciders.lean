@@ -234,7 +234,7 @@ theorem GenR.bpred {Ω : Pred} {Qs : List Expr} {wk : Bool} {M : List Nat} (hb :
   | str Q S hQ _ _ _ _ _ ih => exact isBPred_strPred hb ih hQ S
   | fwd _ _ hf h₁ h₂ hv₁ hv₂ _ _ ih => exact isBPred_fwd_replace hb ih hf h₁ h₂ hv₁ hv₂
   | we _ _ _ _ ih => exact ih
-  | lift Λ _ _ _ _ _ _ _ _ _ _ _ _ _ ih₁ ih₂ =>
+  | lift Λ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ ih₁ ih₂ =>
       exact isBPred_liftPred (by rw [isBPred_rename]; exact ih₁) ih₂
   | weak _ _ hc _ _ ih =>
       apply isBPred_of_conjuncts
@@ -270,7 +270,7 @@ theorem GenR.wterm {Ω : Pred} {Qs : List Expr} {wk : Bool} {M : List Nat} (hb :
       · simp only [Event.loc, Option.some.injEq] at hl; rw [← hl]; exact isTerm_replace hq hn x hx
       · simp only [Event.val, Option.some.injEq] at hu; rw [← hu]; exact isTerm_replace hq hn e he
   | we _ _ _ _ ih => exact ih
-  | lift _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ ih₂ => exact ih₂
+  | lift _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ ih₂ => exact ih₂
   | weak _ _ _ _ _ ih => exact ih
 
 /-! ## `≼` and `pred` -/

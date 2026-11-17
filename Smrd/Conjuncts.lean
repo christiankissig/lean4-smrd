@@ -289,4 +289,29 @@ theorem conjuncts_liftPred {P₁ P₂ c : Expr} (h₁ : c ∈ P₁.conjuncts) (h
   · exact List.mem_filter.2 ⟨h₁, decide_eq_true h₂⟩
   · rw [conjuncts_of_mem h₁]; exact List.mem_singleton_self c
 
+/-- A conjunct other than the replaced expression, which is no conjunction,
+    survives replacement as a conjunct: `replace` descends through `∧`. -/
+theorem mem_conjuncts_replace {p q c : Expr} (hp : ∀ a b, p ≠ .and a b) (hc : c ≠ p) :
+    ∀ {P : Expr}, c ∈ P.conjuncts → c.replace p q ∈ (P.replace p q).conjuncts := by
+  have leaf : ∀ P : Expr, (∀ a b, P ≠ .and a b) → P ≠ p →
+      P.replace p q ∈ (P.replace p q).conjuncts := by
+    intro P hP hPp
+    rw [Expr.replace.eq_def, if_neg hPp]
+    cases P with
+    | and a b => exact absurd rfl (hP a b)
+    | _ => simp [conjuncts]
+  intro P
+  induction P with
+  | and a b iha ihb =>
+      intro h
+      have hne : Expr.and a b ≠ p := fun h' => hp a b h'.symm
+      rw [Expr.replace.eq_def, if_neg hne]
+      simp only [conjuncts, List.mem_append] at h ⊢
+      exact h.imp iha ihb
+  | val _ | sym _ | bin _ _ _ | eq _ _ | le _ _ | not _ | or _ _ =>
+      intro h
+      simp only [conjuncts, List.mem_singleton] at h
+      subst h
+      exact leaf _ (fun a b h => by cases h) hc
+
 end Expr
