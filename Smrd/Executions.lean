@@ -366,12 +366,28 @@ def poX : Rel := fun a b => x.XwF es a ∧ x.XwF es b ∧ es.poR a b
     (under `P ∧ φ_rf`). -/
 def poloc : Rel := fun a b => x.poX es a b ∧ x.sameLoc es a b
 
-/-- `rmw ≜ {(e_r, e_w) ∈ X × X | (e_r, c, e_w) ∈ ⊑ʳᵐʷ ∧ c ≡_P ⊤}`: the read
-    and the write of each read-modify-write operation that writes in the
-    execution, every `FADD` and a `CAS` on its succeeding branch, with `P` the
-    frozen predicate. -/
+/-- `rmw ≜ {(e_r, e_w) ∈ X × X | (e_r, c, e_w) ∈ ⊑ʳᵐʷ ∧ c ≡_{P ∧ valres_X} ⊤}`: the
+    read and the write of each read-modify-write operation that writes in the
+    execution, every `FADD` and a `CAS` on its succeeding branch.
+
+    The condition is read under the frozen predicate `P` *and* the value
+    restrictions of `X` (as `p_combined`, `Pm`, reads `≼_loc`), not under `P`
+    alone (the paper's `c ≡_P ⊤`). A pair in `X × X` is on the RMW's
+    succeeding branch already; `P` alone can be weaker than that branch where a
+    justification of the write was lifted into it. Lifting the write of a `CAS`
+    that succeeds in one iteration into the write of the same `CAS` in a later
+    one, across the first `CAS`'s branching, gives the later write
+    `⟦P₁⟧_Λ ∨ P₂`, whose first disjunct need not entail the later condition;
+    every side condition of the restricted rule but closed relabel-equivalence
+    admits it, and whether that one refuses it depends on the `pred` chains
+    under every predicate Strengthening can reach. Under `P` alone such a pair
+    would leave `rmw`, and Atomicity with it. A write's value restriction
+    carries the condition it is guarded by, so under `valres_X` every pair of
+    `⊑ʳᵐʷ` in `X × X` whose write is guarded by the condition is in `rmw`
+    (`rmwRel_of_guard`, `Smrd.SyncOrder`). -/
 def rmwRel : Rel := fun r w =>
-  x.X r ∧ x.X w ∧ ∃ ent ∈ es.rmw, ent.r = r ∧ ent.w = w ∧ EquivUnder (x.P es) ent.cond Expr.tt
+  x.X r ∧ x.X w ∧ ∃ ent ∈ es.rmw, ent.r = r ∧ ent.w = w ∧
+    EquivUnder (Pred.and (x.P es) (x.valresX es)) ent.cond Expr.tt
 
 /-- `rf ; rmw`: from a write to the write of an RMW that reads from it. -/
 def rfRmw : Rel := fun a b => ∃ r, x.rf a r ∧ x.rmwRel es r b

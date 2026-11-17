@@ -184,6 +184,27 @@ theorem rmw_ppo {Ω : Pred} (hx : x.IsExecution es Ω) (hW : RMWWF es)
     (fun hel => rmw_not_elided hx hel ⟨ent, hent, .inr rfl⟩)
     hpo (fun h => hirr _ (h ▸ hpo)) hm hM
 
+/-- **An RMW pair of `X` whose write is guarded by the condition is in `rmw`**: the
+    write's value restriction carries the condition taken, and `rmw` reads the
+    condition under `P ∧ valres_X`. In `⟨P⟩_n` every `CAS` write is guarded by its
+    condition and every `FADD`'s condition is `⊤`. -/
+theorem rmwRel_of_guard {ent : RMWEntry} (hent : ent ∈ es.rmw) {r w : EventId} (hr : ent.r = r)
+    (hw : ent.w = w) (hXr : x.X r) (hXw : x.X w) {ew : Event} (hev : es.ev w = some ew)
+    {g : Guard} (hg : g ∈ ew.guards) (hgc : g.cond = ent.cond) (hgp : g.pos = true) :
+    x.rmwRel es r w := by
+  refine ⟨hXr, hXw, ent, hent, hr, hw, fun f hf v₁ v₂ h₁ h₂ => ?_⟩
+  have h := (Expr.holds_conj _ f).1 (hf.2 w ew hXw hev) g.expr (List.mem_map_of_mem hg)
+  simp only [Guard.expr, hgp, if_true, hgc, Expr.holds] at h
+  rw [h] at h₁
+  simp [Expr.tt, Expr.eval] at h₂
+  rw [← Option.some.inj h₁, ← h₂]
+
+/-- **An RMW pair of `X` with condition `⊤` is in `rmw`.** -/
+theorem rmwRel_of_tt {ent : RMWEntry} (hent : ent ∈ es.rmw) {r w : EventId} (hr : ent.r = r)
+    (hw : ent.w = w) (hXr : x.X r) (hXw : x.X w) (hc : ent.cond = Expr.tt) : x.rmwRel es r w := by
+  refine ⟨hXr, hXw, ent, hent, hr, hw, fun f _ v₁ v₂ h₁ h₂ => ?_⟩
+  rw [hc] at h₁; rw [h₁] at h₂; exact Option.some.inj h₂
+
 /-- An `rf`-source is not elided (`φ`). -/
 theorem not_elided_of_rf (hphi : x.phi es) {w r : EventId} (h : x.rf w r) : ¬ x.elided w :=
   hphi.1 w (.inl ⟨r, h⟩)

@@ -462,6 +462,7 @@ theorem coherence_congr {es : EventStructure} {x x' : Execution} {co : Rel}
   have hrr : Execution.rfRmw es ⟨X, J, rf⟩ = Execution.rfRmw es ⟨X, J', rf⟩ := by
     funext a b
     simp only [Execution.rfRmw, Execution.rmwRel, hP]
+    rfl
   have hsw : Execution.sw es ⟨X, J, rf⟩ = Execution.sw es ⟨X, J', rf⟩ := by
     funext a b
     simp only [Execution.sw, Execution.rs, Execution.poloc, Execution.sameLoc, hP, hφ, hrr]
