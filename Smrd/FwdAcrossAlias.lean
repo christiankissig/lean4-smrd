@@ -468,7 +468,8 @@ theorem phiRf_P : xP.phiRf esP fOut := by
     rcases hm with rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> cases hk₁
 
 theorem phi_P : xP.phi esP := by
-  refine ⟨fun e h hel => ?_, fun r => ⟨?_, ?_⟩, fOut, P_P, phiRf_P⟩
+  refine ⟨fun e h hel => ?_, fun r => ⟨?_, ?_⟩, fOut, P_P, phiRf_P,
+    valresX_of_nil (by decide) _⟩
   · rw [elided_P] at hel; subst hel
     rcases h with ⟨r, hr⟩ | ⟨b, hb⟩
     · have : ∀ p ∈ rfL, p.1 ≠ 8 := by decide

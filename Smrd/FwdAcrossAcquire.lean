@@ -335,7 +335,8 @@ theorem isExecution_F (hg : esA.Generated (fun _ => True) jF) :
 def fOut : Valuation := fun α => if α = 3 then .num 1 else .num 0
 
 theorem phi_F : xF.phi esA := by
-  refine ⟨fun e h hel => ?_, fun r => ⟨?_, ?_⟩, fOut, P_F fOut, ⟨?_, ?_, ?_⟩⟩
+  refine ⟨fun e h hel => ?_, fun r => ⟨?_, ?_⟩, fOut, P_F fOut, ⟨?_, ?_, ?_⟩,
+    valresX_of_nil (by decide) _⟩
   · rw [elided_F] at hel; subst hel
     rcases h with ⟨r, hr⟩ | ⟨b, hb⟩
     · have : ∀ p ∈ rfA, p.1 ≠ 4 := by decide
@@ -403,7 +404,7 @@ theorem locOf_F {a b : EventId} (h : xF.sameLoc esA a b) : locOf esA a = locOf e
   obtain ⟨ea, eb, la, lb, ha, hb, hla, hlb, heq⟩ := h
   obtain ⟨x, rfl⟩ := gA ea (ev_inv ha).1 _ hla
   obtain ⟨y, rfl⟩ := gA eb (ev_inv hb).1 _ hlb
-  obtain ⟨f, hP, hrf⟩ := phi_F.2.2
+  obtain ⟨f, hP, hrf, -⟩ := phi_F.2.2
   have := heq f hP hrf
   cases this
   simp [locOf, ha, hb, hla, hlb]

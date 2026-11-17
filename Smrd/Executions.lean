@@ -322,11 +322,21 @@ def phiRf : Pred := fun f =>
     (∀ vw vr, ew.val = some vw → er.val = some vr → vw.eval f = vr.eval f)) ∧
   x.allocDisjoint es f
 
-/-- `φ ≜ (π₁(rf ∪ DP) ∩ † = ∅) ∧ (π₂(rf) = X ∩ R) ∧ (P ∧ φ_rf ≢ ⊥)` -/
+/-- `φ ≜ (π₁(rf ∪ DP) ∩ † = ∅) ∧ (π₂(rf) = X ∩ R) ∧ (P ∧ φ_rf ∧ valres_X ≢ ⊥)`.
+
+    The value restrictions of `X` are part of the satisfiability check (the
+    paper's `P ∧ φ_rf ≢ ⊥` leaves them to `IsExecution.consistent`, which
+    checks `P_J ∧ valres_X` on its own): an event of `X` is taken on the
+    branch outcomes its guards name, and `rf` must give the reads values that
+    take them. With two separate checks, an execution could take a guarded
+    event while `rf` gives its guard's read a value that fails the guard,
+    wherever the frozen predicate `P` is weaker than the guard (after
+    Lifting). MoRDor's `p_combined` conjoins the path's value restrictions
+    the same way. -/
 def phi : Prop :=
   (∀ e, ((∃ r, x.rf e r) ∨ (∃ b, x.DP e b)) → ¬ x.elided e) ∧
   (∀ r, (∃ w, x.rf w r) ↔ (x.X r ∧ es.cls Event.isRead r)) ∧
-  Sat (Pred.and (x.P es) (x.phiRf es))
+  Sat (Pred.and (x.P es) (Pred.and (x.phiRf es) (x.valresX es)))
 
 /-! ## Axiomatic memory consistency model -/
 

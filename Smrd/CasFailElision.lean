@@ -346,7 +346,8 @@ theorem isExecution_C : xC.IsExecution esC (fun _ => True) where
     · exact ⟨jWE, by simp [xC, JC], rfl, fun j' hj' h => uniq _ _ (by simp [JC]) hj' h.symm⟩
 
 theorem phi_C : xC.phi esC := by
-  refine ⟨fun e h hel => ?_, fun r => ⟨?_, ?_⟩, fOut, P_C, ⟨?_, ?_, ?_⟩⟩
+  refine ⟨fun e h hel => ?_, fun r => ⟨?_, ?_⟩, fOut, P_C, ⟨?_, ?_, ?_⟩,
+    fun _ _ ha he => holdsC ha he⟩
   · rw [elided_C] at hel; subst hel
     rcases h with ⟨r, hr⟩ | ⟨b, hb⟩
     · have : ∀ p ∈ rfC, p.1 ≠ 1 := by decide
@@ -465,7 +466,7 @@ theorem sameLoc_06 : ¬ xC.sameLoc esC 0 6 := by
   obtain rfl : ea = e0 := Option.some.inj (ha.symm.trans rfl)
   obtain rfl : eb = e6 := Option.some.inj (hb.symm.trans rfl)
   cases hla; cases hlb
-  obtain ⟨f, hP, hrf⟩ := phi_C.2.2
+  obtain ⟨f, hP, hrf, -⟩ := phi_C.2.2
   have := heq f hP hrf
   simp [Expr.glob, Expr.eval] at this
 

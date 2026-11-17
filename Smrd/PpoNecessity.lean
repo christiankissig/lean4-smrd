@@ -154,7 +154,7 @@ theorem locOf_of_sameLoc {es : EventStructure} (S : Simple es) (hg : GlobLocs es
   obtain ⟨ea, eb, la, lb, ha, hb, hla, hlb, heq⟩ := h
   obtain ⟨x, rfl⟩ := hg ea (ev_inv ha).1 _ hla
   obtain ⟨y, rfl⟩ := hg eb (ev_inv hb).1 _ hlb
-  obtain ⟨f, hP, hrf⟩ := hφ.2.2
+  obtain ⟨f, hP, hrf, -⟩ := hφ.2.2
   have := heq f hP hrf
   cases this
   simp [locOf, ha, hb, hla, hlb]
@@ -610,7 +610,7 @@ theorem no_dp_WW {a b : EventId} : ¬ xWW.DP a b := by
     simp [jWE, pj, W, Event.valres, Expr.conj, Expr.syms, Expr.tt] at h
 
 theorem phi_WW : xWW.phi esWW := by
-  refine ⟨fun e h _ => ?_, fun r => ⟨fun ⟨_, h⟩ => h.elim, ?_⟩, fun _ => .num 0, ?_, ?_, ?_, ?_⟩
+  refine ⟨fun e h _ => ?_, fun r => ⟨fun ⟨_, h⟩ => h.elim, ?_⟩, fun _ => .num 0, ?_, ⟨?_, ?_, ?_⟩, valresX_of_nil (by decide) _⟩
   · rcases h with ⟨_, h⟩ | ⟨_, h⟩
     · exact h.elim
     · exact no_dp_WW h
@@ -860,7 +860,7 @@ theorem no_dp_C {a b : EventId} : ¬ xC.DP a b := by
   simp [jC, pj, W, Event.valres, Expr.conj, Expr.syms, Expr.tt] at h
 
 theorem phi_C : xC.phi esC := by
-  refine ⟨fun e h _ => ?_, fun r => ⟨fun ⟨_, h⟩ => h.elim, ?_⟩, fun _ => .num 0, ?_, ?_, ?_, ?_⟩
+  refine ⟨fun e h _ => ?_, fun r => ⟨fun ⟨_, h⟩ => h.elim, ?_⟩, fun _ => .num 0, ?_, ⟨?_, ?_, ?_⟩, valresX_of_nil (by decide) _⟩
   · rcases h with ⟨_, h⟩ | ⟨_, h⟩
     · exact h.elim
     · exact no_dp_C h
