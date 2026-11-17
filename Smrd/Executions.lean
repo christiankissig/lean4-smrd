@@ -181,10 +181,16 @@ def Pm : Pred := fun f => (∀ j ∈ x.J, j.P.holds f) ∧ x.δ.psi es f ∧ x.v
 /-- The alias predicate of a justification's part, `P_j ∧ ψ_δ`. -/
 def PJ (j : Justification) : Pred := Pred.and j.P.holds (x.δ.psi es)
 
-/-- MoRDor's `ppos`: each justification's `ForwardingContext.ppo` under `P_j`,
-    cut to its window. -/
+/-- The RMW predicate of a justification's part, `P_j ∧ valres_X`: as for
+    `rmw` (`rmwRel`), an RMW condition is read with the value restrictions of
+    the path, which carry the condition of every RMW whose write is in `X`. -/
+def PR (j : Justification) : Pred := Pred.and j.P.holds (x.valresX es)
+
+/-- MoRDor's `ppos`: each justification's `ForwardingContext.ppo` under `P_j`
+    (alias queries under `P_j ∧ ψ_δ`, RMW conditions under `P_j ∧ valres_X`,
+    where MoRDor has `P_j`), cut to its window. -/
 def ppoJ : Rel := fun a b =>
-  ∃ j ∈ x.J, es.ppoM (x.PJ es j) j.P.holds x.δ a b ∧ Win es j a ∧ Win es j b
+  ∃ j ∈ x.J, es.ppoM (x.PJ es j) (x.PR es j) x.δ a b ∧ Win es j a ∧ Win es j b
 
 /-- Both events lie at or `⊑`-below one event of the path `X ∪ X_F`:
     `∃ e ∈ X ∪ X_F. (a ⊑ e ∨ a = e) ∧ (b ⊑ e ∨ b = e)`. sMRD's windows
@@ -384,7 +390,7 @@ def poloc : Rel := fun a b => x.poX es a b ∧ x.sameLoc es a b
     would leave `rmw`, and Atomicity with it. A write's value restriction
     carries the condition it is guarded by, so under `valres_X` every pair of
     `⊑ʳᵐʷ` in `X × X` whose write is guarded by the condition is in `rmw`
-    (`rmwRel_of_guard`, `Smrd.SyncOrder`). -/
+    (`rmwRel_of_valresX`, `holds_of_guard`, `Smrd.SyncOrder`). -/
 def rmwRel : Rel := fun r w =>
   x.X r ∧ x.X w ∧ ∃ ent ∈ es.rmw, ent.r = r ∧ ent.w = w ∧
     EquivUnder (Pred.and (x.P es) (x.valresX es)) ent.cond Expr.tt

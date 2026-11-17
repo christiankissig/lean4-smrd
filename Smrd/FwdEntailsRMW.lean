@@ -348,9 +348,9 @@ theorem ppoStep_po_R {Ω : Pred} (hx : x.IsExecution es Ω)
       · exact ⟨_, ht, hwa⟩
       · exact ⟨_, ht, hwb⟩
     obtain ⟨f₀, hf₀⟩ := hsat
-    have hPr : ∃ f, j.P.holds f ∧ x.valresX es f := by
+    have hPr : ∃ f, x.PR es j f ∧ x.valresX es f := by
       obtain ⟨f, hJ, hv⟩ := hx.consistent
-      exact ⟨f, hJ j hj, hv⟩
+      exact ⟨f, ⟨hJ j hj, hv⟩, hv⟩
     refine ppoM_po_R hx hpo_trans hirr hT hG hev hW hPr (Hj f₀ (PJ_of_P hf₀ hj)) ?_ ha hb
       (anchored_of_inWin hx.inX ⟨j, hj, hwa, hwb⟩) hp
     intro a₀ b₀ hab hal ra rb hne

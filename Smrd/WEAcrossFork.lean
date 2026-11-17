@@ -155,7 +155,7 @@ theorem remap_01 : xQ.δ.Remap 0 1 :=
 theorem ppo_12 : xQ.ppo esQ 1 2 := by
   have must : esQ.mustAlias 0 2 :=
     ⟨e0, e2, _, _, rfl, rfl, rfl, rfl, fun _ _ _ h₁ h₂ => Option.some.inj (h₁.symm.trans h₂)⟩
-  have hm : esQ.ppoM (xQ.PJ esQ (pj e3)) (pj e3).P.holds xQ.δ 1 2 :=
+  have hm : esQ.ppoM (xQ.PJ esQ (pj e3)) (xQ.PR esQ (pj e3)) xQ.δ 1 2 :=
     ⟨⟨0, 2, .inr ⟨po_of (by decide), .inl must⟩, remap_01, canon_Q (by decide)⟩, by decide⟩
   exact ⟨X_Q, X_Q, .single ⟨.inl X_Q, .inl X_Q, .inl
     ⟨pj e3, by simp [xQ, JQ], hm, .inr (po_of (by decide)), .inr (po_of (by decide))⟩⟩⟩
