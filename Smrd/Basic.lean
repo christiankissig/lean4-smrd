@@ -23,6 +23,7 @@ import Smrd.FwdAcrossAcquire
 import Smrd.RMWElision
 import Smrd.DPPast
 import Smrd.LiftCross
+import Smrd.GuardLoss
 import Smrd.RelabEqRefl
 import Smrd.RelabEqBF
 import Smrd.FwdAcrossAlias
