@@ -864,7 +864,8 @@ theorem xDiv_phi : xDiv.phi esDiv := by
     refine And.intro (fun j hj => by cases hj)
       (And.intro (And.intro (fun _ _ _ _ (h : False) => h.elim) (And.intro ?_ ?_)) ?_)
     · rintro a e α sz (rfl | rfl | rfl) he hk <;> cases he <;> cases hk
-    · rintro a₁ a₂ e₁ e₂ α₁ α₂ s₁ s₂ (rfl | rfl | rfl) _ _ he₁ _ hk₁ <;> cases he₁ <;> cases hk₁
+    · refine ⟨fun _ => none, ⟨fun _ _ h => (nomatch h), fun _ _ _ h => (nomatch h), fun _ _ h => (nomatch h)⟩, ?_⟩
+      rintro a₁ a₂ e₁ e₂ α₁ α₂ s₁ s₂ (rfl | rfl | rfl) _ _ he₁ _ hk₁ <;> cases he₁ <;> cases hk₁
     · rintro a e (rfl | rfl | rfl) he <;> cases he <;>
         simp [Event.valres, Expr.conj, Expr.holds, Expr.eval, Expr.tt, wr]
 
@@ -942,7 +943,8 @@ theorem xBool_sat :
     · simp [Event.val, wr] at hvw hvr; subst hvw; subst hvr
       simp [Expr.eval, Expr.num]
   · rintro a e α sz (rfl | rfl | rfl) he hk <;> cases he <;> cases hk
-  · rintro a₁ a₂ e₁ e₂ α₁ α₂ s₁ s₂ (rfl | rfl | rfl) _ _ he₁ _ hk₁ <;> cases he₁ <;> cases hk₁
+  · refine ⟨fun _ => none, ⟨fun _ _ h => (nomatch h), fun _ _ _ h => (nomatch h), fun _ _ h => (nomatch h)⟩, ?_⟩
+    rintro a₁ a₂ e₁ e₂ α₁ α₂ s₁ s₂ (rfl | rfl | rfl) _ _ he₁ _ hk₁ <;> cases he₁ <;> cases hk₁
 
 theorem xBool_not_locModel : ¬ LocModel esBool xBool := by
   rintro ⟨f, -, hrf, h⟩

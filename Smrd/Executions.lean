@@ -290,29 +290,42 @@ def nta : Rel := Rel.plus ((x.dep es).union x.rf)
 def Frees (f : Valuation) (d : EventId) (α : Sym) : Prop :=
   ∃ ed l, x.X d ∧ es.ev d = some ed ∧ ed.kind = .dealloc l ∧ l.eval f = some (f α)
 
-/-- A deallocation `d` of the location of an allocation (symbol `α`) is
-    *intermediate* for it and a second allocation `a'` if it is not ordered
-    after `a'`, `(a', d) ∉ (DP ∪ ≼ ∪ rf)⁺`. The condition is negative: an
-    allocator may hand a released region back to another thread without the
-    program ordering the deallocation before the allocation (C11 7.22.3p2). -/
-def Intermediate (f : Valuation) (d : EventId) (α : Sym) (a' : EventId) : Prop :=
-  x.Frees es f d α ∧ ¬ x.nta es a' d
+/-- A **free map** `fo` under `f` (`def:freeze`, correction `c:alloc` of the technical
+    report): `fo d = some a` records that the deallocation `d` frees the allocation `a`.
+    Both are in `X`, `d` frees `a`'s address, `fo` is injective (an allocation is freed at
+    most once), and `d` is not ordered before `a`. The map is partial: a deallocation that
+    frees no allocation of `X` (a global, say) is not in its domain. -/
+structure FreeMap (f : Valuation) (fo : EventId → Option EventId) : Prop where
+  frees : ∀ d a, fo d = some a → x.X a ∧ ∃ ea α sz, es.ev a = some ea ∧
+    ea.kind = .alloc α sz ∧ x.Frees es f d α
+  inj   : ∀ d₁ d₂ a, fo d₁ = some a → fo d₂ = some a → d₁ = d₂
+  notBefore : ∀ d a, fo d = some a → ¬ x.nta es d a
 
-/-- Disjointness of memory locations: the location an allocation introduces is
-    not a global, and differs from that of any other allocation unless `X`
-    contains a deallocation of one of the two locations that is intermediate
-    for it and the other.
+/-- A deallocation `d` that frees the allocation `a` (under the free map `fo`) is
+    *intermediate* for `a` and a second allocation `a'` if it is not ordered after `a'`,
+    `(a', d) ∉ (DP ∪ ≼ ∪ rf)⁺`. The condition is negative: an allocator may hand a
+    released region back to another thread without the program ordering the deallocation
+    before the allocation (C11 7.22.3p2). Freeing is per allocation, not per address: a
+    free of `a` licenses reuse against `a` only, not against the allocations that later
+    take `a`'s address (`c:alloc`). -/
+def Intermediate (fo : EventId → Option EventId) (d a a' : EventId) : Prop :=
+  fo d = some a ∧ ¬ x.nta es a' d
 
-    Not yet in the paper, nor here: the synchronisation edge `(d, a')` of the
-    allocator, which would enter `SW`, and so `HB`, where `a'` reuses the
-    location `d` frees. -/
+/-- Disjointness of memory locations: the location an allocation introduces is not a
+    global, and, for some free map `fo`, differs from that of any other allocation unless
+    one of the two is freed (under `fo`) by a deallocation intermediate for it and the
+    other.
+
+    Not yet here: the synchronisation edge `(d, a')` of the allocator, which would enter
+    `SW`, and so `HB`, where `a'` reuses the location `d` frees. -/
 def allocDisjoint : Pred := fun f =>
   (∀ a e α sz, x.X a → es.ev a = some e → e.kind = .alloc α sz →
       ∀ y o, f α ≠ .loc ⟨.global y, o⟩) ∧
+  ∃ fo, x.FreeMap es f fo ∧
   (∀ a₁ a₂ e₁ e₂ α₁ α₂ s₁ s₂, x.X a₁ → x.X a₂ → a₁ ≠ a₂ →
     es.ev a₁ = some e₁ → es.ev a₂ = some e₂ →
     e₁.kind = .alloc α₁ s₁ → e₂.kind = .alloc α₂ s₂ →
-    (¬ ∃ d, x.Intermediate es f d α₁ a₂ ∨ x.Intermediate es f d α₂ a₁) →
+    (¬ ∃ d, x.Intermediate es fo d a₁ a₂ ∨ x.Intermediate es fo d a₂ a₁) →
     f α₁ ≠ f α₂)
 
 /-- `φ_rf`: equal locations and values along `rf`, and disjoint allocations. -/

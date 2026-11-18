@@ -370,7 +370,8 @@ theorem phiWeak_x :
     have key : ∀ e ∈ esG.events, e.isAlloc = false := by decide
     have := key e (ev_inv he).1
     simp [Event.isAlloc, hk] at this
-  · intro a₁ a₂ e₁ e₂ α₁ α₂ s₁ s₂ _ _ _ he₁ _ hk₁
+  · refine ⟨fun _ => none, ⟨fun _ _ h => (nomatch h), fun _ _ _ h => (nomatch h), fun _ _ h => (nomatch h)⟩, ?_⟩
+    intro a₁ a₂ e₁ e₂ α₁ α₂ s₁ s₂ _ _ _ he₁ _ hk₁
     have key : ∀ e ∈ esG.events, e.isAlloc = false := by decide
     have := key e₁ (ev_inv he₁).1
     simp [Event.isAlloc, hk₁] at this
@@ -984,7 +985,8 @@ theorem phiWeak_x :
     rw [ev2] at he; cases he
     cases hk
     intro y o h; simp [g₁, cell] at h
-  · intro a₁ a₂ e₁ e₂ α₁ α₂ s₁ s₂ _ _ hne he₁ he₂ hk₁ hk₂
+  · refine ⟨fun _ => none, ⟨fun _ _ h => (nomatch h), fun _ _ _ h => (nomatch h), fun _ _ h => (nomatch h)⟩, ?_⟩
+    intro a₁ a₂ e₁ e₂ α₁ α₂ s₁ s₂ _ _ hne he₁ he₂ hk₁ hk₂
     have h₁ := alloc_id e₁ (ev_inv he₁).1 (by simp [Event.isAlloc, hk₁])
     have h₂ := alloc_id e₂ (ev_inv he₂).1 (by simp [Event.isAlloc, hk₂])
     rw [(ev_inv he₁).2] at h₁; rw [(ev_inv he₂).2] at h₂
