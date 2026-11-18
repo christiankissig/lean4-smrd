@@ -3,7 +3,7 @@ import Smrd.RelabEqRefl
 /-!
 # Closed relabel-equivalence with predecessors matched back and forth
 
-`ClosedRelabEq` (Definition `def:rel-eq`) asks *every* immediate
+`ClosedRelabEqAP` (Definition `def:rel-eq`) asks *every* immediate
 `≼`-predecessor of `e₁` to be closed relabel-equivalent to *every* immediate
 `≼`-predecessor of `e₂`. Two unordered predecessors on one side then have to
 be equivalent to each other. `ClosedRelabEqBF` asks instead that the
@@ -27,72 +27,48 @@ some predecessor of `e₂`, and each predecessor of `e₂` to some predecessor o
   `z := 0` (same location) and the acquire read. Under the predicates of the
   two arms the writes are related back and forth (`bf_arms`) and, for every
   relabelling, not all-pairs (`not_closedRelabEq_arms`), as that would need
-  the write `z := 0` to be equivalent to the read of `y`. So Lifting cannot
-  merge the arms, and the control dependency on `rc` stays.
+  the write `z := 0` to be equivalent to the read of `y`. Under the
+  all-pairs relation Lifting could not merge the arms, and the control
+  dependency on `rc` stayed.
+* `lift_arms`, `gen_jW`, `jW_syms`: Lifting, which uses the back-and-forth
+  relation (`Generated.lift`), merges the arms into
+  `(⊤ ∧ (rc = 1 ∨ ¬ rc = 1), ∅) ⊢ z := 1`, and Weakening leaves
+  `(⊤, ∅) ⊢ z := 1`, without the symbol `rc`.
+
+The relations themselves (`ClosedRelabEqBF` with `MatchR`/`MatchL`, over the
+generic `BFClosed`, and the all-pairs `ClosedRelabEqAP`) are defined in
+`Smrd.Justifications`.
 -/
 
 namespace RelabEqBF
 
 open EventStructure PpoKit RelabEqRefl
 
-mutual
-
-/-- `P₁ : e₁ ≅^Λ_δ* P₂ : e₂` with immediate predecessors matched back and
-    forth. As for `ClosedRelabEq`, the recursion descends along `≼`, so the
-    inductive reading is the intended one. The partners are stated through
-    `MatchR` and `MatchL` because Lean does not accept the relation nested
-    under `∃`; `matchR_iff` and `matchL_iff` give the existential form. -/
-inductive ClosedRelabEqBF (es : EventStructure) (δ : FwdCtx) (Λ : Relabelling) :
-    Expr → Event → Expr → Event → Prop
-  | mk {P₁ P₂ : Expr} {e₁ e₂ : Event} :
-      es.relabEq δ Λ P₁ e₁ P₂ e₂ →
-      (∀ x₁ ev₁, es.pred δ e₁.id P₁.holds x₁ → es.ev x₁ = some ev₁ →
-        MatchR es δ Λ P₁ ev₁ P₂ e₂) →
-      (∀ x₂ ev₂, es.pred δ e₂.id P₂.holds x₂ → es.ev x₂ = some ev₂ →
-        MatchL es δ Λ P₁ e₁ P₂ ev₂) →
-      ClosedRelabEqBF es δ Λ P₁ e₁ P₂ e₂
-
-/-- `MatchR … P₁ ev₁ P₂ e₂`: `ev₁` is related to some immediate predecessor
-    of `e₂`. -/
-inductive MatchR (es : EventStructure) (δ : FwdCtx) (Λ : Relabelling) :
-    Expr → Event → Expr → Event → Prop
-  | mk {P₁ P₂ : Expr} {ev₁ e₂ ev₂ : Event} {x₂ : EventId} :
-      es.pred δ e₂.id P₂.holds x₂ → es.ev x₂ = some ev₂ →
-      ClosedRelabEqBF es δ Λ P₁ ev₁ P₂ ev₂ → MatchR es δ Λ P₁ ev₁ P₂ e₂
-
-/-- `MatchL … P₁ e₁ P₂ ev₂`: some immediate predecessor of `e₁` is related
-    to `ev₂`. -/
-inductive MatchL (es : EventStructure) (δ : FwdCtx) (Λ : Relabelling) :
-    Expr → Event → Expr → Event → Prop
-  | mk {P₁ P₂ : Expr} {e₁ ev₁ ev₂ : Event} {x₁ : EventId} :
-      es.pred δ e₁.id P₁.holds x₁ → es.ev x₁ = some ev₁ →
-      ClosedRelabEqBF es δ Λ P₁ ev₁ P₂ ev₂ → MatchL es δ Λ P₁ e₁ P₂ ev₂
-
-end
-
+/-- `MatchR` in existential form. -/
 theorem matchR_iff {es : EventStructure} {δ : FwdCtx} {Λ : Relabelling} {P₁ P₂ : Expr}
     {ev₁ e₂ : Event} :
-    MatchR es δ Λ P₁ ev₁ P₂ e₂ ↔
+    es.MatchR δ Λ P₁ ev₁ P₂ e₂ ↔
       ∃ x₂ ev₂, es.pred δ e₂.id P₂.holds x₂ ∧ es.ev x₂ = some ev₂ ∧
-        ClosedRelabEqBF es δ Λ P₁ ev₁ P₂ ev₂ :=
-  ⟨fun ⟨h, he, hr⟩ => ⟨_, _, h, he, hr⟩, fun ⟨_, _, h, he, hr⟩ => .mk h he hr⟩
+        es.ClosedRelabEqBF δ Λ P₁ ev₁ P₂ ev₂ :=
+  bfMatchR_iff
 
+/-- `MatchL` in existential form. -/
 theorem matchL_iff {es : EventStructure} {δ : FwdCtx} {Λ : Relabelling} {P₁ P₂ : Expr}
     {e₁ ev₂ : Event} :
-    MatchL es δ Λ P₁ e₁ P₂ ev₂ ↔
+    es.MatchL δ Λ P₁ e₁ P₂ ev₂ ↔
       ∃ x₁ ev₁, es.pred δ e₁.id P₁.holds x₁ ∧ es.ev x₁ = some ev₁ ∧
-        ClosedRelabEqBF es δ Λ P₁ ev₁ P₂ ev₂ :=
-  ⟨fun ⟨h, he, hr⟩ => ⟨_, _, h, he, hr⟩, fun ⟨_, _, h, he, hr⟩ => .mk h he hr⟩
+        es.ClosedRelabEqBF δ Λ P₁ ev₁ P₂ ev₂ :=
+  bfMatchL_iff
 
 /-! ## The all-pairs relation is contained in it -/
 
 /-- **All pairs implies back and forth**, where every immediate predecessor
-    is an event: the emptiness clause of `ClosedRelabEq` supplies a partner
+    is an event: the emptiness clause of `ClosedRelabEqAP` supplies a partner
     on the other side, and the all-pairs clause relates it. -/
 theorem closedRelabEqBF_of_closedRelabEq {es : EventStructure} {δ : FwdCtx}
     {Λ : Relabelling}
     (hpe : ∀ (a : EventId) (P : Pred) (x : EventId), es.pred δ a P x → ∃ ev, es.ev x = some ev)
-    {P₁ P₂ : Expr} {e₁ e₂ : Event} (h : es.ClosedRelabEq δ Λ P₁ e₁ P₂ e₂) :
+    {P₁ P₂ : Expr} {e₁ e₂ : Event} (h : es.ClosedRelabEqAP δ Λ P₁ e₁ P₂ e₂) :
     ClosedRelabEqBF es δ Λ P₁ e₁ P₂ e₂ := by
   induction h with
   | mk hrel hiff _ ih =>
@@ -299,7 +275,7 @@ theorem pred5 (x : EventId) : esA.pred .empty 5 P₅.holds x ↔ x = 0 ∨ x = 1
     predicates of their arms, for any relabelling: the all-pairs clause pairs
     the write `z := 0` with the acquire read of `y`. -/
 theorem not_closedRelabEq_arms (Λ : Relabelling) :
-    ¬ esA.ClosedRelabEq .empty Λ P₄ a4 P₅ a5 := by
+    ¬ esA.ClosedRelabEqAP .empty Λ P₄ a4 P₅ a5 := by
   intro h
   cases h with
   | mk _ _ hall =>
@@ -351,11 +327,78 @@ theorem bf_arms : ClosedRelabEqBF esA .empty Λ₀ P₄ a4 P₅ a5 := by
     have hx := (pred5 x).1 h
     exact .mk ((pred4 x).2 hx) he (match_self hx he)
 
+/-! ### Lifting merges the arms -/
+
+/-- The pre-justification `(rc = 1, ∅) ⊢ z := 1` of the `then` arm. -/
+def j₄ : Justification := ⟨a4.valres, [], .empty, a4⟩
+/-- The pre-justification `(¬ rc = 1, ∅) ⊢ z := 1` of the `else` arm. -/
+def j₅ : Justification := ⟨a5.valres, [], .empty, a5⟩
+/-- The lifted justification `(⊤ ∧ (rc = 1 ∨ ¬ rc = 1), ∅) ⊢ z := 1`. -/
+def jL : Justification := { j₅ with P := Expr.liftPred (j₄.P.rename Λ₀) j₅.P }
+/-- The shared conjuncts, `⊤`. -/
+def PW : Expr := Expr.conj [Expr.tt]
+/-- The factored disjunction `rc = 1 ∨ ¬ rc = 1`. -/
+def Pv : Expr := .or (Expr.conj [cond]) (Expr.conj [.not cond])
+/-- The weakened justification `(⊤, ∅) ⊢ z := 1`. -/
+def jW : Justification := { j₅ with P := PW }
+
+theorem jL_P : jL.P = .and PW Pv := by decide
+
+theorem pre₄ : esA.Generated (fun _ => True) j₄ :=
+  .pre (w := a4) (by simp [esA]) rfl ⟨f₁, by unfold Expr.holds; decide⟩
+
+theorem pre₅ : esA.Generated (fun _ => True) j₅ :=
+  .pre (w := a5) (by simp [esA]) rfl ⟨f₀, by unfold Expr.holds; decide⟩
+
+/-- Lifting's conditions other than the branching restriction and the
+    one-to-one renaming hold, with the back-and-forth relation `bf_arms`. -/
+theorem lift_conds : esA.LiftConds (fun _ => True) Λ₀ j₄ j₅ := by
+  refine ⟨rfl, ?_, bf_arms, ?_, ?_, ?_, ?_, ?_, ?_, ⟨f₀, ?_, trivial⟩⟩
+  · intro a b c ha; simp [Λ₀] at ha
+  · intro e; show e ∈ ([] : List EventId) ↔ ∃ α ∈ ([] : List EventId), Λ₀.app α = e; simp
+  · intro α h; nomatch h
+  · intro h; have := cls_clsB.1 h; revert this; decide
+  · intro h; have := cls_clsB.1 h; revert this; decide
+  · intro α h; nomatch h
+  · intro α h
+    have key : ∀ α ∈ (j₄.P.rename Λ₀).syms, (α, 5) ∈ esA.po := by decide
+    exact key α h
+  · unfold Expr.holds; decide
+
+/-- The two writes lie on the two outcomes of the branching on `rc = 1`;
+    `Λ₀` relabels nothing. -/
+theorem liftBranch : esA.LiftBranch Λ₀ j₄.w.id j₅.w.id :=
+  ⟨⟨3, cond, true⟩, ⟨3, cond, false⟩, ⟨a4, evA4, by decide⟩, ⟨a5, evA5, by decide⟩,
+    rfl, rfl, by decide, fun _ _ h => by simp [Λ₀] at h⟩
+
+theorem injOn : Λ₀.InjOn (j₄.P.syms ++ j₄.D) := by unfold Relabelling.InjOn; decide
+
+/-- **Lifting applies to the two arms** under the back-and-forth relation,
+    which the all-pairs relation forbids (`not_closedRelabEq_arms`). -/
+theorem lift_arms : esA.Generated (fun _ => True) jL :=
+  .lift' pre₄ pre₅ lift_conds liftBranch injOn
+
+theorem Pv_valid : Entails (fun _ => True) Pv.holds := by
+  intro f _
+  simp only [Pv, Expr.holds, Expr.conj, List.foldl, Expr.eval, Expr.tt, cond]
+  cases f 2 <;> simp
+  all_goals (rename_i n; by_cases h : n = 1 <;> simp [h])
+
+/-- **Weakening then drops the guard**: `(⊤, ∅) ⊢ z := 1` is generated, as
+    for the branch-free `z := 0; r :acq= y; rc := c; z := 1`. -/
+theorem gen_jW : esA.Generated (fun _ => True) jW :=
+  .weak (j₁ := jL) (P' := PW) (Pw := Pv) lift_arms (by rw [jL_P]; exact Expr.ConjEq.refl _) Pv_valid
+    ⟨f₀, by unfold Expr.holds; decide, trivial⟩
+
+/-- `rc` is not a symbol of the weakened justification, which has no
+    dependencies: no control dependency on `rc` is left. -/
+theorem jW_syms : 2 ∉ jW.P.syms ∧ jW.D = [] := by decide
+
 /-- **The back-and-forth relation is strictly larger**: it relates the two
     arms, which the all-pairs relation relates under no relabelling. -/
 theorem strict :
     ClosedRelabEqBF esA .empty Λ₀ P₄ a4 P₅ a5 ∧
-    ∀ Λ, ¬ esA.ClosedRelabEq .empty Λ P₄ a4 P₅ a5 :=
+    ∀ Λ, ¬ esA.ClosedRelabEqAP .empty Λ P₄ a4 P₅ a5 :=
   ⟨bf_arms, not_closedRelabEq_arms⟩
 
 end RelabEqBF

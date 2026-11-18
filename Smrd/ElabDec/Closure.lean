@@ -107,14 +107,12 @@ def relabEqC (δ : FwdCtx) (Λ : Relabelling) (P₁ : Expr) (e₁ e₂ : Event) 
   else if e₁.isFence && e₂.isFence then True
   else False
 
-/-- `ClosedRelabEq` with `relabEqC`. -/
-inductive ClosedRelabEqC (δ : FwdCtx) (Λ : Relabelling) : Expr → Event → Expr → Event → Prop
-  | mk {P₁ P₂ : Expr} {e₁ e₂ : Event} :
-      es.relabEqC δ Λ P₁ e₁ e₂ →
-      ((∀ x, ¬ es.pred δ e₁.id P₁.holds x) ↔ (∀ x, ¬ es.pred δ e₂.id P₂.holds x)) →
-      (∀ x₁ x₂ ev₁ ev₂, es.pred δ e₁.id P₁.holds x₁ → es.pred δ e₂.id P₂.holds x₂ →
-        es.ev x₁ = some ev₁ → es.ev x₂ = some ev₂ → ClosedRelabEqC δ Λ P₁ ev₁ P₂ ev₂) →
-      ClosedRelabEqC δ Λ P₁ e₁ P₂ e₂
+/-- `ClosedRelabEqBF` with `relabEqC`: closed relabel equivalence with the
+    second premise's expressions as witnesses, immediate predecessors matched
+    back and forth. -/
+abbrev ClosedRelabEqC (δ : FwdCtx) (Λ : Relabelling) (P₁ : Expr) (e₁ : Event) (P₂ : Expr)
+    (e₂ : Event) : Prop :=
+  es.BFClosed δ P₁.holds P₂.holds (fun a b => es.relabEqC δ Λ P₁ a b) e₁ e₂
 
 variable {es}
 
@@ -145,9 +143,8 @@ theorem relabEqC.sound {δ : FwdCtx} {Λ : Relabelling} {P₁ P₂ : Expr} {e₁
       · rw [if_neg (by assumption)] at h; exact h
 
 theorem ClosedRelabEqC.sound {δ : FwdCtx} {Λ : Relabelling} {P₁ P₂ : Expr} {e₁ e₂ : Event}
-    (h : es.ClosedRelabEqC δ Λ P₁ e₁ P₂ e₂) : es.ClosedRelabEq δ Λ P₁ e₁ P₂ e₂ := by
-  induction h with
-  | mk hr hiff _ ih => exact .mk hr.sound hiff ih
+    (h : es.ClosedRelabEqC δ Λ P₁ e₁ P₂ e₂) : es.ClosedRelabEqBF δ Λ P₁ e₁ P₂ e₂ :=
+  BFClosed.mono (fun _ _ hr => hr.sound) h
 
 variable (es)
 

@@ -5,7 +5,7 @@ import Smrd.PpoStability
 /-!
 # Reflexivity of closed relabel-equivalence
 
-Closed relabel-equivalence (Definition `def:rel-eq`, `ClosedRelabEq`) relates
+Closed relabel-equivalence (Definition `def:rel-eq`, `ClosedRelabEqAP`) relates
 two events when they are relabel-equivalent and *every* immediate
 `≼`-predecessor of the one is closed relabel-equivalent to *every* immediate
 `≼`-predecessor of the other. Lifting (`Generated.lift`) uses it to compare
@@ -102,7 +102,7 @@ theorem relabEq_self (es : EventStructure) (δ : FwdCtx) {Λ : Relabelling} (P�
 /-! ## Reflexivity of the closed relation -/
 
 /-- The two predicates give the event `a` the same immediate predecessor, or
-    none on both sides: every pair the all-pairs clause of `ClosedRelabEq`
+    none on both sides: every pair the all-pairs clause of `ClosedRelabEqAP`
     forms at `a` is a pair of one event with itself. -/
 def PredDiag (es : EventStructure) (δ : FwdCtx) (P₁ P₂ : Expr) (a : EventId) : Prop :=
   ((∀ x, ¬ es.pred δ a P₁.holds x) ↔ (∀ x, ¬ es.pred δ a P₂.holds x)) ∧
@@ -123,7 +123,7 @@ theorem closedRelabEq_refl (es : EventStructure) (δ : FwdCtx) (Λ : Relabelling
     (hev : ∀ a ev, G a → es.ev a = some ev → ev.isBranch = false ∧ FixesEv Λ ev)
     (hdiag : ∀ a, G a → PredDiag es δ P₁ P₂ a) :
     ∀ a, Acc (fun x a => es.pred δ a P₁.holds x) a → G a →
-      ∀ ev, es.ev a = some ev → es.ClosedRelabEq δ Λ P₁ ev P₂ ev := by
+      ∀ ev, es.ev a = some ev → es.ClosedRelabEqAP δ Λ P₁ ev P₂ ev := by
   intro a hacc
   induction hacc with
   | intro a _ ih =>
@@ -191,7 +191,7 @@ theorem pred_rel {P : Pred} {a : EventId} (ha : a = 0 ∨ a = 1) :
 /-- **The release write is not closed relabel-equivalent to itself**, under
     any relabelling, with the predicate `⊤` and the empty forwarding context. -/
 theorem not_closedRelabEq_self (Λ : Relabelling) :
-    ¬ esR.ClosedRelabEq .empty Λ Expr.tt e2 Expr.tt e2 := by
+    ¬ esR.ClosedRelabEqAP .empty Λ Expr.tt e2 Expr.tt e2 := by
   intro h
   cases h with
   | mk _ _ hall =>

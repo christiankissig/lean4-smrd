@@ -9,7 +9,7 @@ arithmetic and a `RelSplit` for the event-only conditions of Forwarding and
 Write Elision, membership in the Weakening-free closure `GenR ΩE.holds Qs false`
 is decidable up to equivalence (`JEq`). `GenR`'s Lifting takes the second
 premise's expressions as the witnesses of relabel equivalence
-(`ClosedRelabEqC`); with arbitrary witnesses (`ClosedRelabEq`) decidability is
+(`ClosedRelabEqC`); with arbitrary witnesses (`ClosedRelabEqBF`) decidability is
 open (`Smrd.ElabDec.Deciders`).
 
 * `step L` applies every elaboration to the justifications of `L` with every
