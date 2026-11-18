@@ -146,7 +146,8 @@ theorem liftBranch : esL.LiftBranch Λ j₁.w.id j₂.w.id := by
   simp only [Λ] at h
   split at h
   · rename_i hα; cases h; subst hα
-    exact ⟨⟨e2, ev_e e2 (by simp [esL]), by decide⟩, ⟨e4, ev_e e4 (by simp [esL]), by decide⟩⟩
+    exact ⟨⟨e2, ev_e e2 (by simp [esL]), by decide⟩, ⟨e4, ev_e e4 (by simp [esL]), by decide⟩,
+      ⟨e4, ev_e e4 (by simp [esL]), by decide⟩⟩
   · cases h
 
 /-- **The renaming is one-to-one** on `rc` and `r1`. -/
