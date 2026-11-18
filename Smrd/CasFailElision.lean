@@ -371,7 +371,8 @@ theorem phi_C : xC.phi esC := by
     · have := this.2; rw [h₁, h₂] at this; exact Option.some.inj this
   · intro a e α sz _ he hk
     rcases ev_C a he with rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> cases hk
-  · intro a₁ a₂ e₁ e₂ α₁ α₂ s₁ s₂ _ _ _ he₁ _ hk₁
+  · refine ⟨fun _ => none, ⟨fun _ _ h => (nomatch h), fun _ _ _ h => (nomatch h), fun _ _ h => (nomatch h)⟩, ?_⟩
+    intro a₁ a₂ e₁ e₂ α₁ α₂ s₁ s₂ _ _ _ he₁ _ hk₁
     rcases ev_C _ he₁ with rfl | rfl | rfl | rfl | rfl | rfl | rfl <;> cases hk₁
 
 /-! ## `RMWTightWE` fails -/

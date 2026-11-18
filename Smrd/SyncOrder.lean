@@ -469,20 +469,21 @@ end Coh
 
 /-! ## Allocator reuse -/
 
-/-- **Allocator reuse**: under `allocDisjoint` (part of `φ_rf`), two distinct
-    allocations of `X` at one location have a deallocation in `X` of one of
-    them that is not `nta`-after the other's allocation. -/
-theorem alloc_reuse {f : Valuation} (h : x.allocDisjoint es f) {a₁ a₂ : EventId}
-    {e₁ e₂ : Event} {α₁ α₂ : Sym} {s₁ s₂ : Expr} (hX₁ : x.X a₁) (hX₂ : x.X a₂) (hne : a₁ ≠ a₂)
-    (he₁ : es.ev a₁ = some e₁) (he₂ : es.ev a₂ = some e₂)
-    (hk₁ : e₁.kind = .alloc α₁ s₁) (hk₂ : e₂.kind = .alloc α₂ s₂) (heq : f α₁ = f α₂) :
-    ∃ d, (x.Frees es f d α₁ ∧ ¬ x.nta es a₂ d) ∨ (x.Frees es f d α₂ ∧ ¬ x.nta es a₁ d) :=
-  Classical.byContradiction fun hn =>
-    h.2 a₁ a₂ e₁ e₂ α₁ α₂ s₁ s₂ hX₁ hX₂ hne he₁ he₂ hk₁ hk₂ hn heq
+/-- **Allocator reuse**: under `allocDisjoint` (part of `φ_rf`), there is a free map `fo`
+    such that two distinct allocations of `X` at one location have one of them freed, under
+    `fo`, by a deallocation that is not `nta`-after the other's allocation. -/
+theorem alloc_reuse {f : Valuation} (h : x.allocDisjoint es f) :
+    ∃ fo, x.FreeMap es f fo ∧ ∀ {a₁ a₂ : EventId} {e₁ e₂ : Event} {α₁ α₂ : Sym} {s₁ s₂ : Expr},
+      x.X a₁ → x.X a₂ → a₁ ≠ a₂ → es.ev a₁ = some e₁ → es.ev a₂ = some e₂ →
+      e₁.kind = .alloc α₁ s₁ → e₂.kind = .alloc α₂ s₂ → f α₁ = f α₂ →
+      ∃ d, (fo d = some a₁ ∧ ¬ x.nta es a₂ d) ∨ (fo d = some a₂ ∧ ¬ x.nta es a₁ d) := by
+  obtain ⟨-, fo, hfo, hd⟩ := h
+  exact ⟨fo, hfo, fun hX₁ hX₂ hne he₁ he₂ hk₁ hk₂ heq => Classical.byContradiction fun hn =>
+    hd _ _ _ _ _ _ _ _ hX₁ hX₂ hne he₁ he₂ hk₁ hk₂ hn heq⟩
 
-/-- **Allocator reuse, contrapositive**: two distinct allocations of `X` are
-    at distinct locations if every deallocation of either location is
-    `nta`-after the other allocation. -/
+/-- **Allocator reuse, contrapositive**: two distinct allocations of `X` are at distinct
+    locations if every deallocation of either location is `nta`-after the other
+    allocation (frees by address cover frees under any free map). -/
 theorem alloc_ne {f : Valuation} (h : x.allocDisjoint es f) {a₁ a₂ : EventId}
     {e₁ e₂ : Event} {α₁ α₂ : Sym} {s₁ s₂ : Expr} (hX₁ : x.X a₁) (hX₂ : x.X a₂) (hne : a₁ ≠ a₂)
     (he₁ : es.ev a₁ = some e₁) (he₂ : es.ev a₂ = some e₂)
@@ -490,8 +491,13 @@ theorem alloc_ne {f : Valuation} (h : x.allocDisjoint es f) {a₁ a₂ : EventId
     (hd₁ : ∀ d, x.Frees es f d α₁ → x.nta es a₂ d)
     (hd₂ : ∀ d, x.Frees es f d α₂ → x.nta es a₁ d) : f α₁ ≠ f α₂ := by
   intro heq
-  obtain ⟨d, ⟨hf, hn⟩ | ⟨hf, hn⟩⟩ := alloc_reuse h hX₁ hX₂ hne he₁ he₂ hk₁ hk₂ heq
-  · exact hn (hd₁ d hf)
-  · exact hn (hd₂ d hf)
+  obtain ⟨fo, hfo, hr⟩ := alloc_reuse h
+  obtain ⟨d, ⟨hf, hn⟩ | ⟨hf, hn⟩⟩ := hr hX₁ hX₂ hne he₁ he₂ hk₁ hk₂ heq
+  · obtain ⟨-, ea, α, sz, hea, hka, hfr⟩ := hfo.frees d a₁ hf
+    rw [he₁] at hea; cases hea; rw [hk₁] at hka; cases hka
+    exact hn (hd₁ d hfr)
+  · obtain ⟨-, ea, α, sz, hea, hka, hfr⟩ := hfo.frees d a₂ hf
+    rw [he₂] at hea; cases hea; rw [hk₂] at hka; cases hka
+    exact hn (hd₂ d hfr)
 
 end Execution

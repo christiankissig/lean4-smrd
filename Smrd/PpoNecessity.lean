@@ -628,7 +628,8 @@ theorem phi_WW : xWW.phi esWW := by
     obtain ⟨hm, -⟩ := ev_inv he
     simp only [esWW, List.mem_cons, List.mem_nil_iff, or_false] at hm
     rcases hm with rfl | rfl | rfl <;> cases hk
-  · intro a₁ a₂ e₁ e₂ α₁ α₂ s₁ s₂ _ _ _ he₁ _ hk₁
+  · refine ⟨fun _ => none, ⟨fun _ _ h => (nomatch h), fun _ _ _ h => (nomatch h), fun _ _ h => (nomatch h)⟩, ?_⟩
+    intro a₁ a₂ e₁ e₂ α₁ α₂ s₁ s₂ _ _ _ he₁ _ hk₁
     obtain ⟨hm, -⟩ := ev_inv he₁
     simp only [esWW, List.mem_cons, List.mem_nil_iff, or_false] at hm
     rcases hm with rfl | rfl | rfl <;> cases hk₁
@@ -876,7 +877,8 @@ theorem phi_C : xC.phi esC := by
     obtain ⟨hm, -⟩ := ev_inv he
     simp only [esC, List.mem_cons, List.mem_nil_iff, or_false] at hm
     rcases hm with rfl | rfl <;> cases hk
-  · intro a₁ a₂ e₁ e₂ α₁ α₂ s₁ s₂ _ _ _ he₁ _ hk₁
+  · refine ⟨fun _ => none, ⟨fun _ _ h => (nomatch h), fun _ _ _ h => (nomatch h), fun _ _ h => (nomatch h)⟩, ?_⟩
+    intro a₁ a₂ e₁ e₂ α₁ α₂ s₁ s₂ _ _ _ he₁ _ hk₁
     obtain ⟨hm, -⟩ := ev_inv he₁
     simp only [esC, List.mem_cons, List.mem_nil_iff, or_false] at hm
     rcases hm with rfl | rfl <;> cases hk₁

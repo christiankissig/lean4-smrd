@@ -271,7 +271,8 @@ theorem phi_simple {es : EventStructure} (S : Simple es) {rf : List (EventId × 
   · intro a e α sz _ he hk
     have := hnoalloc e (ev_inv he).1
     simp [Event.isAlloc, hk] at this
-  · intro a₁ a₂ e₁ e₂ α₁ α₂ s₁ s₂ _ _ _ he₁ _ hk₁
+  · refine ⟨fun _ => none, ⟨fun _ _ h => (nomatch h), fun _ _ _ h => (nomatch h), fun _ _ h => (nomatch h)⟩, ?_⟩
+    intro a₁ a₂ e₁ e₂ α₁ α₂ s₁ s₂ _ _ _ he₁ _ hk₁
     have := hnoalloc e₁ (ev_inv he₁).1
     simp [Event.isAlloc, hk₁] at this
 
