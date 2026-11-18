@@ -175,21 +175,19 @@ theorem relabEq_W {P₁ P₂ : Expr} (i t : Nat) (pc : List Nat) (gs₁ gs₂ : 
     Event.val, Bool.and_self, Bool.or_true]
   exact ⟨⟨_, _, rfl, rfl, relabEqExpr_val _⟩, ⟨_, _, rfl, rfl, relabEqExpr_val _⟩⟩
 
-theorem cre_2 {P₁ P₂ : Expr} : esG.ClosedRelabEq .empty Λ P₁ e2 P₂ e2 :=
+theorem cre_2 {P₁ P₂ : Expr} : esG.ClosedRelabEqBF .empty Λ P₁ e2 P₂ e2 :=
   .mk (relabEq_W 2 0 _ [] [] "y" 0)
-    ⟨fun _ _ h => no_ppo_into_2 h.1, fun _ _ h => no_ppo_into_2 h.1⟩
-    (fun _ _ _ _ h => (no_ppo_into_2 h.1).elim)
+    (fun _ _ h _ => (no_ppo_into_2 h.1).elim) (fun _ _ h _ => (no_ppo_into_2 h.1).elim)
 
 /-- **`y := 1` is closed relabel-equivalent to itself under `Λ`**: its immediate
     `≼`-predecessors under either predicate are `y := 0`, related to itself. -/
-theorem cre_7 : esG.ClosedRelabEq .empty Λ j7.P e7 j7.P e7 := by
-  refine .mk (relabEq_W 7 0 _ _ _ "y" 1) Iff.rfl (fun x₁ x₂ ev₁ ev₂ h₁ h₂ hv₁ hv₂ => ?_)
-  have := ppo_into_7 h₁.1; subst this
-  have := ppo_into_7 h₂.1; subst this
+theorem cre_7 : esG.ClosedRelabEqBF .empty Λ j7.P e7 j7.P e7 := by
   have h2 : esG.ev 2 = some e2 := PpoKit.ev_of_mem nodupG (e := e2) (by simp [esG])
-  rw [h2] at hv₁ hv₂
-  cases hv₁; cases hv₂
-  exact cre_2
+  refine .mk (relabEq_W 7 0 _ _ _ "y" 1) (fun x ev h hv => .mk h hv ?_)
+    (fun x ev h hv => .mk h hv ?_) <;>
+  · have := ppo_into_7 h.1; subst this
+    rw [h2] at hv; cases hv
+    exact cre_2
 
 /-- Every condition of the unrestricted Lifting holds: those of sMRD's Def. 4.16 and the paper's
     `def:elab-lift`, with the library's `⊑`-restriction and volatile condition. -/
@@ -812,25 +810,23 @@ theorem gen_jS : esF.Generated (fun _ => True) jS := by
     exact ⟨by show (2, 7) ∈ poL; decide,
       fun h => absurd (ppo_po_any h) (by show (7, 2) ∉ poL; decide)⟩
 
-theorem cre_2 : esF.ClosedRelabEq .empty Λ jS.P e2 jS.P e2 := by
-  refine .mk ?_ ⟨fun _ _ h => absurd (ppo_into (.inr rfl) h.1).2 (by decide),
-    fun _ _ h => absurd (ppo_into (.inr rfl) h.1).2 (by decide)⟩
-    (fun _ _ _ _ h => absurd (ppo_into (.inr rfl) h.1).2 (by decide))
+theorem cre_2 : esF.ClosedRelabEqBF .empty Λ jS.P e2 jS.P e2 := by
+  refine .mk ?_ (fun _ _ h _ => absurd (ppo_into (.inr rfl) h.1).2 (by decide))
+    (fun _ _ h _ => absurd (ppo_into (.inr rfl) h.1).2 (by decide))
   simp only [relabEq, e2, Event.isRead, Event.isWrite, Event.isAlloc, Event.loc, Event.val,
     Bool.and_self, Bool.or_true]
   exact ⟨⟨_, _, rfl, rfl, .sym 2, AgreesUnder.refl _ _, AgreesUnder.refl _ _⟩,
     ⟨_, _, rfl, rfl, relabEqExpr_val _⟩⟩
 
 /-- **`free(r)` is closed relabel-equivalent to itself under `Λ`**, given `P_S`. -/
-theorem cre_7 : esF.ClosedRelabEq .empty Λ jS.P e7 jS.P e7 := by
-  refine .mk ?_ Iff.rfl (fun x₁ x₂ ev₁ ev₂ h₁ h₂ hv₁ hv₂ => ?_)
+theorem cre_7 : esF.ClosedRelabEqBF .empty Λ jS.P e7 jS.P e7 := by
+  refine .mk ?_ (fun x ev h hv => .mk h hv ?_) (fun x ev h hv => .mk h hv ?_)
   · simp only [relabEq, e7, Event.isRead, Event.isWrite, Event.isAlloc, Event.isDealloc,
       Event.loc, Bool.and_self, Bool.or_false, if_true]
     exact ⟨_, _, rfl, rfl, .sym 2, AgreesUnder.refl _ _, AgreesUnder.refl _ _⟩
-  · have := (ppo_into (.inl rfl) h₁.1).1; subst this
-    have := (ppo_into (.inl rfl) h₂.1).1; subst this
-    rw [ev2] at hv₁ hv₂
-    cases hv₁; cases hv₂
+  all_goals
+    have := (ppo_into (.inl rfl) h.1).1; subst this
+    rw [ev2] at hv; cases hv
     exact cre_2
 
 /-- Every condition of the unrestricted Lifting holds. -/
@@ -1260,26 +1256,26 @@ theorem no_ppo_into_3 {P : Pred} {a : EventId} : ¬ esS.ppo P .empty a 3 := by
   have key : ∀ p ∈ syncL esS ++ aliasL esS, p.2 ≠ 3 := by decide
   exact key _ hm rfl
 
-theorem cre_3 {P₁ P₂ : Expr} : esS.ClosedRelabEq .empty Λs P₁ e3 P₂ e3 := by
-  refine .mk ?_ ⟨fun _ _ h => no_ppo_into_3 h.1, fun _ _ h => no_ppo_into_3 h.1⟩
-    (fun _ _ _ _ h => (no_ppo_into_3 h.1).elim)
+theorem cre_3 {P₁ P₂ : Expr} : esS.ClosedRelabEqBF .empty Λs P₁ e3 P₂ e3 := by
+  refine .mk ?_ (fun _ _ h _ => (no_ppo_into_3 h.1).elim)
+    (fun _ _ h _ => (no_ppo_into_3 h.1).elim)
   simp only [relabEq, e3, PpoStability.W, Event.isRead, Event.isWrite, Event.isAlloc, Event.loc,
     Event.val, Bool.and_self, Bool.or_true]
   exact ⟨⟨_, _, rfl, rfl, relabEqExpr_val _⟩, ⟨_, _, rfl, rfl, relabEqExpr_val _⟩⟩
 
-theorem cre_9 : esS.ClosedRelabEq .empty Λs j₁.P e9 j₂.P e9 := by
+theorem cre_9 : esS.ClosedRelabEqBF .empty Λs j₁.P e9 j₂.P e9 := by
   have s₁ : Sat j₁.P.holds := ⟨f₀, by unfold Expr.holds; decide⟩
   have s₂ : Sat j₂.P.holds := ⟨f₀, by unfold Expr.holds; decide⟩
-  refine .mk ?_ ⟨fun h => absurd (pred_3 s₁) (h 3), fun h => absurd (pred_3 s₂) (h 3)⟩
-    (fun x₁ x₂ ev₁ ev₂ h₁ h₂ hv₁ hv₂ => ?_)
+  refine .mk ?_ (fun x ev h hv => ?_) (fun x ev h hv => ?_)
   · simp only [relabEq, e9, PpoStability.W, Event.isRead, Event.isWrite, Event.isAlloc,
       Event.loc, Event.val, Bool.and_self, Bool.or_true]
     exact ⟨⟨_, _, rfl, rfl, relabEqExpr_val _⟩, ⟨_, _, rfl, rfl, relabEqExpr_val _⟩⟩
-  · have := ppo_into_9 h₁.1; subst this
-    have := ppo_into_9 h₂.1; subst this
-    rw [ev3] at hv₁ hv₂
-    cases hv₁; cases hv₂
-    exact cre_3
+  · have := ppo_into_9 h.1; subst this
+    rw [ev3] at hv; cases hv
+    exact .mk (pred_3 s₂) ev3 cre_3
+  · have := ppo_into_9 h.1; subst this
+    rw [ev3] at hv; cases hv
+    exact .mk (pred_3 s₁) ev3 cre_3
 
 /-- Every condition of the unrestricted Lifting holds. -/
 theorem lift_conds : esS.LiftConds (fun _ => True) Λs j₁ j₂ := by

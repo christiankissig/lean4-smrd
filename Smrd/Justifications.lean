@@ -8,7 +8,8 @@ import Smrd.Conjuncts
 
 Justifications `j : (P, D) ⊢^δ w` of effectful events (Definition `def:justs`),
 the forwarding relations (`def:fwd-rels`), closed relabel-equivalence
-(`def:rel-eq`), and the generation of the justification set `𝕁` from
+(`def:rel-eq`, with immediate predecessors matched back and forth:
+`ClosedRelabEqBF`), and the generation of the justification set `𝕁` from
 pre-justifications by the elaborations Value Assignment, Strengthening,
 Forwarding, Write Elision, Lifting and Weakening (`def:gen-just`).
 
@@ -69,6 +70,15 @@ predicate `Generated`, whose derivations are the elements of `⋃ᵢ 𝕁ᵢ`.
   with `w₁`, injective by construction (`LiftElab.elab`,
   `LiftElab.generate_relabelings`). `LiftConds` collects the other side
   conditions.
+* Lifting's closed relabel-equivalence matches immediate predecessors back
+  and forth (`ClosedRelabEqBF`): each immediate predecessor of one write is
+  related to some immediate predecessor of the other, and conversely.
+  `def:rel-eq` read literally relates every predecessor of one to every
+  predecessor of the other (`ClosedRelabEqAP`), so two unordered
+  predecessors on one side must be related to each other. In
+  `z := 0; r :acq= y; rc := c; if (rc = 1) {z := 1} else {z := 1}` the arms
+  then never lift, and a control dependency on `rc` remains that the
+  branch-free program does not have (`Smrd.RelabEqBF`).
 
 * Neither access of an RMW is in the elided position (`RMWAcc`, MoRDor
   `docs/DEPARTURES.md` E4): not the forwarded event `e₂` of a Forwarding
@@ -569,17 +579,125 @@ def relabEq (δ : FwdCtx) (Λ : Relabelling) (P₁ : Expr) (e₁ : Event) (P₂ 
   else if e₁.isFence && e₂.isFence then True
   else False
 
-/-- `P₁ : e₁ ≅^Λ_δ* P₂ : e₂`, closed through `pred_δ`. The recursion
-    descends along `≼`, which is well-founded on the finite event structures
-    the semantics generates, so the inductive (least) reading is the intended
-    one. -/
-inductive ClosedRelabEq (δ : FwdCtx) (Λ : Relabelling) : Expr → Event → Expr → Event → Prop
+/-- `P₁ : e₁ ≅^Λ_δ* P₂ : e₂` as `def:rel-eq` states it, closed through
+    `pred_δ` *all pairs*: every immediate predecessor of `e₁` is related to
+    every immediate predecessor of `e₂`. Lifting no longer uses it (it uses
+    `ClosedRelabEqBF`): two unordered immediate predecessors on one side are
+    then required to be related to each other, which fails for identical
+    arms after a write and an acquire read (`RelabEqBF.not_closedRelabEq_arms`)
+    and for an event against itself (`RelabEqRefl.not_closedRelabEq_self`).
+    Kept for those counterexamples. The recursion descends along `≼`, which
+    is well-founded on the finite event structures the semantics generates,
+    so the inductive (least) reading is the intended one. -/
+inductive ClosedRelabEqAP (δ : FwdCtx) (Λ : Relabelling) : Expr → Event → Expr → Event → Prop
   | mk {P₁ P₂ : Expr} {e₁ e₂ : Event} :
       es.relabEq δ Λ P₁ e₁ P₂ e₂ →
       ((∀ x, ¬ es.pred δ e₁.id P₁.holds x) ↔ (∀ x, ¬ es.pred δ e₂.id P₂.holds x)) →
       (∀ x₁ x₂ ev₁ ev₂, es.pred δ e₁.id P₁.holds x₁ → es.pred δ e₂.id P₂.holds x₂ →
-        es.ev x₁ = some ev₁ → es.ev x₂ = some ev₂ → ClosedRelabEq δ Λ P₁ ev₁ P₂ ev₂) →
-      ClosedRelabEq δ Λ P₁ e₁ P₂ e₂
+        es.ev x₁ = some ev₁ → es.ev x₂ = some ev₂ → ClosedRelabEqAP δ Λ P₁ ev₁ P₂ ev₂) →
+      ClosedRelabEqAP δ Λ P₁ e₁ P₂ e₂
+
+mutual
+
+/-- The closure of a relation `R` on events through immediate predecessors,
+    matched back and forth: `R e₁ e₂`, every immediate `≼^{Q₁}`-predecessor
+    of `e₁` is related to some immediate `≼^{Q₂}`-predecessor of `e₂`
+    (`BFMatchR`), and every immediate predecessor of `e₂` to some immediate
+    predecessor of `e₁` (`BFMatchL`). The partners are stated through the two
+    auxiliary relations because Lean does not accept the relation nested
+    under `∃`; `bfMatchR_iff` and `bfMatchL_iff` give the existential form.
+    As for `ClosedRelabEqAP`, the inductive reading is the intended one. -/
+inductive BFClosed (δ : FwdCtx) (Q₁ Q₂ : Pred) (R : Event → Event → Prop) :
+    Event → Event → Prop
+  | mk {e₁ e₂ : Event} :
+      R e₁ e₂ →
+      (∀ x₁ ev₁, es.pred δ e₁.id Q₁ x₁ → es.ev x₁ = some ev₁ → BFMatchR δ Q₁ Q₂ R ev₁ e₂) →
+      (∀ x₂ ev₂, es.pred δ e₂.id Q₂ x₂ → es.ev x₂ = some ev₂ → BFMatchL δ Q₁ Q₂ R e₁ ev₂) →
+      BFClosed δ Q₁ Q₂ R e₁ e₂
+
+/-- `BFMatchR … ev₁ e₂`: `ev₁` is related to some immediate predecessor of
+    `e₂`. -/
+inductive BFMatchR (δ : FwdCtx) (Q₁ Q₂ : Pred) (R : Event → Event → Prop) :
+    Event → Event → Prop
+  | mk {ev₁ e₂ ev₂ : Event} {x₂ : EventId} :
+      es.pred δ e₂.id Q₂ x₂ → es.ev x₂ = some ev₂ →
+      BFClosed δ Q₁ Q₂ R ev₁ ev₂ → BFMatchR δ Q₁ Q₂ R ev₁ e₂
+
+/-- `BFMatchL … e₁ ev₂`: some immediate predecessor of `e₁` is related to
+    `ev₂`. -/
+inductive BFMatchL (δ : FwdCtx) (Q₁ Q₂ : Pred) (R : Event → Event → Prop) :
+    Event → Event → Prop
+  | mk {e₁ ev₁ ev₂ : Event} {x₁ : EventId} :
+      es.pred δ e₁.id Q₁ x₁ → es.ev x₁ = some ev₁ →
+      BFClosed δ Q₁ Q₂ R ev₁ ev₂ → BFMatchL δ Q₁ Q₂ R e₁ ev₂
+
+end
+
+/-- **Closed relabel-equivalence** `P₁ : e₁ ≅^Λ_δ* P₂ : e₂` (`def:rel-eq`),
+    with immediate predecessors matched back and forth: `e₁` and `e₂` are
+    relabel equivalent (`relabEq`), each immediate `≼^{P₁}_δ`-predecessor of
+    `e₁` is closed relabel-equivalent to some immediate
+    `≼^{P₂}_δ`-predecessor of `e₂`, and each of `e₂` to some of `e₁`. This is
+    the relation Lifting uses. It contains the all-pairs reading of
+    `def:rel-eq` (`ClosedRelabEqAP`, `RelabEqBF.closedRelabEqBF_of_closedRelabEq`)
+    and is strictly larger (`RelabEqBF.strict`). Asking each predecessor to
+    have a partner on the other side gives the emptiness clause of
+    `ClosedRelabEqAP` wherever immediate predecessors are events. -/
+abbrev ClosedRelabEqBF (δ : FwdCtx) (Λ : Relabelling) (P₁ : Expr) (e₁ : Event) (P₂ : Expr)
+    (e₂ : Event) : Prop :=
+  es.BFClosed δ P₁.holds P₂.holds (fun a b => es.relabEq δ Λ P₁ a P₂ b) e₁ e₂
+
+/-- `ev₁` is closed relabel-equivalent to some immediate predecessor of `e₂`. -/
+abbrev MatchR (δ : FwdCtx) (Λ : Relabelling) (P₁ : Expr) (ev₁ : Event) (P₂ : Expr)
+    (e₂ : Event) : Prop :=
+  es.BFMatchR δ P₁.holds P₂.holds (fun a b => es.relabEq δ Λ P₁ a P₂ b) ev₁ e₂
+
+/-- Some immediate predecessor of `e₁` is closed relabel-equivalent to `ev₂`. -/
+abbrev MatchL (δ : FwdCtx) (Λ : Relabelling) (P₁ : Expr) (e₁ : Event) (P₂ : Expr)
+    (ev₂ : Event) : Prop :=
+  es.BFMatchL δ P₁.holds P₂.holds (fun a b => es.relabEq δ Λ P₁ a P₂ b) e₁ ev₂
+
+variable {es} in
+theorem bfMatchR_iff {δ : FwdCtx} {Q₁ Q₂ : Pred} {R : Event → Event → Prop} {ev₁ e₂ : Event} :
+    es.BFMatchR δ Q₁ Q₂ R ev₁ e₂ ↔
+      ∃ x₂ ev₂, es.pred δ e₂.id Q₂ x₂ ∧ es.ev x₂ = some ev₂ ∧ es.BFClosed δ Q₁ Q₂ R ev₁ ev₂ :=
+  ⟨fun ⟨h, he, hr⟩ => ⟨_, _, h, he, hr⟩, fun ⟨_, _, h, he, hr⟩ => .mk h he hr⟩
+
+variable {es} in
+theorem bfMatchL_iff {δ : FwdCtx} {Q₁ Q₂ : Pred} {R : Event → Event → Prop} {e₁ ev₂ : Event} :
+    es.BFMatchL δ Q₁ Q₂ R e₁ ev₂ ↔
+      ∃ x₁ ev₁, es.pred δ e₁.id Q₁ x₁ ∧ es.ev x₁ = some ev₁ ∧ es.BFClosed δ Q₁ Q₂ R ev₁ ev₂ :=
+  ⟨fun ⟨h, he, hr⟩ => ⟨_, _, h, he, hr⟩, fun ⟨_, _, h, he, hr⟩ => .mk h he hr⟩
+
+variable {es} in
+/-- The closure is monotone in the base relation. -/
+theorem BFClosed.mono {δ : FwdCtx} {Q₁ Q₂ : Pred} {R R' : Event → Event → Prop}
+    (hR : ∀ a b, R a b → R' a b) {e₁ e₂ : Event} (h : es.BFClosed δ Q₁ Q₂ R e₁ e₂) :
+    es.BFClosed δ Q₁ Q₂ R' e₁ e₂ :=
+  BFClosed.rec (motive_1 := fun a b _ => es.BFClosed δ Q₁ Q₂ R' a b)
+    (motive_2 := fun a b _ => es.BFMatchR δ Q₁ Q₂ R' a b)
+    (motive_3 := fun a b _ => es.BFMatchL δ Q₁ Q₂ R' a b)
+    (fun hr _ _ ihR ihL => .mk (hR _ _ hr) ihR ihL)
+    (fun hp he _ ih => .mk hp he ih)
+    (fun hp he _ ih => .mk hp he ih) h
+
+variable {es} in
+/-- Each side's predecessors determine the other's: an event with an
+    immediate predecessor (that is an event) is related only to events with
+    one. -/
+theorem BFClosed.pred_nonempty {δ : FwdCtx} {Q₁ Q₂ : Pred} {R : Event → Event → Prop}
+    {e₁ e₂ : Event} (h : es.BFClosed δ Q₁ Q₂ R e₁ e₂) :
+    ((∃ x ev, es.pred δ e₁.id Q₁ x ∧ es.ev x = some ev) ↔
+      (∃ x ev, es.pred δ e₂.id Q₂ x ∧ es.ev x = some ev)) := by
+  cases h with
+  | mk _ hR hL =>
+    constructor
+    · rintro ⟨x, ev, hx, he⟩
+      obtain ⟨x₂, ev₂, h₂, he₂, -⟩ := bfMatchR_iff.1 (hR x ev hx he)
+      exact ⟨x₂, ev₂, h₂, he₂⟩
+    · rintro ⟨x, ev, hx, he⟩
+      obtain ⟨x₁, ev₁, h₁, he₁, -⟩ := bfMatchL_iff.1 (hL x ev hx he)
+      exact ⟨x₁, ev₁, h₁, he₁⟩
 
 /-! ## Generating justifications (Definition `def:gen-just`) -/
 
@@ -674,6 +792,14 @@ inductive Generated (Ω : Pred) : Justification → Prop
       (`Expr.mem_syms_liftPred_iff`). Neither justified write, nor the origin
       of a dependency of either, is a volatile access.
 
+      The two writes, and the origins of corresponding dependencies, are
+      closed relabel-equivalent with immediate predecessors matched back and
+      forth (`ClosedRelabEqBF`), not all pairs (`ClosedRelabEqAP`, the
+      literal reading of `def:rel-eq`): under the all-pairs reading two
+      identical arms after a write and an acquire read are not related, and
+      Lifting leaves a false control dependency (`RelabEqBF.strict`,
+      `RelabEqBF.lift_arms`).
+
       Every symbol of the relabelled premise `⟦P₁⟧_Λ` has its origin
       `⊑`-before `w₂`; the writes lie on different outcomes of a branching
       and `Λ` maps symbols of `w₁`'s outcome into `w₂`'s (`LiftBranch`); and
@@ -686,10 +812,10 @@ inductive Generated (Ω : Pred) : Justification → Prop
       Λ.Injective →
       es.LiftBranch Λ j₁.w.id j₂.w.id →
       Λ.InjOn (j₁.P.syms ++ j₁.D) →
-      es.ClosedRelabEq j₁.δ Λ j₁.P j₁.w j₂.P j₂.w →
+      es.ClosedRelabEqBF j₁.δ Λ j₁.P j₁.w j₂.P j₂.w →
       (∀ e, e ∈ j₂.D ↔ ∃ α ∈ j₁.D, Λ.app α = e) →
       (∀ α ∈ j₁.D, ∃ ev₁ ev₂, es.ev α = some ev₁ ∧ es.ev (Λ.app α) = some ev₂ ∧
-        es.ClosedRelabEq j₁.δ Λ j₁.P ev₁ j₂.P ev₂) →
+        es.ClosedRelabEqBF j₁.δ Λ j₁.P ev₁ j₂.P ev₂) →
       ¬ es.cls Event.isVol j₁.w.id → ¬ es.cls Event.isVol j₂.w.id →
       (∀ α ∈ j₁.D ++ j₂.D, ¬ es.cls Event.isVol α) →
       (∀ α ∈ (j₁.P.rename Λ).syms, es.poR α j₂.w.id) →
@@ -715,10 +841,10 @@ inductive Generated (Ω : Pred) : Justification → Prop
 structure LiftConds (Ω : Pred) (Λ : Relabelling) (j₁ j₂ : Justification) : Prop where
   δ : j₁.δ = j₂.δ
   inj : Λ.Injective
-  cre : es.ClosedRelabEq j₁.δ Λ j₁.P j₁.w j₂.P j₂.w
+  cre : es.ClosedRelabEqBF j₁.δ Λ j₁.P j₁.w j₂.P j₂.w
   D : ∀ e, e ∈ j₂.D ↔ ∃ α ∈ j₁.D, Λ.app α = e
   Dcre : ∀ α ∈ j₁.D, ∃ ev₁ ev₂, es.ev α = some ev₁ ∧ es.ev (Λ.app α) = some ev₂ ∧
-    es.ClosedRelabEq j₁.δ Λ j₁.P ev₁ j₂.P ev₂
+    es.ClosedRelabEqBF j₁.δ Λ j₁.P ev₁ j₂.P ev₂
   vol₁ : ¬ es.cls Event.isVol j₁.w.id
   vol₂ : ¬ es.cls Event.isVol j₂.w.id
   volD : ∀ α ∈ j₁.D ++ j₂.D, ¬ es.cls Event.isVol α

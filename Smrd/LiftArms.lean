@@ -100,16 +100,16 @@ theorem pre₂ : esL.Generated (fun _ => True) j₂ :=
   .pre (w := e5) (by simp [esL]) rfl ⟨f₀, by unfold Expr.holds; decide⟩
 
 /-- The reads of `y` are closed relabel-equivalent under `Λ`. -/
-theorem cre_24 : esL.ClosedRelabEq .empty Λ j₁.P e2 j₂.P e4 := by
-  refine .mk ?_ ⟨fun _ _ => no_pred, fun _ _ => no_pred⟩ (fun _ _ _ _ h => (no_pred h).elim)
+theorem cre_24 : esL.ClosedRelabEqBF .empty Λ j₁.P e2 j₂.P e4 := by
+  refine .mk ?_ (fun _ _ h _ => (no_pred h).elim) (fun _ _ h _ => (no_pred h).elim)
   simp only [relabEq, e2, e4, PpoStability.R, Event.isRead, Event.isWrite, Event.isAlloc,
     Event.loc, Event.val, Bool.and_self, Bool.true_or, if_true]
   exact ⟨⟨_, _, rfl, rfl, Expr.glob "y", AgreesUnder.refl _ _, AgreesUnder.refl _ _⟩,
     ⟨_, _, rfl, rfl, .sym 4, AgreesUnder.refl _ _, AgreesUnder.refl _ _⟩⟩
 
 /-- The writes of `x` are closed relabel-equivalent under `Λ`. -/
-theorem cre_35 : esL.ClosedRelabEq .empty Λ j₁.P e3 j₂.P e5 := by
-  refine .mk ?_ ⟨fun _ _ => no_pred, fun _ _ => no_pred⟩ (fun _ _ _ _ h => (no_pred h).elim)
+theorem cre_35 : esL.ClosedRelabEqBF .empty Λ j₁.P e3 j₂.P e5 := by
+  refine .mk ?_ (fun _ _ h _ => (no_pred h).elim) (fun _ _ h _ => (no_pred h).elim)
   simp only [relabEq, e3, e5, Event.isRead, Event.isWrite, Event.isAlloc, Event.loc, Event.val,
     Bool.and_self, Bool.or_true]
   exact ⟨⟨_, _, rfl, rfl, Expr.glob "x", AgreesUnder.refl _ _, AgreesUnder.refl _ _⟩,

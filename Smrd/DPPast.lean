@@ -175,7 +175,7 @@ def FwdWin (j : Justification) : Prop :=
     It fails for programs (`LiftCross.not_liftPast`). -/
 def LiftPast (Ω : Pred) : Prop :=
   ∀ (j₁ j₂ : Justification) (Λ : Relabelling), es.Generated Ω j₁ → es.Generated Ω j₂ →
-    j₁.δ = j₂.δ → Λ.Injective → es.ClosedRelabEq j₁.δ Λ j₁.P j₁.w j₂.P j₂.w →
+    j₁.δ = j₂.δ → Λ.Injective → es.ClosedRelabEqBF j₁.δ Λ j₁.P j₁.w j₂.P j₂.w →
     (∀ e, e ∈ j₂.D ↔ ∃ α ∈ j₁.D, Λ.app α = e) →
     ∀ α ∈ (j₁.P.rename Λ).syms, es.poR α j₂.w.id
 

@@ -16,9 +16,12 @@ elaborations are decided on finite event structures:
   not depend on how those restrictions are spelled (`relSplit`, for the
   restrictions of this library);
 * closed relabel-equivalence with the second premise's expressions as
-  witnesses (`ClosedRelabEqC`, the restriction of `def:rel-eq` that `GenR`'s
+  witnesses and immediate predecessors matched back and forth
+  (`ClosedRelabEqC`, the restriction of `ClosedRelabEqBF` that `GenR`'s
   Lifting uses) as a least fixed point over pairs of events, computed by
-  Kleene iteration (`crB_iff`).
+  Kleene iteration (`crB_iff`): each step checks, for every immediate
+  predecessor on either side, that some immediate predecessor on the other
+  side is related to it in the previous stage.
 
 The conditions on the structure are bundled as `Bounded es Qs M` (Conditions
 C1 and C3 of `Smrd.ElabDec`, and C2's `Qs` bounded).
@@ -595,16 +598,10 @@ theorem ClosedRelabEqC.congr {δ : FwdCtx} {Λ : Relabelling} {P₁ P₂ P₁' P
       split
       · rw [if_pos (by assumption)] at hab; exact hE _ _ hab
       · rw [if_neg (by assumption)] at hab; exact hab
-  induction h with
-  | mk hab hiff _ ih =>
-      refine .mk (hr _ _ hab) ?_ ?_
-      · rw [← h₁, ← h₂]; exact hiff
-      · intro x₁ x₂ ev₁ ev₂ hx₁ hx₂ he₁ he₂
-        rw [← h₁] at hx₁; rw [← h₂] at hx₂
-        first
-          | exact ih x₁ x₂ ev₁ ev₂ hx₁ hx₂ he₁ he₂
-          | exact ih x₁ x₂ ev₁ ev₂ hx₁ hx₂ he₁ he₂ h₂
-          | exact ih x₁ x₂ ev₁ ev₂ hx₁ hx₂ he₁ he₂ h₁ h₂
+  have h' := BFClosed.mono (R' := fun a b => es.relabEqC δ Λ P₁' a b) (fun a b hab => hr a b hab) h
+  show es.BFClosed δ P₁'.holds P₂'.holds _ e₁ e₂
+  rw [← h₁, ← h₂]
+  exact h'
 
 /-! ### Kleene iteration over a finite universe -/
 
@@ -692,16 +689,22 @@ theorem kIter_fix {α : Type} (U : List α) (F : (α → Bool) → α → Bool)
 
 variable (es O)
 
-/-- One unfolding of closed relabel equivalence, with the pairs of
-    predecessors looked up in `S`. -/
+/-- A pair of predecessors, both events, related in `S`. -/
+def crOK (S : EventId × EventId → Bool) (y₁ y₂ : EventId) : Bool :=
+  match es.ev y₁, es.ev y₂ with
+  | some _, some _ => S (y₁, y₂)
+  | _, _ => false
+
+/-- One unfolding of closed relabel equivalence, back and forth: each
+    immediate predecessor (that is an event) of either side has a partner on
+    the other side, looked up in `S`. -/
 def crStep (P₁ P₂ : Expr) (δ : FwdCtx) (Λ : Relabelling) (S : EventId × EventId → Bool)
     (e₁ e₂ : Event) : Bool :=
   es.relabEvB O δ Λ P₁ e₁ e₂ &&
-    ((es.predL O P₁ δ e₁.id).isEmpty == (es.predL O P₂ δ e₂.id).isEmpty) &&
-    (es.predL O P₁ δ e₁.id).all fun y₁ => (es.predL O P₂ δ e₂.id).all fun y₂ =>
-      match es.ev y₁, es.ev y₂ with
-      | some _, some _ => S (y₁, y₂)
-      | _, _ => true
+    (es.predL O P₁ δ e₁.id).all (fun y₁ => (es.ev y₁).isNone ||
+      (es.predL O P₂ δ e₂.id).any fun y₂ => es.crOK S y₁ y₂) &&
+    (es.predL O P₂ δ e₂.id).all (fun y₂ => (es.ev y₂).isNone ||
+      (es.predL O P₁ δ e₁.id).any fun y₁ => es.crOK S y₁ y₂)
 
 def crF (P₁ P₂ : Expr) (δ : FwdCtx) (Λ : Relabelling) (S : EventId × EventId → Bool)
     (p : EventId × EventId) : Bool :=
@@ -723,25 +726,54 @@ theorem all_congr_mem {α : Type} {l : List α} {f g : α → Bool} (h : ∀ a �
       simp only [List.all_cons, h a (List.mem_cons_self ..),
         ih (fun x hx => h x (List.mem_cons_of_mem _ hx))]
 
-theorem crStep_congr {P₁ P₂ : Expr} {δ : FwdCtx} {Λ : Relabelling} {S T : EventId × EventId → Bool}
-    (hST : ∀ y₁ ∈ es.candL δ, ∀ y₂ ∈ es.candL δ, S (y₁, y₂) = T (y₁, y₂)) (a b : Event) :
-    es.crStep O P₁ P₂ δ Λ S a b = es.crStep O P₁ P₂ δ Λ T a b := by
-  unfold crStep
-  rw [all_congr_mem (fun y₁ hy₁ => all_congr_mem (fun y₂ hy₂ => ?_))]
-  cases es.ev y₁ <;> cases es.ev y₂ <;> try rfl
-  exact hST y₁ (List.mem_filter.1 hy₁).1 y₂ (List.mem_filter.1 hy₂).1
+theorem any_congr_mem {α : Type} {l : List α} {f g : α → Bool} (h : ∀ a ∈ l, f a = g a) :
+    l.any f = l.any g := by
+  induction l with
+  | nil => rfl
+  | cons a l ih =>
+      simp only [List.any_cons, h a (List.mem_cons_self ..),
+        ih (fun x hx => h x (List.mem_cons_of_mem _ hx))]
+
+theorem crOK_congr {S T : EventId × EventId → Bool} {y₁ y₂ : EventId}
+    (h : S (y₁, y₂) = T (y₁, y₂)) : es.crOK S y₁ y₂ = es.crOK T y₁ y₂ := by
+  unfold crOK
+  cases es.ev y₁ <;> cases es.ev y₂ <;> first | rfl | exact h
+
+theorem crOK_mono {S T : EventId × EventId → Bool} {y₁ y₂ : EventId}
+    (h : S (y₁, y₂) = true → T (y₁, y₂) = true) (h' : es.crOK S y₁ y₂ = true) :
+    es.crOK T y₁ y₂ = true := by
+  unfold crOK at h' ⊢
+  revert h'
+  cases es.ev y₁ <;> cases es.ev y₂ <;> first | (intro h'; exact h') | exact h
 
 theorem crStep_mono {P₁ P₂ : Expr} {δ : FwdCtx} {Λ : Relabelling} {S T : EventId × EventId → Bool}
     (hST : ∀ y₁ ∈ es.candL δ, ∀ y₂ ∈ es.candL δ, S (y₁, y₂) = true → T (y₁, y₂) = true)
     {a b : Event} (h : es.crStep O P₁ P₂ δ Λ S a b = true) :
     es.crStep O P₁ P₂ δ Λ T a b = true := by
   unfold crStep at h ⊢
-  simp only [Bool.and_eq_true, List.all_eq_true] at h ⊢
-  refine ⟨h.1, fun y₁ hy₁ y₂ hy₂ => ?_⟩
-  have := h.2 y₁ hy₁ y₂ hy₂
-  revert this
-  cases es.ev y₁ <;> cases es.ev y₂ <;> try (intro; rfl)
-  exact hST y₁ (List.mem_filter.1 hy₁).1 y₂ (List.mem_filter.1 hy₂).1
+  simp only [Bool.and_eq_true, Bool.or_eq_true, List.all_eq_true, List.any_eq_true] at h ⊢
+  refine ⟨⟨h.1.1, fun y₁ hy₁ => ?_⟩, fun y₂ hy₂ => ?_⟩
+  · rcases h.1.2 y₁ hy₁ with h' | ⟨y₂, hy₂, h'⟩
+    · exact Or.inl h'
+    · exact Or.inr ⟨y₂, hy₂, crOK_mono
+        (hST y₁ (List.mem_filter.1 hy₁).1 y₂ (List.mem_filter.1 hy₂).1) h'⟩
+  · rcases h.2 y₂ hy₂ with h' | ⟨y₁, hy₁, h'⟩
+    · exact Or.inl h'
+    · exact Or.inr ⟨y₁, hy₁, crOK_mono
+        (hST y₁ (List.mem_filter.1 hy₁).1 y₂ (List.mem_filter.1 hy₂).1) h'⟩
+
+theorem crStep_congr {P₁ P₂ : Expr} {δ : FwdCtx} {Λ : Relabelling} {S T : EventId × EventId → Bool}
+    (hST : ∀ y₁ ∈ es.candL δ, ∀ y₂ ∈ es.candL δ, S (y₁, y₂) = T (y₁, y₂)) (a b : Event) :
+    es.crStep O P₁ P₂ δ Λ S a b = es.crStep O P₁ P₂ δ Λ T a b :=
+  Bool.eq_iff_iff.2
+    ⟨crStep_mono (fun y₁ h₁ y₂ h₂ h => (hST y₁ h₁ y₂ h₂) ▸ h),
+     crStep_mono (fun y₁ h₁ y₂ h₂ h => (hST y₁ h₁ y₂ h₂).symm ▸ h)⟩
+
+theorem crOK_some {S : EventId × EventId → Bool} {y₁ y₂ : EventId}
+    (h : es.crOK S y₁ y₂ = true) : ∃ a b, es.ev y₁ = some a ∧ es.ev y₂ = some b ∧ S (y₁, y₂) = true := by
+  unfold crOK at h
+  revert h
+  cases es.ev y₁ <;> cases es.ev y₂ <;> simp
 
 section spec3
 
@@ -756,20 +788,21 @@ theorem crStep_sound {S : EventId × EventId → Bool}
     {e₁ e₂ : Event} (ht₁ : TermEv M e₁) (ht₂ : TermEv M e₂)
     (h : es.crStep O P₁ P₂ δ Λ S e₁ e₂ = true) : es.ClosedRelabEqC δ Λ P₁ e₁ P₂ e₂ := by
   unfold crStep at h
-  simp only [Bool.and_eq_true, beq_iff_eq, List.all_eq_true] at h
-  obtain ⟨⟨hs, he⟩, hall⟩ := h
+  simp only [Bool.and_eq_true, Bool.or_eq_true, List.all_eq_true, List.any_eq_true] at h
+  obtain ⟨⟨hs, hall₁⟩, hall₂⟩ := h
   refine .mk ((relabEvB_iff hb hP₁ ht₁ ht₂).1 hs) ?_ ?_
-  · have h1 : (∀ x, ¬ es.pred δ e₁.id P₁.holds x) ↔ (es.predL O P₁ δ e₁.id).isEmpty = true := by
-      rw [List.isEmpty_iff, List.eq_nil_iff_forall_not_mem]
-      exact forall_congr' fun x => not_congr (mem_predL hb hP₁ hwf).symm
-    have h2 : (∀ x, ¬ es.pred δ e₂.id P₂.holds x) ↔ (es.predL O P₂ δ e₂.id).isEmpty = true := by
-      rw [List.isEmpty_iff, List.eq_nil_iff_forall_not_mem]
-      exact forall_congr' fun x => not_congr (mem_predL hb hP₂ hwf).symm
-    rw [h1, h2, he]
-  · intro x₁ x₂ ev₁ ev₂ hx₁ hx₂ he₁ he₂
-    have := hall x₁ ((mem_predL hb hP₁ hwf).2 hx₁) x₂ ((mem_predL hb hP₂ hwf).2 hx₂)
-    rw [he₁, he₂] at this
-    exact hS x₁ x₂ ev₁ ev₂ he₁ he₂ this
+  · intro x₁ ev₁ hx₁ he₁
+    rcases hall₁ x₁ ((mem_predL hb hP₁ hwf).2 hx₁) with h' | ⟨y₂, hy₂, h'⟩
+    · rw [he₁] at h'; cases h'
+    · obtain ⟨a, b, ha, hb', hS'⟩ := crOK_some h'
+      rw [he₁] at ha; cases ha
+      exact .mk ((mem_predL hb hP₂ hwf).1 hy₂) hb' (hS x₁ y₂ ev₁ b he₁ hb' hS')
+  · intro x₂ ev₂ hx₂ he₂
+    rcases hall₂ x₂ ((mem_predL hb hP₂ hwf).2 hx₂) with h' | ⟨y₁, hy₁, h'⟩
+    · rw [he₂] at h'; cases h'
+    · obtain ⟨a, b, ha, hb', hS'⟩ := crOK_some h'
+      rw [he₂] at hb'; cases hb'
+      exact .mk ((mem_predL hb hP₁ hwf).1 hy₁) ha (hS y₁ x₂ a ev₂ ha he₂ hS')
 
 theorem kIter_cr_sound : ∀ k y₁ y₂ a b, es.ev y₁ = some a → es.ev y₂ = some b →
     kIter (es.crF O P₁ P₂ δ Λ) k (y₁, y₂) = true → es.ClosedRelabEqC δ Λ P₁ a P₂ b
@@ -802,36 +835,52 @@ theorem crB_iff {e₁ e₂ : Event} (ht₁ : TermEv M e₁) (ht₂ : TermEv M e�
   · intro h
     exact crStep_sound hb hP₁ hP₂ hwf Λ (kIter_cr_sound hb hP₁ hP₂ hwf Λ _) ht₁ ht₂ h
   · intro h
-    have hemp : ∀ (P : Expr), isBPred M P = true → ∀ e,
-        (∀ x, ¬ es.pred δ e P.holds x) ↔ (es.predL O P δ e).isEmpty = true := fun P hP e => by
-      rw [List.isEmpty_iff, List.eq_nil_iff_forall_not_mem]
-      exact forall_congr' fun x => not_congr (mem_predL hb hP hwf).symm
-    suffices key : ∀ Q₁ a₁ Q₂ a₂, es.ClosedRelabEqC δ Λ Q₁ a₁ Q₂ a₂ → P₁ = Q₁ → P₂ = Q₂ →
-        TermEv M a₁ → TermEv M a₂ →
-        es.crStep O P₁ P₂ δ Λ (kIter (es.crF O P₁ P₂ δ Λ) U.length) a₁ a₂ = true from
-      key _ _ _ _ h rfl rfl ht₁ ht₂
-    intro Q₁ a₁ Q₂ a₂ hc
-    induction hc with
-    | mk hr hiff _ ih =>
-        intro e1 e2 t₁ t₂
-        subst e1 e2
+    let K := kIter (es.crF O P₁ P₂ δ Λ) U.length
+    have hK : ∀ y₁ y₂ a b, es.ev y₁ = some a → es.ev y₂ = some b →
+        y₁ ∈ es.candL δ → y₂ ∈ es.candL δ →
+        es.crStep O P₁ P₂ δ Λ K a b = true → es.crOK K y₁ y₂ = true := by
+      intro y₁ y₂ a b ha hb' h₁ h₂ hc
+      have hU : (y₁, y₂) ∈ U := mem_prodL h₁ h₂
+      unfold crOK
+      rw [ha, hb']
+      simp only
+      show kIter (es.crF O P₁ P₂ δ Λ) U.length (y₁, y₂) = true
+      rw [← hfix _ hU]
+      simp only [crF, ha, hb']; exact hc
+    have tev : ∀ {y : EventId} {a : Event}, es.ev y = some a → TermEv M a :=
+      fun he => hb.termEv (mem_events_of_ev he)
+    have key := @BFClosed.rec es δ P₁.holds P₂.holds (fun a b => es.relabEqC δ Λ P₁ a b)
+      (fun a b _ => TermEv M a → TermEv M b → es.crStep O P₁ P₂ δ Λ K a b = true)
+      (fun a e₂ _ => TermEv M a → ∃ y₂ ev₂, y₂ ∈ es.predL O P₂ δ e₂.id ∧ es.ev y₂ = some ev₂ ∧
+        es.crStep O P₁ P₂ δ Λ K a ev₂ = true)
+      (fun e₁ b _ => TermEv M b → ∃ y₁ ev₁, y₁ ∈ es.predL O P₁ δ e₁.id ∧ es.ev y₁ = some ev₁ ∧
+        es.crStep O P₁ P₂ δ Λ K ev₁ b = true)
+      (fun {e₁ e₂} hr _ _ ihR ihL t₁ t₂ => by
         unfold crStep
-        simp only [Bool.and_eq_true, beq_iff_eq, List.all_eq_true]
-        refine ⟨⟨(relabEvB_iff hb hP₁ t₁ t₂).2 hr, ?_⟩, fun y₁ hy₁ y₂ hy₂ => ?_⟩
-        · cases h1 : (es.predL O _ δ _).isEmpty <;> cases h2 : (es.predL O _ δ _).isEmpty <;>
-            simp_all [← hemp _ hP₁, ← hemp _ hP₂]
+        simp only [Bool.and_eq_true, Bool.or_eq_true, List.all_eq_true, List.any_eq_true]
+        refine ⟨⟨(relabEvB_iff hb hP₁ t₁ t₂).2 hr, fun y₁ hy₁ => ?_⟩, fun y₂ hy₂ => ?_⟩
         · cases he₁ : es.ev y₁ with
-          | none => simp
+          | none => exact Or.inl rfl
           | some ev₁ =>
-            cases he₂ : es.ev y₂ with
-            | none => simp
-            | some ev₂ =>
-              simp only
-              have hc := ih y₁ y₂ ev₁ ev₂ ((mem_predL hb hP₁ hwf).1 hy₁) ((mem_predL hb hP₂ hwf).1 hy₂)
-                he₁ he₂ rfl rfl (hb.termEv (mem_events_of_ev he₁)) (hb.termEv (mem_events_of_ev he₂))
-              have hU : (y₁, y₂) ∈ U := mem_prodL (hpredU _ hP₁ _ _ hy₁) (hpredU _ hP₂ _ _ hy₂)
-              rw [← hfix _ hU]
-              simp only [crF, he₁, he₂]; exact hc
+            right
+            obtain ⟨y₂, ev₂, hy₂, he₂, hc⟩ :=
+              ihR y₁ ev₁ ((mem_predL hb hP₁ hwf).1 hy₁) he₁ (tev he₁)
+            exact ⟨y₂, hy₂, hK y₁ y₂ ev₁ ev₂ he₁ he₂ (hpredU _ hP₁ _ _ hy₁)
+              (hpredU _ hP₂ _ _ hy₂) hc⟩
+        · cases he₂ : es.ev y₂ with
+          | none => exact Or.inl rfl
+          | some ev₂ =>
+            right
+            obtain ⟨y₁, ev₁, hy₁, he₁, hc⟩ :=
+              ihL y₂ ev₂ ((mem_predL hb hP₂ hwf).1 hy₂) he₂ (tev he₂)
+            exact ⟨y₁, hy₁, hK y₁ y₂ ev₁ ev₂ he₁ he₂ (hpredU _ hP₁ _ _ hy₁)
+              (hpredU _ hP₂ _ _ hy₂) hc⟩)
+      (fun {_ _ _ x₂} hp he _ ih ta =>
+        ⟨x₂, _, (mem_predL hb hP₂ hwf).2 hp, he, ih ta (tev he)⟩)
+      (fun {_ _ _ x₁} hp he _ ih tb =>
+        ⟨x₁, _, (mem_predL hb hP₁ hwf).2 hp, he, ih (tev he) tb⟩)
+      e₁ e₂ h
+    exact key ht₁ ht₂
 
 end spec3
 

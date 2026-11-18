@@ -27,6 +27,7 @@ import Smrd.GuardLoss
 import Smrd.LiftArms
 import Smrd.RelabEqRefl
 import Smrd.RelabEqBF
+import Smrd.RelabEqAlias
 import Smrd.FwdAcrossAlias
 import Smrd.FwdEntails
 import Smrd.FwdEntailsCheck

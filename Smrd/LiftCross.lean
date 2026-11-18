@@ -111,8 +111,8 @@ theorem pre₂ : esC.Generated (fun _ => True) j₂ :=
   .pre (w := e3) (by simp [esC]) rfl ⟨f₀, holdsC (by simp [esC])⟩
 
 /-- `x := 1` is closed relabel-equivalent to `x := 1` under `Λ₀`. -/
-theorem relabEq_12 : esC.ClosedRelabEq .empty Λ₀ j₁.P e2 j₂.P e3 := by
-  refine .mk ?_ ⟨fun _ _ => no_pred, fun _ _ => no_pred⟩ (fun _ _ _ _ h => (no_pred h).elim)
+theorem relabEq_12 : esC.ClosedRelabEqBF .empty Λ₀ j₁.P e2 j₂.P e3 := by
+  refine .mk ?_ (fun _ _ h _ => (no_pred h).elim) (fun _ _ h _ => (no_pred h).elim)
   -- the witness is the written expression itself, a value
   have hv : esC.relabEqExpr .empty Λ₀ j₁.P (.val (.num 1)) j₂.P (.val (.num 1)) :=
     ⟨.val (.num 1), fun _ _ _ h => h, fun _ _ _ h => h⟩
@@ -126,10 +126,10 @@ theorem relabEq_12 : esC.ClosedRelabEq .empty Λ₀ j₁.P e2 j₂.P e3 := by
 /-- Every condition of the paper's Lifting holds (those of `LiftConds` but the
     library's `⊑`-restriction `LiftConds.past`). -/
 theorem lift_conds :
-    j₁.δ = j₂.δ ∧ Λ₀.Injective ∧ esC.ClosedRelabEq j₁.δ Λ₀ j₁.P j₁.w j₂.P j₂.w ∧
+    j₁.δ = j₂.δ ∧ Λ₀.Injective ∧ esC.ClosedRelabEqBF j₁.δ Λ₀ j₁.P j₁.w j₂.P j₂.w ∧
     (∀ e, e ∈ j₂.D ↔ ∃ α ∈ j₁.D, Λ₀.app α = e) ∧
     (∀ α ∈ j₁.D, ∃ ev₁ ev₂, esC.ev α = some ev₁ ∧ esC.ev (Λ₀.app α) = some ev₂ ∧
-      esC.ClosedRelabEq j₁.δ Λ₀ j₁.P ev₁ j₂.P ev₂) ∧
+      esC.ClosedRelabEqBF j₁.δ Λ₀ j₁.P ev₁ j₂.P ev₂) ∧
     ¬ esC.cls Event.isVol j₁.w.id ∧ ¬ esC.cls Event.isVol j₂.w.id ∧
     (∀ α ∈ j₁.D ++ j₂.D, ¬ esC.cls Event.isVol α) ∧
     Sat (Pred.and (Expr.liftPred (j₁.P.rename Λ₀) j₂.P).holds (fun _ => True)) := by
