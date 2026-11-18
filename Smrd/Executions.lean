@@ -400,10 +400,12 @@ def poloc : Rel := fun a b => x.poX es a b ∧ x.sameLoc es a b
     would leave `rmw`, and Atomicity with it. A write's value restriction
     carries the condition it is guarded by, so under `valres_X` every pair of
     `⊑ʳᵐʷ` in `X × X` whose write is guarded by the condition is in `rmw`
-    (`rmwRel_of_valresX`, `holds_of_guard`, `Smrd.SyncOrder`). -/
+    (`rmwRel_of_valresX`, `holds_of_guard`, `Smrd.SyncOrder`). The predicate is the
+    execution's joint `P` (`⋀_{j ∈ J} P_j ∧ ψ_δ`) with `φ_rf`, so that the value an RMW's
+    read takes from the write it reads from decides its condition. -/
 def rmwRel : Rel := fun r w =>
   x.X r ∧ x.X w ∧ ∃ ent ∈ es.rmw, ent.r = r ∧ ent.w = w ∧
-    EquivUnder (Pred.and (x.P es) (x.valresX es)) ent.cond Expr.tt
+    EquivUnder (Pred.and (x.P es) (Pred.and (x.phiRf es) (x.valresX es))) ent.cond Expr.tt
 
 /-- `rf ; rmw`: from a write to the write of an RMW that reads from it. -/
 def rfRmw : Rel := fun a b => ∃ r, x.rf a r ∧ x.rmwRel es r b

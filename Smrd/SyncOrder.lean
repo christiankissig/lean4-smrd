@@ -209,6 +209,14 @@ theorem holds_of_guard {w : EventId} (hXw : x.X w) {ew : Event} (hev : es.ev w =
   have h := (Expr.holds_conj _ f).1 (hf w ew hXw hev) g.expr (List.mem_map_of_mem hg)
   simpa only [Guard.expr, hgp, if_true] using h
 
+/-- The same under `P ∧ (Q ∧ valres_X)`, the shape of `rmw`'s predicate
+    `P ∧ (φ_rf ∧ valres_X)`. -/
+theorem equivUnder_tt_of_valresX' {P Q : Pred} {c : Expr}
+    (hc : ∀ f, x.valresX es f → c.holds f) :
+    EquivUnder (Pred.and P (Pred.and Q (x.valresX es))) c Expr.tt := by
+  intro f hf v₁ v₂ h₁ h₂
+  exact equivUnder_tt_of_valresX (P := P) hc f ⟨hf.1, hf.2.2⟩ v₁ v₂ h₁ h₂
+
 /-- `⊤` holds under every valuation. -/
 theorem holds_tt (f : Valuation) : Expr.tt.holds f := by
   simp [Expr.holds, Expr.tt, Expr.eval]
@@ -220,7 +228,7 @@ theorem holds_tt (f : Valuation) : Expr.tt.holds f := by
 theorem rmwRel_of_valresX {ent : RMWEntry} (hent : ent ∈ es.rmw) {r w : EventId}
     (hr : ent.r = r) (hw : ent.w = w) (hXr : x.X r) (hXw : x.X w)
     (hc : ∀ f, x.valresX es f → ent.cond.holds f) : x.rmwRel es r w :=
-  ⟨hXr, hXw, ent, hent, hr, hw, equivUnder_tt_of_valresX hc⟩
+  ⟨hXr, hXw, ent, hent, hr, hw, equivUnder_tt_of_valresX' hc⟩
 
 /-- **Release into an RMW, carried to its read** (`ppo_sync ; rmwPairs`, in the
     part of the justification of the RMW's write): `a ⊑ w`, `w` the release
