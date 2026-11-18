@@ -9,8 +9,9 @@ all accesses relaxed. Lifting the guarded write's pre-justification into itself 
 relabelling `Λ = [ra ↦ rb]` gives `(⊤ ∧ rb = 0 ∧ rb = 0) ∧ (⋀∅ ∨ ⋀{ra = 0})`: every conjunct of
 `⟦P⟧_Λ` is a conjunct of `P`, so `A₁ = ∅` and the factored disjunction is valid. Weakening drops
 it under `Ω = ⊤`, and the justification `(⊤ ∧ rb = 0 ∧ rb = 0, ∅) ⊢ y := 1` has lost the symbol
-of the read the outer branch tests. A consistent execution then runs `y := 1` while `ra` reads
-`1`, without `(ra, y := 1) ∈ DP`.
+of the read the outer branch tests. An execution satisfying No-Thin-Air and coherence then runs
+`y := 1` while `ra` reads `1`, without `(ra, y := 1) ∈ DP`; only `φ`, whose satisfiability check
+includes the value restrictions of `X`, refuses it.
 
 Every side condition of sMRD's Def. 4.16 (with the library's `⊑`-restriction) holds
 (`lift_conds`, `LiftConds`): the two premises are the same generated justification (`δ`,
@@ -26,12 +27,14 @@ assume the lift generated (`hL`), and `gen_jL_of` shows that the restrictions ar
 missing.
 
 * `gen_jW_of`: the weakened justification would be generated; `jW_syms`: `ra ∉ symbols(P)`.
-* `consistent_x`, `consistentT_x`: the execution taking it, with `ra` reading `A := 1` and `rb`
-  reading `B := 0`, would be consistent. `IsExecution.consistent` asks a model of
-  `⋀ P_j ∧ ⋀ valres(X)` (`ra = 0` there) and `φ` a model of `⋀ (P_j ∧ ψ) ∧ φ_rf` (`ra = 1`
-  there); the branch condition is tied to `rf` only through `J`.
-* `guard_lost`: `y := 1 ∈ X`, every model of `φ_rf` gives `ra = 1`, so the branch condition
-  `ra = 0` fails, and `(ra, y := 1) ∉ DP`.
+* `guard_lost`: the execution taking it, with `ra` reading `A := 1` and `rb` reading `B := 0`,
+  would be an execution satisfying No-Thin-Air and coherence, with `y := 1 ∈ X`, every model
+  of `P ∧ φ_rf` giving `ra = 1`, so the branch condition `ra = 0` fails, and
+  `(ra, y := 1) ∉ DP`. `IsExecution.consistent` asks a model of `⋀ P_j ∧ ⋀ valres(X)`
+  (`ra = 0` there); the branch condition is tied to `rf` only through `J` and `valres_X`.
+* `phiWeak_x`, `not_phi_x`: `x` meets every condition of `φ` but `valres_X`; `φ`, which asks a
+  model of `P ∧ φ_rf ∧ valres_X`, refuses it, so `x` is not consistent (`not_consistent_x`,
+  `not_consistentT_x`). The lost guard is therefore caught by `φ`, not by the rule.
 
 Under the restricted rule:
 
@@ -52,9 +55,9 @@ Variants:
 * `Free`: `free(r)` after `r := malloc(1)` in place of `y := 1`. Under the pre-justification the
   freed location may alias `A` and `B`, the reads are immediate `≼`-predecessors, and the
   all-pairs clause of closed relabel-equivalence fails; Strengthening by `r ≠ &A ∧ r ≠ &B`
-  leaves the allocation as the only predecessor, and the derivation and the execution go through
-  under the unrestricted rule (`Free.gen_jW_of`, `Free.guard_lost`); both restrictions refuse it
-  (`Free.not_lift`).
+  leaves the allocation as the only predecessor, and the derivation and the execution (bar `φ`)
+  go through under the unrestricted rule (`Free.gen_jW_of`, `Free.guard_lost`); `φ` refuses the
+  execution (`Free.not_phi_x`), and both restrictions refuse the lift (`Free.not_lift`).
 -/
 
 namespace GuardLoss
@@ -338,7 +341,12 @@ theorem P_iff {f : Valuation} : x.P esG f ↔ ∀ j ∈ Jx, j.P.holds f := by
     simp only [x, Jx, List.mem_cons, List.not_mem_nil, or_false] at hj
     rcases hj with rfl | rfl | rfl | rfl | rfl <;> cases hp
 
-theorem phi_x : x.phi esG := by
+/-- **`x` meets every condition of `φ` but `valres_X`**: nothing is elided, every read reads,
+    and `P ∧ φ_rf` is satisfiable (`g₁`). -/
+theorem phiWeak_x :
+    (∀ e, ((∃ r, x.rf e r) ∨ (∃ b, x.DP e b)) → ¬ x.elided e) ∧
+    (∀ r, (∃ w, x.rf w r) ↔ (x.X r ∧ esG.cls Event.isRead r)) ∧
+    Sat (Pred.and (x.P esG) (x.phiRf esG)) := by
   refine ⟨fun e _ hel => not_elided e hel, fun r => ⟨?_, ?_⟩, g₁, P_iff.2 ?_, ?_, ?_, ?_⟩
   · rintro ⟨w, hw⟩
     exact ⟨(rf_wr_x w r hw).2.2.2, (rf_wr_x w r hw).2.1⟩
@@ -379,6 +387,15 @@ theorem ra_one {f : Valuation} (hφ : x.phiRf esG f) :
   refine ⟨h3, fun h => ?_⟩
   simp [Expr.holds, c3, Expr.eval, h3] at h
 
+/-- **`φ` refuses `x`**: `y := 1 ∈ X`, so `valres_X` asks `ra = 0`, while `φ_rf` gives
+    `ra = 1` (`ra_one`). -/
+theorem not_phi_x : ¬ x.phi esG := by
+  rintro ⟨-, -, f, -, hrf, hv⟩
+  have h := hv 7 e7 (cand_iff.2 (by decide)) (PpoKit.ev_of_mem nodupG (e := e7) (by simp [esG]))
+  have h3 := (ra_one hrf).1
+  simp [e7, PpoStability.W, Event.valres, Expr.conj, Guard.expr, Expr.holds, Expr.eval, Expr.tt, c3, c4,
+    h3] at h
+
 /-! ### No-Thin-Air -/
 
 theorem rmwTight : Execution.RMWTight esG x :=
@@ -417,7 +434,7 @@ theorem sameLoc_locOf {a b : EventId} (h : x.sameLoc esG a b) : locOf esG a = lo
   have hgl' := gG eb (ev_inv hb).1 lb hlb
   obtain ⟨y₁, rfl⟩ := hgl
   obtain ⟨y₂, rfl⟩ := hgl'
-  obtain ⟨-, -, f, hP, hφ⟩ := phi_x
+  obtain ⟨-, -, f, hP, hφ⟩ := phiWeak_x
   have := hs f hP hφ
   simp only [Expr.glob, Expr.eval, Option.some.injEq, Val.loc.injEq, Loc.mk.injEq,
     LocBase.global.injEq, and_true] at this
@@ -478,24 +495,23 @@ theorem coherent_x : x.Coherent esG :=
   ⟨PpoNecessity.relL coL, coOrder, coherence_x, atomicity_x _,
    x.psc_of_noSC esG (x.scFree_of_es esG (esG.scFree_of_all (by decide))) _⟩
 
-/-- **Were the lift generated, the execution would be consistent.** -/
-theorem consistent_x (hL : esG.Generated (fun _ => True) jL) : x.Consistent esG (fun _ => True) :=
-  ⟨isExecution_x hL, phi_x, noThinAir_x, coherent_x⟩
+/-- **`x` is not consistent**, under any `Ω` (`not_phi_x`). -/
+theorem not_consistent_x {Ω : Pred} : ¬ x.Consistent esG Ω := fun h => not_phi_x h.2.1
 
-/-- … also with coherence over `X ∖ †` (nothing is elided). -/
-theorem consistentT_x (hL : esG.Generated (fun _ => True) jL) :
-    x.ConsistentT esG (fun _ => True) :=
-  ⟨isExecution_x hL, phi_x, noThinAir_x, (coherentT_iff_coherent not_elided).2 coherent_x⟩
+/-- … nor with coherence over `X ∖ †`. -/
+theorem not_consistentT_x {Ω : Pred} : ¬ x.ConsistentT esG Ω := fun h => not_phi_x h.2.1
 
-/-- **The guard is lost under the unrestricted rule**: were the lift generated, a consistent
-    execution would run `y := 1`, guarded by `ra = 0`, while every model of its constraints
-    `P ∧ φ_rf` has `ra = 1`, and `(ra, y := 1) ∉ DP`. -/
+/-- **The guard is lost from the justification under the unrestricted rule**: were the lift
+    generated, `x` would be an execution satisfying No-Thin-Air and coherence that runs
+    `y := 1`, guarded by `ra = 0`, while every model of its constraints `P ∧ φ_rf` has `ra = 1`,
+    and `(ra, y := 1) ∉ DP`. Only `φ`'s check of `valres_X` refuses it (`not_phi_x`). -/
 theorem guard_lost (hL : esG.Generated (fun _ => True) jL) :
-    x.Consistent esG (fun _ => True) ∧ x.X 7 ∧
+    x.IsExecution esG (fun _ => True) ∧ x.NoThinAir esG ∧ x.Coherent esG ∧ x.X 7 ∧
     e7.valres.holds = (Expr.and (Expr.and Expr.tt c3) c4).holds ∧
     (∀ f, x.P esG f → x.phiRf esG f → f 3 = .num 1 ∧ ¬ c3.holds f) ∧
     (∃ f, x.P esG f ∧ x.phiRf esG f) ∧ ¬ x.DP 3 7 := by
-  refine ⟨consistent_x hL, cand_iff.2 (by decide), rfl, fun f _ hφ => ra_one hφ, phi_x.2.2, ?_⟩
+  refine ⟨isExecution_x hL, noThinAir_x, coherent_x, cand_iff.2 (by decide), rfl,
+    fun f _ hφ => ra_one hφ, phiWeak_x.2.2, ?_⟩
   rintro ⟨-, -, j, hj, hw, hs⟩
   have key : ∀ j ∈ Jx, j.w.id = 7 → 3 ∉ j.P.syms ++ j.D := by decide
   exact key j hj hw (List.mem_append.2 hs)
@@ -934,7 +950,12 @@ theorem isExecution_x (hL : esF.Generated (fun _ => True) jL) :
 
 theorem alloc_id : ∀ e ∈ esF.events, e.isAlloc = true → e.id = 2 := by decide
 
-theorem phi_x : x.phi esF := by
+/-- **`x` meets every condition of `φ` but `valres_X`**: nothing is elided, every read reads,
+    and `P ∧ φ_rf` is satisfiable (`g₁`). -/
+theorem phiWeak_x :
+    (∀ e, ((∃ r, x.rf e r) ∨ (∃ b, x.DP e b)) → ¬ x.elided e) ∧
+    (∀ r, (∃ w, x.rf w r) ↔ (x.X r ∧ esF.cls Event.isRead r)) ∧
+    Sat (Pred.and (x.P esF) (x.phiRf esF)) := by
   refine ⟨fun e _ hel => not_elided e hel, fun r => ⟨?_, ?_⟩, g₁, fun j hj => ⟨?_, ?_⟩, ?_,
     ?_, ?_⟩
   · rintro ⟨w, hw⟩
@@ -976,6 +997,15 @@ theorem ra_one {f : Valuation} (hφ : x.phiRf esF f) : f 3 = .num 1 ∧ ¬ c3.ho
   have h3 : f 3 = .num 1 := (Option.some.inj this).symm
   refine ⟨h3, fun h => ?_⟩
   simp [Expr.holds, c3, Expr.eval, h3] at h
+
+/-- **`φ` refuses `x`**: `free(r) ∈ X`, so `valres_X` asks `ra = 0`, while `φ_rf` gives
+    `ra = 1` (`ra_one`). -/
+theorem not_phi_x : ¬ x.phi esF := by
+  rintro ⟨-, -, f, -, hrf, hv⟩
+  have h := hv 7 e7 (cand_iff.2 (by decide)) ev7
+  have h3 := (ra_one hrf).1
+  simp [e7, Event.valres, Expr.conj, Guard.expr, Expr.holds, Expr.eval, Expr.tt, c3, c4,
+    h3] at h
 
 theorem rmwTight : Execution.RMWTight esF x :=
   ⟨fun _ h => by simp [esF] at h, fun _ h => by simp [esF] at h⟩
@@ -1019,7 +1049,7 @@ theorem sameLoc_locOf {a b : EventId} (hwa : esF.cls Event.isWrite a)
       exact ⟨_, rfl⟩
   obtain ⟨y₁, rfl⟩ := hga
   obtain ⟨y₂, rfl⟩ := hgb
-  obtain ⟨-, -, f, hP, hφ⟩ := phi_x
+  obtain ⟨-, -, f, hP, hφ⟩ := phiWeak_x
   have := hs f hP hφ
   simp only [Expr.glob, Expr.eval, Option.some.injEq, Val.loc.injEq, Loc.mk.injEq,
     LocBase.global.injEq, and_true] at this
@@ -1080,21 +1110,20 @@ theorem coherent_x : x.Coherent esF :=
   ⟨PpoNecessity.relL coL, coOrder, coherence_x, atomicity_x _,
    x.psc_of_noSC esF (x.scFree_of_es esF (esF.scFree_of_all (by decide))) _⟩
 
-theorem consistent_x (hL : esF.Generated (fun _ => True) jL) : x.Consistent esF (fun _ => True) :=
-  ⟨isExecution_x hL, phi_x, noThinAir_x, coherent_x⟩
+theorem not_consistent_x {Ω : Pred} : ¬ x.Consistent esF Ω := fun h => not_phi_x h.2.1
 
-theorem consistentT_x (hL : esF.Generated (fun _ => True) jL) :
-    x.ConsistentT esF (fun _ => True) :=
-  ⟨isExecution_x hL, phi_x, noThinAir_x, (coherentT_iff_coherent not_elided).2 coherent_x⟩
+theorem not_consistentT_x {Ω : Pred} : ¬ x.ConsistentT esF Ω := fun h => not_phi_x h.2.1
 
-/-- **The guard is lost with `free(r)` under the unrestricted rule**: were the lift generated,
-    a consistent execution would free `r`, guarded by `ra = 0`, while every model of `φ_rf` has
-    `ra = 1`, and `(ra, free(r)) ∉ DP`. -/
+/-- **The guard is lost from the justification with `free(r)` under the unrestricted rule**:
+    were the lift generated, `x` would be an execution satisfying No-Thin-Air and coherence
+    that frees `r`, guarded by `ra = 0`, while every model of `φ_rf` has `ra = 1`, and
+    `(ra, free(r)) ∉ DP`. Only `φ`'s check of `valres_X` refuses it (`not_phi_x`). -/
 theorem guard_lost (hL : esF.Generated (fun _ => True) jL) :
-    x.Consistent esF (fun _ => True) ∧ x.X 7 ∧
+    x.IsExecution esF (fun _ => True) ∧ x.NoThinAir esF ∧ x.Coherent esF ∧ x.X 7 ∧
     (∀ f, x.phiRf esF f → f 3 = .num 1 ∧ ¬ c3.holds f) ∧
     (∃ f, x.P esF f ∧ x.phiRf esF f) ∧ ¬ x.DP 3 7 := by
-  refine ⟨consistent_x hL, cand_iff.2 (by decide), fun f hφ => ra_one hφ, phi_x.2.2, ?_⟩
+  refine ⟨isExecution_x hL, noThinAir_x, coherent_x, cand_iff.2 (by decide),
+    fun f hφ => ra_one hφ, phiWeak_x.2.2, ?_⟩
   rintro ⟨-, -, j, hj, hw, hs⟩
   have key : ∀ j ∈ Jx, j.w.id = 7 → 3 ∉ j.P.syms ++ j.D := by decide
   exact key j hj hw (List.mem_append.2 hs)

@@ -35,9 +35,11 @@ where they hold; where they do not, a counterexample.
   `locModel_of_denote`): the frozen `P` entails the justifications'
   predicates and `ψ_δ` of the shared context (`Pm_of_P`); a model of it, of
   the value restrictions of `X` and of `φ_rf`, under which the locations of
-  `X` evaluate, is one. `φ` gives neither: its witness need not satisfy
-  `valres` (`locModel_of_phi_false_valres`), and a location may evaluate under
-  no valuation (`locModel_of_phi_false_loc`).
+  `X` evaluate, is one. `φ` gives a model of `P ∧ φ_rf ∧ valres_X`
+  (`sat_of_phi`; it refuses a dead branch, `xIte_not_phi`), so where the
+  locations are `Total` it gives a location model (`locModel_of_phi`); in
+  general a location may evaluate under no valuation
+  (`locModel_of_phi_false_loc`).
 -/
 
 namespace EventStructure
@@ -303,12 +305,16 @@ theorem locModel_of_totalLocs (ht : es.TotalLocs)
   obtain ⟨f, hP, hv, hrf⟩ := hs
   exact locModel_of_sat ⟨f, hP, hv, hrf, locsEvalAt_of_totalLocs ht _ f⟩
 
-/-- **A location model from `φ`**, where the value restrictions of `X` hold
-    under `P ∧ φ_rf` and the locations are `Total`. -/
-theorem locModel_of_phi (hφ : x.phi es) (hval : ∀ f, x.P es f → x.phiRf es f → x.valresX es f)
-    (ht : es.TotalLocs) : LocModel es x := by
-  obtain ⟨f, hP, hrf⟩ := hφ.2.2
-  exact locModel_of_totalLocs ht ⟨f, hP, hval f hP hrf, hrf⟩
+/-- **A location model from `φ`**, where the locations are `Total`: `φ` has a
+    model of `P ∧ φ_rf ∧ valres_X`. -/
+theorem locModel_of_phi (hφ : x.phi es) (ht : es.TotalLocs) : LocModel es x := by
+  obtain ⟨f, hP, hrf, hv⟩ := hφ.2.2
+  exact locModel_of_totalLocs ht ⟨f, hP, hv, hrf⟩
+
+/-- `φ`'s model, as the triple `locModel_of_sat` and its relatives take. -/
+theorem sat_of_phi (hφ : x.phi es) : Sat (fun f => x.P es f ∧ x.valresX es f ∧ x.phiRf es f) := by
+  obtain ⟨f, hP, hrf, hv⟩ := hφ.2.2
+  exact ⟨f, hP, hv, hrf⟩
 
 end Execution
 
@@ -856,9 +862,11 @@ theorem xDiv_phi : xDiv.phi esDiv := by
   · rintro ⟨hX | hX | hX, e, he, hR⟩ <;> subst hX <;> cases he <;> cases hR
   · refine ⟨fun _ => .num 0, ?_⟩
     refine And.intro (fun j hj => by cases hj)
-      (And.intro (fun _ _ _ _ (h : False) => h.elim) (And.intro ?_ ?_))
+      (And.intro (And.intro (fun _ _ _ _ (h : False) => h.elim) (And.intro ?_ ?_)) ?_)
     · rintro a e α sz (rfl | rfl | rfl) he hk <;> cases he <;> cases hk
     · rintro a₁ a₂ e₁ e₂ α₁ α₂ s₁ s₂ (rfl | rfl | rfl) _ _ he₁ _ hk₁ <;> cases he₁ <;> cases hk₁
+    · rintro a e (rfl | rfl | rfl) he <;> cases he <;>
+        simp [Event.valres, Expr.conj, Expr.holds, Expr.eval, Expr.tt, wr]
 
 theorem xDiv_not_locModel : ¬ LocModel esDiv xDiv := by
   rintro ⟨f, -, -, h⟩
@@ -886,27 +894,18 @@ theorem denote_progIte : denote (fun _ => 0) progIte = esIte := rfl
 /-- The write of the dead branch. -/
 def xIte : Execution := ⟨fun a => a = 1, [], fun _ _ => False⟩
 
-theorem xIte_phi : xIte.phi esIte := by
-  refine ⟨fun e _ ⟨p, hp, _⟩ => ?_, fun r => ⟨fun ⟨_, h⟩ => h.elim, ?_⟩, ?_⟩
-  · simp [xIte, Execution.δ, FwdCtx.empty] at hp
-  · rintro ⟨hX, e, he, hR⟩; subst hX; cases he; cases hR
-  · refine ⟨fun _ => .num 0, ?_⟩
-    refine And.intro (fun j hj => by cases hj)
-      (And.intro (fun _ _ _ _ (h : False) => h.elim) (And.intro ?_ ?_))
-    · rintro a e α sz rfl he hk; cases he; cases hk
-    · rintro a₁ a₂ e₁ e₂ α₁ α₂ s₁ s₂ rfl _ _ he₁ _ hk₁; cases he₁; cases hk₁
+/-- **`φ` refuses the dead branch**: no valuation satisfies the value restriction of
+    the write `X` takes, `0 = 1`. (Before `φ` checked `valres_X`, `xIte` satisfied `φ`,
+    and `φ` alone gave no location model.) -/
+theorem xIte_not_phi : ¬ xIte.phi esIte := by
+  rintro ⟨-, -, f, -, -, hv⟩
+  have := hv 1 _ rfl rfl
+  simp [Event.valres, Expr.conj, Guard.expr, gIte, wr, Expr.holds, Expr.num, Expr.eval, Expr.tt] at this
 
 theorem xIte_not_locModel : ¬ LocModel esIte xIte := by
   rintro ⟨f, ⟨-, -, hv⟩, -, -⟩
   have := hv 1 _ rfl rfl
   simp [Event.valres, Expr.conj, Guard.expr, gIte, wr, Expr.holds, Expr.num, Expr.eval, Expr.tt] at this
-
-/-- **`φ` gives no location model** in `⟨P⟩_n`: its witness need not satisfy
-    the value restrictions of `X` (here `X` takes a dead branch; `IsExecution`
-    excludes this one, but asks `Sat (P_J ∧ valres_X)` without `ψ_δ`). -/
-theorem locModel_of_phi_false_valres : ∃ (P : Stmt) (n : Bounds) (x : Execution),
-    x.phi (denote n P) ∧ ¬ LocModel (denote n P) x :=
-  ⟨progIte, _, xIte, denote_progIte ▸ xIte_phi, denote_progIte ▸ xIte_not_locModel⟩
 
 /-! ### An offset location needs a typed model -/
 

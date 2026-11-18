@@ -400,7 +400,8 @@ theorem blind_not_execution {Ω : Pred} : ¬ xB.IsExecution esL Ω := by
 def fOut : Valuation := fun _ => .num 0
 
 theorem phi_B : xB.phi esL := by
-  refine ⟨fun e h hel => ?_, fun r => ⟨?_, ?_⟩, fOut, P_B fOut, ⟨?_, ?_, ?_⟩⟩
+  refine ⟨fun e h hel => ?_, fun r => ⟨?_, ?_⟩, fOut, P_B fOut, ⟨?_, ?_, ?_⟩,
+    valresX_of_nil (by decide) _⟩
   · rw [elided_B] at hel; subst hel
     rcases h with ⟨r, hr⟩ | ⟨b, hb⟩
     · have : ∀ p ∈ rfB, p.1 ≠ 2 := by decide
@@ -467,7 +468,7 @@ theorem locOf_B {a b : EventId} (h : xB.sameLoc esL a b) : locOf esL a = locOf e
   obtain ⟨ea, eb, la, lb, ha, hb, hla, hlb, heq⟩ := h
   obtain ⟨x, rfl⟩ := gL ea (ev_inv ha).1 _ hla
   obtain ⟨y, rfl⟩ := gL eb (ev_inv hb).1 _ hlb
-  obtain ⟨f, hP, hrf⟩ := phi_B.2.2
+  obtain ⟨f, hP, hrf, -⟩ := phi_B.2.2
   have := heq f hP hrf
   cases this
   simp [locOf, ha, hb, hla, hlb]

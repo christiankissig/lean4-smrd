@@ -31,6 +31,12 @@ coherence axiom, and `allocDisjoint` in the form a reuse argument consumes.
   `≼ ⊆ ⊑` is `Smrd.PpoTail.ppo_po` with `ppoStep_po_we`, or
   `Smrd.CoherenceT.dep_po_T`). RC11's `HB` contains all of `⊑` and is not
   inside `nta`.
+* **RMW pairs.** `rmw` and the RMW part of `≼` read an RMW's condition under
+  the predicate and `valres_X`, so a pair of `X` whose condition guards the
+  write (`holds_of_guard`), or is `⊤`, is in `rmw` (`rmwRel_of_valresX`), and
+  `≼_sync ; rmwPairs` and `rmwPairs ; ≼_sync` give `≼` from before a releasing
+  RMW write to its read (`ppo_of_rel_rmw`) and from an RMW write to what its
+  acquiring read precedes, in a justification window (`ppo_of_rmw_acq`).
 * **Coherence** (RC11's axiom, under a coherence order): CoWW, CoWR, CoRW,
   CoRR (`coWW_co`, `coWR_co`, `coRW_co`, `coRR_co`).
 * **Allocator** (`alloc_reuse`, `alloc_ne`): two distinct allocations of `X`
@@ -183,6 +189,81 @@ theorem rmw_ppo {Ω : Pred} (hx : x.IsExecution es Ω) (hW : RMWWF es)
     (fun hel => rmw_not_elided hx hel ⟨ent, hent, .inl rfl⟩)
     (fun hel => rmw_not_elided hx hel ⟨ent, hent, .inr rfl⟩)
     hpo (fun h => hirr _ (h ▸ hpo)) hm hM
+
+/-- A condition every model of `valres_X` satisfies is `⊤` under any predicate
+    conjoined with `valres_X`. -/
+theorem equivUnder_tt_of_valresX {P : Pred} {c : Expr}
+    (hc : ∀ f, x.valresX es f → c.holds f) :
+    EquivUnder (Pred.and P (x.valresX es)) c Expr.tt := by
+  intro f hf v₁ v₂ h₁ h₂
+  have h := hc f hf.2
+  unfold Expr.holds at h
+  rw [h] at h₁
+  simp [Expr.tt, Expr.eval] at h₂
+  rw [← Option.some.inj h₁, ← h₂]
+
+/-- The condition guarding a write of `X` holds under every model of `valres_X`. -/
+theorem holds_of_guard {w : EventId} (hXw : x.X w) {ew : Event} (hev : es.ev w = some ew)
+    {g : Guard} (hg : g ∈ ew.guards) (hgp : g.pos = true) :
+    ∀ f, x.valresX es f → g.cond.holds f := fun f hf => by
+  have h := (Expr.holds_conj _ f).1 (hf w ew hXw hev) g.expr (List.mem_map_of_mem hg)
+  simpa only [Guard.expr, hgp, if_true] using h
+
+/-- `⊤` holds under every valuation. -/
+theorem holds_tt (f : Valuation) : Expr.tt.holds f := by
+  simp [Expr.holds, Expr.tt, Expr.eval]
+
+/-- **An RMW pair of `X` whose condition `valres_X` entails is in `rmw`**: the
+    condition guards the write (`holds_of_guard`), or is `⊤`. In `⟨P⟩_n` every
+    `CAS` write is guarded by its condition and every `FADD`'s condition is
+    `⊤`. -/
+theorem rmwRel_of_valresX {ent : RMWEntry} (hent : ent ∈ es.rmw) {r w : EventId}
+    (hr : ent.r = r) (hw : ent.w = w) (hXr : x.X r) (hXw : x.X w)
+    (hc : ∀ f, x.valresX es f → ent.cond.holds f) : x.rmwRel es r w :=
+  ⟨hXr, hXw, ent, hent, hr, hw, equivUnder_tt_of_valresX hc⟩
+
+/-- **Release into an RMW, carried to its read** (`ppo_sync ; rmwPairs`, in the
+    part of the justification of the RMW's write): `a ⊑ w`, `w` the release
+    write of an `rmw` entry with read `r ⊑ w`, all three in `X`, `a` not
+    elided, `a ≠ r`, the condition entailed by `valres_X`: `a ≼ r`. -/
+theorem ppo_of_rel_rmw {Ω : Pred} (hx : x.IsExecution es Ω) {ent : RMWEntry}
+    (hent : ent ∈ es.rmw) (hc : ∀ f, x.valresX es f → ent.cond.holds f) {a : EventId}
+    (ha : x.X a) (hr : x.X ent.r) (hw : x.X ent.w) (hna : ¬ x.elided a)
+    (hpo : es.poR a ent.w) (hrw : es.poR ent.r ent.w) (hne : a ≠ ent.r)
+    (hrel : es.cls Event.isRelW ent.w) : x.ppo es a ent.r := by
+  have hnr : ¬ x.elided ent.r := fun h => rmw_not_elided hx h ⟨ent, hent, .inl rfl⟩
+  have hnw : ¬ x.elided ent.w := fun h => rmw_not_elided hx h ⟨ent, hent, .inr rfl⟩
+  have heff : es.cls Event.isEffect ent.w := by
+    obtain ⟨e, he, h⟩ := hrel
+    refine ⟨e, he, ?_⟩
+    revert h; cases hk : e.kind <;> simp [Event.isRelW, Event.isEffect, Event.isWrite, hk]
+  obtain ⟨j, hj, hjw, -⟩ := hx.justified ent.w hw heff hnw
+  have hrelM : es.cls Event.isRelM ent.w := by
+    obtain ⟨e, he, h⟩ := hrel; exact ⟨e, he, by simp [Event.isRelM, h]⟩
+  have hbase : es.ppoBaseM (x.PJ es j) (x.PR es j) a ent.r :=
+    .inl (.inr (.inl ⟨ent.w, ⟨hpo, .inr hrelM⟩, ent, hent, rfl, rfl,
+      equivUnder_tt_of_valresX hc⟩))
+  exact ppo_of_step ha hr ⟨.inl ha, .inl hr, .inl ⟨j, hj, ⟨⟨a, ent.r, hbase,
+    remap_self_of_not_elided hna, remap_self_of_not_elided hnr⟩, hne⟩,
+    .inr (hjw ▸ hpo), .inr (hjw ▸ hrw)⟩⟩
+
+/-- **An RMW's write, carried to what its read acquires** (`rmwPairs ; ppo_sync`,
+    in the part of the justification of a write `w₀` at or `⊑`-after `b`): the
+    read `r` of an `rmw` entry an acquire, `r ⊑ b`, the write `w ⊑ b`, all in
+    `X`, `b` not elided, `w ≠ b`, the condition entailed by `valres_X`: `w ≼ b`. -/
+theorem ppo_of_rmw_acq {Ω : Pred} (hx : x.IsExecution es Ω) {ent : RMWEntry}
+    (hent : ent ∈ es.rmw) (hc : ∀ f, x.valresX es f → ent.cond.holds f) {b : EventId}
+    (hw : x.X ent.w) (hb : x.X b) (hnb : ¬ x.elided b) (hrb : es.poR ent.r b)
+    (hne : ent.w ≠ b) (hacq : es.cls Event.isAcqR ent.r) {j : Justification} (hj : j ∈ x.J)
+    (hwj : Win es j ent.w) (hbj : Win es j b) : x.ppo es ent.w b := by
+  have hnw : ¬ x.elided ent.w := fun h => rmw_not_elided hx h ⟨ent, hent, .inr rfl⟩
+  have hacqM : es.cls Event.isAcqM ent.r := by
+    obtain ⟨e, he, h⟩ := hacq; exact ⟨e, he, by simp [Event.isAcqM, h]⟩
+  have hbase : es.ppoBaseM (x.PJ es j) (x.PR es j) ent.w b :=
+    .inl (.inr (.inr ⟨ent.r, ⟨ent, hent, rfl, rfl, equivUnder_tt_of_valresX hc⟩,
+      ⟨hrb, .inl hacqM⟩⟩))
+  exact ppo_of_step hw hb ⟨.inl hw, .inl hb, .inl ⟨j, hj, ⟨⟨ent.w, b, hbase,
+    remap_self_of_not_elided hnw, remap_self_of_not_elided hnb⟩, hne⟩, hwj, hbj⟩⟩
 
 /-- An `rf`-source is not elided (`φ`). -/
 theorem not_elided_of_rf (hphi : x.phi es) {w r : EventId} (h : x.rf w r) : ¬ x.elided w :=

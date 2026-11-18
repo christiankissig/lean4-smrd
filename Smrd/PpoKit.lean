@@ -231,6 +231,15 @@ theorem isExecution_simple {es : EventStructure} (S : Simple es) {rf : List (Eve
     subst this
     rw [hj] at hj''; exact (Option.some.inj hj'').symm
 
+/-- An event without guards: its value restriction holds everywhere. -/
+theorem valres_holds_of_nil {e : Event} (h : e.guards = []) (f : Valuation) : e.valres.holds f := by
+  simp [Event.valres, h, Expr.conj, Expr.holds, Expr.eval, Expr.tt]
+
+/-- Where no event has guards, every valuation satisfies `valres_X`. -/
+theorem valresX_of_nil {es : EventStructure} {x : Execution}
+    (h : ∀ e ∈ es.events, e.guards = []) (f : Valuation) : x.valresX es f :=
+  fun _ e _ he => valres_holds_of_nil (h e (List.mem_of_find?_eq_some he)) f
+
 /-- `φ` for a simple execution, with a valuation `f` that makes each `rf`
     edge agree on locations and values, every read reading, and no
     allocations. -/
@@ -242,7 +251,8 @@ theorem phi_simple {es : EventStructure} (S : Simple es) {rf : List (EventId × 
       ew.val.map (·.eval f) = er.val.map (·.eval f)) :
     (simple es rf).phi es := by
   have hx := isExecution_simple S hrf
-  refine ⟨fun e _ hel => not_elided_simple es rf e hel, fun r => ⟨?_, ?_⟩, f, ?_, ?_, ?_, ?_⟩
+  refine ⟨fun e _ hel => not_elided_simple es rf e hel, fun r => ⟨?_, ?_⟩, f, ?_, ⟨?_, ?_, ?_⟩,
+    fun a e _ he => S.holds (ev_inv he).1 f⟩
   · rintro ⟨w, hw⟩
     exact ⟨(hx.rf_wr w r hw).2.2.2, (hx.rf_wr w r hw).2.1⟩
   · rintro ⟨-, e, he, hp⟩

@@ -181,10 +181,16 @@ def Pm : Pred := fun f => (∀ j ∈ x.J, j.P.holds f) ∧ x.δ.psi es f ∧ x.v
 /-- The alias predicate of a justification's part, `P_j ∧ ψ_δ`. -/
 def PJ (j : Justification) : Pred := Pred.and j.P.holds (x.δ.psi es)
 
-/-- MoRDor's `ppos`: each justification's `ForwardingContext.ppo` under `P_j`,
-    cut to its window. -/
+/-- The RMW predicate of a justification's part, `P_j ∧ valres_X`: as for
+    `rmw` (`rmwRel`), an RMW condition is read with the value restrictions of
+    the path, which carry the condition of every RMW whose write is in `X`. -/
+def PR (j : Justification) : Pred := Pred.and j.P.holds (x.valresX es)
+
+/-- MoRDor's `ppos`: each justification's `ForwardingContext.ppo` under `P_j`
+    (alias queries under `P_j ∧ ψ_δ`, RMW conditions under `P_j ∧ valres_X`,
+    where MoRDor has `P_j`), cut to its window. -/
 def ppoJ : Rel := fun a b =>
-  ∃ j ∈ x.J, es.ppoM (x.PJ es j) j.P.holds x.δ a b ∧ Win es j a ∧ Win es j b
+  ∃ j ∈ x.J, es.ppoM (x.PJ es j) (x.PR es j) x.δ a b ∧ Win es j a ∧ Win es j b
 
 /-- Both events lie at or `⊑`-below one event of the path `X ∪ X_F`:
     `∃ e ∈ X ∪ X_F. (a ⊑ e ∨ a = e) ∧ (b ⊑ e ∨ b = e)`. sMRD's windows
@@ -316,11 +322,21 @@ def phiRf : Pred := fun f =>
     (∀ vw vr, ew.val = some vw → er.val = some vr → vw.eval f = vr.eval f)) ∧
   x.allocDisjoint es f
 
-/-- `φ ≜ (π₁(rf ∪ DP) ∩ † = ∅) ∧ (π₂(rf) = X ∩ R) ∧ (P ∧ φ_rf ≢ ⊥)` -/
+/-- `φ ≜ (π₁(rf ∪ DP) ∩ † = ∅) ∧ (π₂(rf) = X ∩ R) ∧ (P ∧ φ_rf ∧ valres_X ≢ ⊥)`.
+
+    The value restrictions of `X` are part of the satisfiability check (the
+    paper's `P ∧ φ_rf ≢ ⊥` leaves them to `IsExecution.consistent`, which
+    checks `P_J ∧ valres_X` on its own): an event of `X` is taken on the
+    branch outcomes its guards name, and `rf` must give the reads values that
+    take them. With two separate checks, an execution could take a guarded
+    event while `rf` gives its guard's read a value that fails the guard,
+    wherever the frozen predicate `P` is weaker than the guard (after
+    Lifting). MoRDor's `p_combined` conjoins the path's value restrictions
+    the same way. -/
 def phi : Prop :=
   (∀ e, ((∃ r, x.rf e r) ∨ (∃ b, x.DP e b)) → ¬ x.elided e) ∧
   (∀ r, (∃ w, x.rf w r) ↔ (x.X r ∧ es.cls Event.isRead r)) ∧
-  Sat (Pred.and (x.P es) (x.phiRf es))
+  Sat (Pred.and (x.P es) (Pred.and (x.phiRf es) (x.valresX es)))
 
 /-! ## Axiomatic memory consistency model -/
 
@@ -366,12 +382,28 @@ def poX : Rel := fun a b => x.XwF es a ∧ x.XwF es b ∧ es.poR a b
     (under `P ∧ φ_rf`). -/
 def poloc : Rel := fun a b => x.poX es a b ∧ x.sameLoc es a b
 
-/-- `rmw ≜ {(e_r, e_w) ∈ X × X | (e_r, c, e_w) ∈ ⊑ʳᵐʷ ∧ c ≡_P ⊤}`: the read
-    and the write of each read-modify-write operation that writes in the
-    execution, every `FADD` and a `CAS` on its succeeding branch, with `P` the
-    frozen predicate. -/
+/-- `rmw ≜ {(e_r, e_w) ∈ X × X | (e_r, c, e_w) ∈ ⊑ʳᵐʷ ∧ c ≡_{P ∧ valres_X} ⊤}`: the
+    read and the write of each read-modify-write operation that writes in the
+    execution, every `FADD` and a `CAS` on its succeeding branch.
+
+    The condition is read under the frozen predicate `P` *and* the value
+    restrictions of `X` (as `p_combined`, `Pm`, reads `≼_loc`), not under `P`
+    alone (the paper's `c ≡_P ⊤`). A pair in `X × X` is on the RMW's
+    succeeding branch already; `P` alone can be weaker than that branch where a
+    justification of the write was lifted into it. Lifting the write of a `CAS`
+    that succeeds in one iteration into the write of the same `CAS` in a later
+    one, across the first `CAS`'s branching, gives the later write
+    `⟦P₁⟧_Λ ∨ P₂`, whose first disjunct need not entail the later condition;
+    every side condition of the restricted rule but closed relabel-equivalence
+    admits it, and whether that one refuses it depends on the `pred` chains
+    under every predicate Strengthening can reach. Under `P` alone such a pair
+    would leave `rmw`, and Atomicity with it. A write's value restriction
+    carries the condition it is guarded by, so under `valres_X` every pair of
+    `⊑ʳᵐʷ` in `X × X` whose write is guarded by the condition is in `rmw`
+    (`rmwRel_of_valresX`, `holds_of_guard`, `Smrd.SyncOrder`). -/
 def rmwRel : Rel := fun r w =>
-  x.X r ∧ x.X w ∧ ∃ ent ∈ es.rmw, ent.r = r ∧ ent.w = w ∧ EquivUnder (x.P es) ent.cond Expr.tt
+  x.X r ∧ x.X w ∧ ∃ ent ∈ es.rmw, ent.r = r ∧ ent.w = w ∧
+    EquivUnder (Pred.and (x.P es) (x.valresX es)) ent.cond Expr.tt
 
 /-- `rf ; rmw`: from a write to the write of an RMW that reads from it. -/
 def rfRmw : Rel := fun a b => ∃ r, x.rf a r ∧ x.rmwRel es r b
