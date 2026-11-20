@@ -14,11 +14,12 @@ With `denote_po_trans` and `denote_po_irrefl` (`Smrd.RoutineHyps`) and
 `dep_po_R` for the event structures of programs (`dep_po_R_denote`,
 `dep_po_R_of_phi_denote`, stated in `Smrd.RMWTightDenote`, which proves
 `RMWFailGuard` from the invariant it keeps). `PoForest` is not needed
-either: `⊑` of `⟨(a ∥ b); c⟩_n` puts both threads below `c` without ordering
-them, and Forwarding's join restriction (`fwdNoJoin`) and Write Elision's
-fork restriction (`weNoFork`, through the join condition `weNoJoin` it
-implies) keep `≼` from relating them
-(`Smrd.FwdAcrossJoin`, `Smrd.WEAcrossFork`).
+itself: `⊑` of `⟨(a ∥ b); c⟩_n` puts both threads below `c` without ordering
+them, and the join condition (`Execution.NoJoinMoves`, a hypothesis, which
+`PoForest` implies) keeps `≼` from relating them (`Smrd.FwdAcrossJoin`,
+`Smrd.WEAcrossFork`). Keeping Forwarding and Write Elision within one segment
+does not give the join condition where a thread of a parallel block branches
+and code follows the join.
 -/
 
 namespace RMWWFDenote

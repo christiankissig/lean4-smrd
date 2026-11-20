@@ -147,7 +147,7 @@ def e0 : Event := PpoStability.R 0 0 [0] [] [] .rlx "x"
 def e1 : Event := PpoStability.R 1 0 [1] [] [] .rlx "y"
 def e2 : Event := PpoStability.W 2 0 [2] [] [] .rel "z" 1
 
-def esR : EventStructure := ⟨[e0, e1, e2], [(0, 1), (0, 2), (1, 2)], []⟩
+def esR : EventStructure := ⟨[e0, e1, e2], [(0, 1), (0, 2), (1, 2)], [], []⟩
 
 theorem nodupR : (esR.events.map (·.id)).Nodup := by decide
 

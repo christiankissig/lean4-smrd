@@ -85,7 +85,7 @@ def e10 : Event := W 10 [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1] "z" (Expr.num 1)
 def poL : List (EventId × EventId) :=
   (List.range 11).flatMap fun i => ((List.range 11).filter (i < ·)).map (i, ·)
 
-def esP : EventStructure := ⟨[e0, e1, e2, e3, e4, e5, e6, e7, e8, e9, e10], poL, []⟩
+def esP : EventStructure := ⟨[e0, e1, e2, e3, e4, e5, e6, e7, e8, e9, e10], poL, [], []⟩
 
 unseal interp in
 theorem denote_prog : denote (fun _ => 0) prog = esP := rfl
@@ -267,7 +267,7 @@ theorem fwd_68 : esP.fwdRel jS 6 8 := by
     .inr (.inr ⟨⟨_, rfl, rfl⟩, ⟨_, rfl, rfl⟩⟩),
     fun ⟨e, he, hp⟩ => by cases he; simp [e8, R, Event.isVol] at hp⟩,
     fwdNoAcq_of (by decide) (by decide) (by decide),
-    Execution.fwdNoJoin_of_poForest (poForest_of forestL_poL) _ _, not_rmwAcc_of_nil _ rfl _⟩
+    (by decide), not_rmwAcc_of_nil _ rfl _⟩
   · rintro ⟨e'', h₁, h₂⟩
     have p₁ := (ppo_empty h₁).1
     have p₂ := (ppo_empty h₂).1

@@ -41,6 +41,14 @@ with the source in the parent thread, `z := 0; (x := 1 ∥ r1 :=_acq z); r2 := x
 y := r2` (`parent_excluded`): `κ` runs in the parent's thread, so a
 restriction to one thread would not exclude it. With the restriction,
 `dep_po_T`, `dep_po_E` and `dep_po_R` hold without `PoForest`.
+
+**Segments.** Forwarding now asks the two events to lie in one segment
+(`EventStructure.SameSeg`, Condition `cond:segment`) instead of the join
+restriction. `x := 1` is in a thread and `r2` after the join, so the segment
+condition refutes the forwarding (`not_sameSeg`, and `parent_excluded_seg`
+with the source in the parent thread), and `not_generated` goes through it.
+The statements about the join restriction are kept. `dep_po_T`, `dep_po_E`
+and `dep_po_R` take the join condition as a hypothesis (`NoJoinMoves`).
 -/
 
 namespace FwdAcrossJoin
@@ -63,7 +71,7 @@ def e4 : Event := ⟨4, .write .rlx (Expr.glob "y") (.sym 3) false, ⟨0, [1, 1,
 def poL : List (EventId × EventId) :=
   [(0, 1), (0, 2), (0, 3), (0, 4), (3, 4), (1, 3), (1, 4), (2, 3), (2, 4)]
 
-def esP : EventStructure := ⟨[e0, e1, e2, e3, e4], poL, []⟩
+def esP : EventStructure := ⟨[e0, e1, e2, e3, e4], poL, [], [[1, 2], [3, 4]]⟩
 
 unseal interp in
 theorem denote_prog : denote (fun _ => 0) prog = esP := rfl
@@ -168,8 +176,12 @@ theorem not_fwdNoJoin : ¬ esP.fwdNoJoin 2 3 := fun h => by
   · exact not_po_12 h
   · exact not_po_21 h
 
+/-- **The segment condition fails**: `x := 1` is in a thread, `r2` after the
+    join (`SameSeg`, Condition `cond:segment`). -/
+theorem not_sameSeg : ¬ esP.SameSeg 2 3 := by decide
+
 theorem not_fwdRel (j : Justification) : ¬ esP.fwdRel j 2 3 :=
-  fun h => not_fwdNoJoin h.2.2.1
+  fun h => not_sameSeg h.2.2.1
 
 /-- **No generated justification forwards `x := 1` into `r2`.** -/
 theorem not_generated {Ω : Pred} {j : Justification} (h : esP.Generated Ω j) :
@@ -541,9 +553,14 @@ theorem threads_prog' :
     ((denote (fun _ => 0) prog').events.map fun e => (e.id, e.label.thread)) =
       [(0, 0), (1, 0), (2, 1), (3, 0), (4, 0)] := rfl
 
-/-- **Forwarding `r2 := x` from `x := 1` in the parent thread is excluded
-    too**: `r1 :=_acq z`, in the other thread, is `⊑`-below `r2` and not
-    comparable with `x := 1`. -/
+unseal interp in
+/-- **Forwarding `r2 := x` from `x := 1` in the parent thread is excluded by
+    the segment condition**: `x := 1` is in a thread of the block, `r2` after
+    its join, though both are in the parent's thread. -/
+theorem parent_excluded_seg : ¬ (denote (fun _ => 0) prog').SameSeg 1 3 := by decide
+
+/-- **And by the former join restriction**: `r1 :=_acq z`, in the other
+    thread, is `⊑`-below `r2` and not comparable with `x := 1`. -/
 theorem parent_excluded : ¬ (denote (fun _ => 0) prog').fwdNoJoin 1 3 := fun h => by
   have po : ∀ a b, (a, b) ∈ poL → (denote (fun _ => 0) prog').poR a b := fun a b h => by
     show (a, b) ∈ (denote (fun _ => 0) prog').po

@@ -71,7 +71,7 @@ def e10 : Event := W 10 [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1] "y" (.sym 9)
 /-- `⊑`: the total order on the eleven events (that of `Smrd.FwdAcrossAlias`). -/
 abbrev poL := FwdAcrossAlias.poL
 
-def esP : EventStructure := ⟨[e0, e1, e2, e3, e4, e5, e6, e7, e8, e9, e10], poL, []⟩
+def esP : EventStructure := ⟨[e0, e1, e2, e3, e4, e5, e6, e7, e8, e9, e10], poL, [], []⟩
 
 unseal interp in
 theorem denote_prog : denote (fun _ => 0) prog = esP := rfl
@@ -232,7 +232,7 @@ theorem fwd_69 : esP.fwdRel jS 6 9 := by
     .inr (.inr ⟨⟨_, rfl, rfl⟩, ⟨_, rfl, rfl⟩⟩),
     fun ⟨e, he, hp⟩ => by cases he; simp [e9, R, Event.isVol] at hp⟩,
     fwdNoAcq_of (by decide) (by decide) (by decide),
-    Execution.fwdNoJoin_of_poForest (poForest_of FwdAcrossAlias.forestL_poL) _ _, not_rmwAcc_of_nil _ rfl _⟩
+    (by decide), not_rmwAcc_of_nil _ rfl _⟩
   · rintro ⟨e'', h₁, h₂⟩
     have p₁ := (ppo_empty h₁).1
     have p₂ := (ppo_empty h₂).1

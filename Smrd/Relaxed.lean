@@ -292,7 +292,7 @@ theorem consistentVT_iff_consistentV {Ω : Pred} (h : ∀ a, ¬ x.elided a) :
     with a location model, with forwarding and write elision, under
     `NoRevLoc`, `RMWTightR`, `DP ⊆ ⊑`, where no acquire read is forwarded
     (`Execution.coherenceT_iff_coherenceV`). -/
-theorem consistentVT_iff_consistentT {Ω : Pred} (hnf : x.FenceFree es)
+theorem consistentVT_iff_consistentT {Ω : Pred} (hNJ : NoJoinMoves es x) (hnf : x.FenceFree es)
     (hnoAcqF : ∀ p ∈ x.δ.f, ¬ es.cls Event.isAcqR p.2)
     (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
     (hirr : ∀ a, ¬ es.poR a a) (hL : NoRevLoc es x) (hT : RMWTightR es x)
@@ -303,20 +303,20 @@ theorem consistentVT_iff_consistentT {Ω : Pred} (hnf : x.FenceFree es)
     have ho' := coherenceOrderT_coLoc ho
     refine ⟨hx, hphi, hnta, coLoc es x co, ho', ?_, atomicity_anti coLoc_sub ha,
       pscOf_mono (fun _ _ h => h) (fun _ _ h => h) coLoc_sub hp⟩
-    exact (coherenceT_iff_coherenceV hx hphi hnf hnoAcqF hpo_trans hirr hL hT hDP hLtrans
+    exact (coherenceT_iff_coherenceV hx hNJ hphi hnf hnoAcqF hpo_trans hirr hL hT hDP hLtrans
       (x.rfLoc_of_isExecution es hx) ho' coLoc_loc hm).2 (irr_eco_anti coLoc_sub hc)
   · rintro ⟨hx, hphi, hnta, co, ho, hc, ha, hp⟩
     have ho' := coherenceOrderT_coLoc ho
     have hcT : x.CoherenceT es (coLoc es x co) := irr_eco_anti coLoc_sub hc
     refine ⟨hx, hphi, hnta, coLoc es x co, ho', ?_, atomicity_anti coLoc_sub ha,
       pscOf_mono (fun _ _ h => h) (fun _ _ h => h) coLoc_sub hp⟩
-    exact (coherenceT_iff_coherenceV hx hphi hnf hnoAcqF hpo_trans hirr hL hT hDP hLtrans
+    exact (coherenceT_iff_coherenceV hx hNJ hphi hnf hnoAcqF hpo_trans hirr hL hT hDP hLtrans
       (x.rfLoc_of_isExecution es hx) ho' coLoc_loc hm).1 hcT
 
 /-- **`ConsistentFT` and `ConsistentT` coincide, with fences**, under the
     hypotheses of `consistentVT_iff_consistentT` but `FenceFree`
     (`Execution.coherenceT_iff_coherenceF`). -/
-theorem consistentFT_iff_consistentT {Ω : Pred}
+theorem consistentFT_iff_consistentT {Ω : Pred} (hNJ : NoJoinMoves es x)
     (hnoAcqF : ∀ p ∈ x.δ.f, ¬ es.cls Event.isAcqR p.2)
     (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
     (hirr : ∀ a, ¬ es.poR a a) (hL : NoRevLoc es x) (hT : RMWTightR es x)
@@ -327,14 +327,14 @@ theorem consistentFT_iff_consistentT {Ω : Pred}
     have ho' := coherenceOrderT_coLoc ho
     refine ⟨hx, hphi, hnta, coLoc es x co, ho', ?_, atomicity_anti coLoc_sub ha,
       pscOf_mono (fun _ _ h => h) (fun _ _ h => h) coLoc_sub hp⟩
-    exact (coherenceT_iff_coherenceF hx hphi hnoAcqF hpo_trans hirr hL hT hDP hLtrans
+    exact (coherenceT_iff_coherenceF hx hNJ hphi hnoAcqF hpo_trans hirr hL hT hDP hLtrans
       (x.rfLoc_of_isExecution es hx) ho' coLoc_loc hm).2 (irr_eco_anti coLoc_sub hc)
   · rintro ⟨hx, hphi, hnta, co, ho, hc, ha, hp⟩
     have ho' := coherenceOrderT_coLoc ho
     have hcT : x.CoherenceT es (coLoc es x co) := irr_eco_anti coLoc_sub hc
     refine ⟨hx, hphi, hnta, coLoc es x co, ho', ?_, atomicity_anti coLoc_sub ha,
       pscOf_mono (fun _ _ h => h) (fun _ _ h => h) coLoc_sub hp⟩
-    exact (coherenceT_iff_coherenceF hx hphi hnoAcqF hpo_trans hirr hL hT hDP hLtrans
+    exact (coherenceT_iff_coherenceF hx hNJ hphi hnoAcqF hpo_trans hirr hL hT hDP hLtrans
       (x.rfLoc_of_isExecution es hx) ho' coLoc_loc hm).1 hcT
 
 /-! ## Fences separate `ConsistentV` from `Consistent` -/

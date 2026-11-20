@@ -848,7 +848,7 @@ def progDiv : Stmt := .seq (.store .rlx "x" (.num 1) false)
 
 def esDiv : EventStructure :=
   ⟨[wr 0 (Expr.glob "x") (.num 1) [0], wr 1 (.bin .div (.num 1) (.num 0)) (.num 2) [1, 0],
-    wr 2 (Expr.glob "y") (.num 3) [1, 1]], [(0, 1), (0, 2), (1, 2)], []⟩
+    wr 2 (Expr.glob "y") (.num 3) [1, 1]], [(0, 1), (0, 2), (1, 2)], [], []⟩
 
 unseal interp in
 theorem denote_progDiv : denote (fun _ => 0) progDiv = esDiv := rfl
@@ -887,7 +887,7 @@ def gIte : Guard := ⟨0, .eq (.num 0) (.num 1), true⟩
 
 def esIte : EventStructure :=
   ⟨[⟨0, .branch (.eq (.num 0) (.num 1)), ⟨0, [], []⟩, []⟩,
-    wr 1 (Expr.glob "x") (.num 1) [0] [gIte]], [(0, 1)], []⟩
+    wr 1 (Expr.glob "x") (.num 1) [0] [gIte]], [(0, 1)], [], []⟩
 
 unseal interp in
 theorem denote_progIte : denote (fun _ => 0) progIte = esIte := rfl
@@ -921,7 +921,7 @@ theorem progBool_ptrOffWF : progBool.PtrOffWF (· = "r") (fun _ => False) := by
 def esBool : EventStructure :=
   ⟨[wr 0 (Expr.glob "x") (.eq (.num 0) (.num 0)) [0],
     ⟨1, .read .rlx (Expr.glob "x") 1 false, ⟨0, [1, 0], []⟩, []⟩,
-    wr 2 (.bin .add (.sym 1) (.num 0)) (.num 1) [1, 1]], [(0, 1), (0, 2), (1, 2)], []⟩
+    wr 2 (.bin .add (.sym 1) (.num 0)) (.num 1) [1, 1]], [(0, 1), (0, 2), (1, 2)], [], []⟩
 
 unseal interp in
 theorem denote_progBool : denote (fun _ => 0) progBool = esBool := rfl

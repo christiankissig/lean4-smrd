@@ -121,26 +121,35 @@ namespace EventStructure
 def «prefix» (e : Event) (k : EventStructure) : EventStructure :=
   { events := e :: k.events
     po     := k.events.map (fun e' => (e.id, e'.id)) ++ k.po
-    rmw    := k.rmw }
+    rmw    := k.rmw
+    blocks := k.blocks }
 
 /-- The coproduct `𝔼₁ + 𝔼₂`. Disjointness of the events is ensured by the
     fresh-id generator. -/
 def plus (s₁ s₂ : EventStructure) : EventStructure :=
-  ⟨s₁.events ++ s₂.events, s₁.po ++ s₂.po, s₁.rmw ++ s₂.rmw⟩
+  ⟨s₁.events ++ s₂.events, s₁.po ++ s₂.po, s₁.rmw ++ s₂.rmw, s₁.blocks ++ s₂.blocks⟩
 
 /-- The join `𝔼₁ ; 𝔼₂` after a parallel composition: every event of `𝔼₁` is
     ordered before every event of `𝔼₂`, `E₁ × E₂` (MoRDor's
     `EventStructure.seq ~join:true`, whose pairs it also records as its
-    fork-join relation `fj`). -/
+    fork-join relation `fj`). It records two segments (`blocks`): the events
+    of the threads, `E₁`, and those after the join, `E₂`. An event before the
+    block lies in neither, so a `⊑`-ordered pair is separated exactly when a
+    fork or the join lies between them. The two threads need no block of
+    their own: no event of one is `⊑`-ordered with an event of the other. -/
 def join (s₁ s₂ : EventStructure) : EventStructure :=
   { events := s₁.events ++ s₂.events
     po     := s₁.po ++ s₂.po ++ s₁.ids.flatMap (fun a => s₂.ids.map (fun b => (a, b)))
-    rmw    := s₁.rmw ++ s₂.rmw }
+    rmw    := s₁.rmw ++ s₂.rmw
+    blocks := s₁.ids :: s₂.ids :: (s₁.blocks ++ s₂.blocks) }
 
-/-- Joining with nothing after it adds nothing: a parallel composition in
-    tail position generates the coproduct of its sides. -/
-@[simp] theorem join_empty (s : EventStructure) : s.join empty = s := by
-  obtain ⟨evs, po, rmw⟩ := s
+
+/-- Joining with nothing after it adds no events, order or RMWs: a parallel
+    composition in tail position generates the coproduct of its sides, and
+    opens the segment of its threads. -/
+@[simp] theorem join_empty (s : EventStructure) :
+    s.join empty = { s with blocks := s.ids :: [] :: s.blocks } := by
+  obtain ⟨evs, po, rmw, bl⟩ := s
   have h : ∀ l : List EventId, l.flatMap (fun _ => ([] : List (EventId × EventId))) = [] := by
     intro l; induction l <;> simp_all
   simp [join, empty, ids, h]

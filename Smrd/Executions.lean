@@ -200,8 +200,10 @@ def ppoJ : Rel := fun a b =>
     `(P₁ ∥ P₂); κ` the down-set of an event of `κ` holds both threads, and
     Forwarding into `κ` from one thread yields anchored pairs across threads
     (`Smrd.FwdAcrossJoin`), as does Write Elision from before the block into one
-    thread (`Smrd.WEAcrossFork`); Forwarding's join restriction (`fwdNoJoin`)
-    and Write Elision's fork restriction (`weNoFork`) exclude both (`Execution.remap_poCmp`). -/
+    thread (`Smrd.WEAcrossFork`); keeping both within one segment
+    (`EventStructure.SameSeg`) excludes both, and where every edge keeps
+    joinable events comparable (`Execution.NoJoinMoves`) anchored pairs stay
+    `⊑`-comparable (`Execution.remap_poCmp`). -/
 def Anchored (a b : EventId) : Prop :=
   ∃ e, x.XwF es e ∧ (a = e ∨ es.poR a e) ∧ (b = e ∨ es.poR b e)
 

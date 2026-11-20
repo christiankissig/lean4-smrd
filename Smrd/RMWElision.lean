@@ -51,7 +51,7 @@ def e5 : Event := FW 5 1 4 [1, 1, 1]
 def esL : EventStructure :=
   ⟨[e0, e1, e2, e3, e4, e5],
    [(0, 1), (0, 2), (0, 3), (0, 4), (0, 5), (1, 2), (1, 3), (2, 3), (4, 5)],
-   [⟨1, .val (.bool true), 2⟩, ⟨4, .val (.bool true), 5⟩]⟩
+   [⟨1, .val (.bool true), 2⟩, ⟨4, .val (.bool true), 5⟩], [[1, 2, 3, 4, 5], []]⟩
 
 unseal interp in
 theorem denote_prog : denote (fun _ => 0) prog = esL := rfl

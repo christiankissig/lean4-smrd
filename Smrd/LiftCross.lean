@@ -56,7 +56,7 @@ def e1 : Event := ⟨1, .branch cond, ⟨0, [0, 1], []⟩, []⟩
 def e2 : Event := PpoStability.W 2 0 [0, 1, 0] [] [⟨1, cond, true⟩] .rlx "x" 1
 def e3 : Event := PpoStability.W 3 1 [1] [] [] .rlx "x" 1
 
-def esC : EventStructure := ⟨[e0, e1, e2, e3], [(0, 1), (0, 2), (1, 2)], []⟩
+def esC : EventStructure := ⟨[e0, e1, e2, e3], [(0, 1), (0, 2), (1, 2)], [], [[0, 1, 2, 3], []]⟩
 
 unseal interp in
 theorem denote_prog : denote (fun _ => 0) prog = esC := rfl

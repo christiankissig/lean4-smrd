@@ -20,6 +20,11 @@ outcome (event `5`).
 
 `Smrd.WEPastFork` stays refused: the sibling thread's read is not on another
 outcome of a branching.
+
+**Segments.** Write Elision now asks the two writes to lie in one segment
+(`EventStructure.SameSeg`, Condition `cond:segment`) instead of the fork
+restriction. Both outcomes of a branching share a segment, so the elision is
+admitted under it too (`sameSeg_13`).
 -/
 
 namespace WEIntoBranch
@@ -47,7 +52,7 @@ def poL : List (EventId × EventId) :=
   [(0, 1), (0, 2), (0, 3), (0, 4), (0, 5), (1, 2), (1, 3), (1, 4), (1, 5), (2, 3), (2, 4), (2, 5),
     (3, 4)]
 
-def esB : EventStructure := ⟨[e0, e1, e2, e3, e4, e5], poL, []⟩
+def esB : EventStructure := ⟨[e0, e1, e2, e3, e4, e5], poL, [], []⟩
 
 unseal interp in
 theorem denote_prog : denote (fun _ => 0) prog = esB := rfl
@@ -89,6 +94,9 @@ theorem weNoFork_13 : esB.weNoFork 1 3 := fun c hc hne hj => by
   · exact absurd rfl hne
   · exact .inr (.inr (po_of (by decide)))
   · exact absurd (hj diverged_53) not_joinable_53
+
+/-- **One segment**: there is no parallel composition. -/
+theorem sameSeg_13 : esB.SameSeg 1 3 := by decide
 
 theorem weNoRel_13 : esB.weNoRel 1 3 := weNoRel_of (by decide) (by decide)
 

@@ -31,6 +31,12 @@ restriction: the elision moves `x := 0` forward past a fork, Forwarding moves
 its target backward past a join. Without the join, `Smrd.WEPastFork` shows
 that the fork restriction is still needed. Before remapping, `≼` relates no incomparable events:
 its parts are `⊑`-pairs (`Execution.ppoStep_po` without `F ∪ WE` edges).
+
+**Segments.** Write Elision now asks the two writes to lie in one segment
+(`EventStructure.SameSeg`, Condition `cond:segment`) instead of the fork
+restriction. `x := 0` is before the fork and `x := 1` in a thread, so the
+segment condition refutes the elision (`not_sameSeg`), and the exclusion
+goes through it. The statements about the fork restriction are kept.
 -/
 
 namespace WEAcrossFork
@@ -49,7 +55,7 @@ def e3 : Event := W 3 0 [1, 1] .rlx "y" 3
 /-- `⊑`: `x := 0` first, the two threads unordered, both before `y := 3`. -/
 def poL : List (EventId × EventId) := [(0, 1), (0, 2), (0, 3), (1, 3), (2, 3)]
 
-def esQ : EventStructure := ⟨[e0, e1, e2, e3], poL, []⟩
+def esQ : EventStructure := ⟨[e0, e1, e2, e3], poL, [], [[1, 2], [3]]⟩
 
 unseal interp in
 theorem denote_prog : denote (fun _ => 0) prog = esQ := rfl
@@ -113,8 +119,12 @@ theorem not_weNoFork : ¬ esQ.weNoFork 0 1 := fun h => by
   · exact not_po_21 h
   · exact not_po_12 h
 
+/-- **The segment condition fails**: `x := 0` is before the fork, `x := 1`
+    in a thread (`SameSeg`, Condition `cond:segment`). -/
+theorem not_sameSeg : ¬ esQ.SameSeg 0 1 := by decide
+
 theorem not_weRel (j : Justification) : ¬ esQ.weRel j 0 1 :=
-  fun h => not_weNoFork h.2.2.1
+  fun h => not_sameSeg h.2.2.1
 
 /-- **No generated justification elides `x := 0` into `x := 1`.** -/
 theorem not_generated {Ω : Pred} {j : Justification} (h : esQ.Generated Ω j) :

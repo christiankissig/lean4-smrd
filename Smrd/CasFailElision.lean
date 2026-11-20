@@ -55,7 +55,7 @@ def poL : List (EventId × EventId) :=
   [(0, 1), (0, 2), (0, 3), (0, 4), (0, 5), (0, 6), (1, 2), (1, 3), (1, 4), (1, 5), (1, 6),
     (2, 3), (2, 4), (2, 5), (2, 6), (3, 4), (3, 5), (3, 6), (4, 5)]
 
-def esC : EventStructure := ⟨[e0, e1, e2, e3, e4, e5, e6], poL, [⟨2, c, 4⟩]⟩
+def esC : EventStructure := ⟨[e0, e1, e2, e3, e4, e5, e6], poL, [⟨2, c, 4⟩], []⟩
 
 unseal interp in
 theorem denote_prog : denote (fun _ => 0) prog = esC := rfl
@@ -120,8 +120,8 @@ theorem ppo_memB {δ : FwdCtx} (hδ : ∀ a b, ¬ δ.edge a b) {a b : EventId}
 
 /-- **Write Elision elides `y := 1` into the failure copy of `y := 2`**:
     `y := 1` is its immediate `≼`-predecessor under `¬(α = 0)`, no release lies
-    between (the `CAS`'s write is on the other outcome, which the fork
-    restriction exempts), and `y := 1` is no RMW access. -/
+    between (the `CAS`'s write is on the other outcome), both lie in one
+    segment, and `y := 1` is no RMW access. -/
 theorem we_16 : esC.weRel jB 1 6 := by
   have hδ0 : ∀ a b, ¬ jB.δ.edge a b := by
     intro a b h; rcases h with h | h <;> cases h
@@ -139,32 +139,8 @@ theorem we_16 : esC.weRel jB 1 6 := by
     have key : ∀ p ∈ syncL esC ++ aliasL esC, ∀ q ∈ syncL esC ++ aliasL esC,
         p.1 = 1 → q.2 = 6 → p.2 = q.1 → False := by decide
     exact key _ m₁ _ m₂ rfl rfl rfl
-  · -- the fork restriction: `4` and `5` are on the other outcome, with no
-    -- common upper bound
-    intro d hd hne hj
-    have hd' : (1, d) ∈ poL := hd
-    have key : ∀ p ∈ poL, p.1 = 1 → p.2 = 2 ∨ p.2 = 3 ∨ p.2 = 4 ∨ p.2 = 5 ∨ p.2 = 6 := by
-      decide
-    have nj : ∀ d, d = 4 ∨ d = 5 → ¬ esC.Joinable d 6 := by
-      rintro d hd ⟨u, h₁, h₂⟩
-      have k : ∀ p ∈ poL, p.1 = 6 → False := by decide
-      rcases h₂ with rfl | h₂
-      · rcases h₁ with rfl | h₁
-        · rcases hd with h | h <;> cases h
-        · rcases hd with rfl | rfl
-          · exact absurd (show (4, 6) ∈ poL from h₁) (by decide)
-          · exact absurd (show (5, 6) ∈ poL from h₁) (by decide)
-      · exact k _ h₂ rfl
-    have dv : ∀ d, d = 4 ∨ d = 5 → esC.Diverged d 6 := by
-      rintro d (rfl | rfl)
-      · exact ⟨e4, e6, rfl, rfl, gT, by simp [e4, W], gF, by simp [e6, W], rfl, rfl, by decide⟩
-      · exact ⟨e5, e6, rfl, rfl, gT, by simp [e5, W], gF, by simp [e6, W], rfl, rfl, by decide⟩
-    rcases key _ hd' rfl with h | h | h | h | h <;> simp only at h <;> subst h
-    · exact .inr (.inl (po_of (by decide)))
-    · exact .inr (.inl (po_of (by decide)))
-    · exact absurd (hj (dv 4 (.inl rfl))) (nj 4 (.inl rfl))
-    · exact absurd (hj (dv 5 (.inr rfl))) (nj 5 (.inr rfl))
-    · exact absurd rfl hne
+  · -- one segment: no parallel composition
+    decide
 
 theorem wf_we : FwdCtx.WF { jB.δ with we := jB.δ.we ++ [(6, 1)] } := by
   refine ⟨fun a ha => ?_, fun a b e ha hb => ?_⟩
@@ -435,7 +411,7 @@ theorem fwdEntailsImg_C : FwdEntailsImg esC xC := by
 
 /-- **`DP ∪ ≼ ⊆ ⊑`** for the execution, by `dep_po_R`. -/
 theorem dep_po {a b : EventId} (h : xC.dep esC a b) : xC.poX esC a b :=
-  dep_po_R isExecution_C poTrans poIrr rmwTightR_C
+  dep_po_R isExecution_C (noJoinMoves_of_poForest (poForest_of (by decide))) poTrans poIrr rmwTightR_C
     (denote_prog ▸ RMWTightDenote.denote_rmwFailGuard _ prog)
     (fun a b h => by obtain ⟨rfl, rfl⟩ := dp_C h; exact po_of (by decide))
     ⟨fOut, P_C⟩ locsEval_C fwdEntailsImg_C (denote_prog ▸ RMWWFDenote.denote_rmwWF _ prog) h
