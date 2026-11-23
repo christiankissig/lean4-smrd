@@ -56,7 +56,7 @@ def e4 : Event := W 4 0 [1, 1, 1] .rlx "x" 2
 def esX : EventStructure :=
   ⟨[e0, e1, e2, e3, e4],
    [(0, 1), (0, 2), (0, 3), (0, 4), (1, 2), (1, 3), (1, 4), (2, 3), (2, 4), (3, 4)],
-   [⟨2, .val (.bool true), 3⟩]⟩
+   [⟨2, .val (.bool true), 3⟩], []⟩
 
 unseal interp in
 theorem denote_prog : denote (fun _ => 0) prog = esX := rfl
@@ -134,7 +134,7 @@ theorem we_14 : esX.weRel jB 1 4 := by
       fun _ _ _ _ h₁ h₂ => by rw [h₁] at h₂; cases h₂; rfl⟩,
     ⟨_, rfl, rfl⟩, ⟨_, rfl, rfl⟩, fun ⟨e, he, hp⟩ => by cases he; simp [e1, W, Event.isVol] at hp⟩,
     weNoRel_of (by decide) (by decide),
-    weNoFork_of (by decide), fun ⟨ent, hm, h⟩ => by
+    (by decide), fun ⟨ent, hm, h⟩ => by
       simp only [esX, List.mem_cons, List.mem_nil_iff, or_false] at hm
       subst hm; simp at h⟩
   rintro ⟨e'', h₁, h₂⟩
@@ -500,7 +500,7 @@ theorem rmwCross :
   ⟨consistentT_X, poTrans_X, poIrr_X, poForest_X, rmwTightR_X, rmwFailGuard_X, dp_po_X, sat_X,
     locsEval_X,
     rmwWF_X, fwdEntailsAll_X, not_noRevRMW, not_noRevLoc, not_noCrossRMW,
-    fun _ _ h => dep_po_R isExecution_X poTrans_X poIrr_X rmwTightR_X rmwFailGuard_X dp_po_X sat_X
+    fun _ _ h => dep_po_R isExecution_X (noJoinMoves_of_poForest (poForest_of (by decide))) poTrans_X poIrr_X rmwTightR_X rmwFailGuard_X dp_po_X sat_X
       locsEval_X (fwdEntailsAll_X.on _) rmwWF_X h⟩
 
 /-- **`noRevLoc_of_fwdEntailsAll` needs an RMW hypothesis**: `FwdEntailsAll`
@@ -524,7 +524,7 @@ def f2 : Event :=
   ⟨2, .write .rel (Expr.glob "x") (.bin .add (.sym 1) (.val (.num 1))) false, ⟨0, [1, 1], []⟩, []⟩
 
 def esF : EventStructure :=
-  ⟨[f0, f1, f2], [(0, 1), (0, 2), (1, 2)], [⟨1, .val (.bool true), 2⟩]⟩
+  ⟨[f0, f1, f2], [(0, 1), (0, 2), (1, 2)], [⟨1, .val (.bool true), 2⟩], []⟩
 
 unseal interp in
 theorem denote_progF : denote (fun _ => 0) progF = esF := rfl

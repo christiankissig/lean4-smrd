@@ -416,11 +416,20 @@ structure RMWEntry where
   deriving Repr, DecidableEq
 
 /-- A symbolic event structure `(E, ⊑, ⊑ʳᵐʷ, valres)`; `valres` is carried by
-    the events themselves. -/
+    the events themselves. `blocks` records the segments
+    (`σ`, Condition `cond:segment`) as the event sets they separate: every
+    parallel composition contributes the events of its threads and those of
+    the code after its join (`EventStructure.join`). Two events lie in one
+    segment when no block holds one and not the other (`SameSeg`); for
+    `⊑`-ordered events, when no fork or join lies between them. The threads
+    of one block share it, but no event of one is `⊑`-ordered with an event of
+    the other. Structures not generated from a program may leave
+    `blocks` empty: one segment. -/
 structure EventStructure where
   events : List Event
   po     : List (EventId × EventId)
   rmw    : List RMWEntry
+  blocks : List (List EventId) := []
   deriving Repr
 
 /-- Binary relations over event ids. -/
@@ -461,7 +470,7 @@ def diag (X : EvSet) : Rel := fun a b => a = b ∧ X a
 
 namespace EventStructure
 
-def empty : EventStructure := ⟨[], [], []⟩
+def empty : EventStructure := ⟨[], [], [], []⟩
 
 def ids (es : EventStructure) : List EventId := es.events.map (·.id)
 

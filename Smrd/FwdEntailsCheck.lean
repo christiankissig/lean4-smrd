@@ -69,7 +69,7 @@ end FwdAcrossAlias
 namespace PpoNecessity
 
 /-- `x := 0 -WE→ x := 1` against `x := 1`'s pre-justification. -/
-theorem we_WW (hF : esWW.weNoFork 0 1) : esWW.weRel (pj (W 1 0 [1, 0] .rlx "x" 1)) 0 1 := by
+theorem we_WW (hF : esWW.SameSeg 0 1) : esWW.weRel (pj (W 1 0 [1, 0] .rlx "x" 1)) 0 1 := by
   have hδ0 : ∀ a b, ¬ (pj (W 1 0 [1, 0] .rlx "x" 1)).δ.edge a b := by
     intro a b h; rcases h with h | h <;> cases h
   have hppo : ∀ a b, esWW.ppo (pj (W 1 0 [1, 0] .rlx "x" 1)).P.holds
@@ -93,7 +93,7 @@ theorem we_WW (hF : esWW.weNoFork 0 1) : esWW.weRel (pj (W 1 0 [1, 0] .rlx "x" 1
   exact key _ m₁ _ m₂ rfl rfl rfl
 
 /-- **`x := 0; (x := 1 ∥ x := 2)` with `x := 0` elided satisfies every scope.** -/
-theorem fwdEntailsAll_WW (hF : esWW.weNoFork 0 1) : FwdEntailsAll esWW xWW :=
+theorem fwdEntailsAll_WW (hF : esWW.SameSeg 0 1) : FwdEntailsAll esWW xWW :=
   fwdEntailsOn_of_valid (fun s t he => by
     obtain ⟨rfl, rfl⟩ := edge_WW he
     exact ⟨pj (W 1 0 [1, 0] .rlx "x" 1), 0, 1,
@@ -115,7 +115,7 @@ theorem we_C : esC.weRel (pj (W 1 0 [1] .rlx "x" 2)) 0 1 := by
       _, _, _, _, rfl, rfl, rfl, rfl, fun _ _ _ _ h₁ h₂ => by rw [h₁] at h₂; cases h₂; rfl⟩,
     ⟨_, rfl, rfl⟩, ⟨_, rfl, rfl⟩, fun ⟨e, he, hp⟩ => by cases he; simp [W, Event.isVol] at hp⟩,
     weNoRel_of (by decide) (by decide),
-    weNoFork_of (by decide),
+    (by decide),
     EventStructure.not_rmwAcc_of_nil _ rfl _⟩
   rintro ⟨e'', h₁, h₂⟩
   have m₁ := hppo _ _ h₁

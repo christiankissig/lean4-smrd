@@ -586,23 +586,27 @@ open EventStructure Execution
 variable {x : Execution}
 
 /-- `dep_po_R` for `⟨P⟩_n`: `RMWWF`, `RMWFailGuard` and the order properties of
-    `⊑` hold. -/
+    `⊑` hold. The join condition (`NoJoinMoves`) is a hypothesis: Forwarding
+    and Write Elision stay within one segment, which does not give it where a
+    thread of a parallel block branches and code follows the join; it holds
+    where `⊑` is a forest (`noJoinMoves_of_poForest`). -/
 theorem dep_po_R_denote {n : Bounds} {P : Stmt} {Ω : Pred} (hx : x.IsExecution (denote n P) Ω)
+    (hNJ : NoJoinMoves (denote n P) x)
     (hT : RMWTightR (denote n P) x)
     (hDP : ∀ a b, x.DP a b → (denote n P).poR a b) (hsat : Sat (x.P (denote n P)))
     (hev : LocsEval (denote n P)) (hE : FwdEntailsImg (denote n P) x) {a b : EventId}
     (h : x.dep (denote n P) a b) : x.poX (denote n P) a b :=
-  dep_po_R hx (denote_po_trans n P) (denote_po_irrefl n P) hT
+  dep_po_R hx hNJ (denote_po_trans n P) (denote_po_irrefl n P) hT
     (RMWTightDenote.denote_rmwFailGuard n P) hDP hsat hev hE (denote_rmwWF n P) h
 
 /-- `dep_po_R_of_phi` for `⟨P⟩_n`. -/
 theorem dep_po_R_of_phi_denote {n : Bounds} {P : Stmt} {Ω : Pred}
-    (hx : x.IsExecution (denote n P) Ω) (hphi : x.phi (denote n P))
-    (hT : RMWTightR (denote n P) x)
+    (hx : x.IsExecution (denote n P) Ω) (hNJ : NoJoinMoves (denote n P) x)
+    (hphi : x.phi (denote n P)) (hT : RMWTightR (denote n P) x)
     (hDP : ∀ a b, x.DP a b → (denote n P).poR a b) (hev : LocsEval (denote n P))
     (hE : FwdEntailsImg (denote n P) x) {a b : EventId} (h : x.dep (denote n P) a b) :
     x.poX (denote n P) a b :=
-  dep_po_R_of_phi hx hphi (denote_po_trans n P) (denote_po_irrefl n P) hT
+  dep_po_R_of_phi hx hNJ hphi (denote_po_trans n P) (denote_po_irrefl n P) hT
     (RMWTightDenote.denote_rmwFailGuard n P) hDP hev hE (denote_rmwWF n P) h
 
 end RMWWFDenote

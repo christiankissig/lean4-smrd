@@ -56,7 +56,7 @@ def e6 : Event := W 6 1 [1, 1, 1, 1] .rel "flag" 1
 def esA : EventStructure :=
   ⟨[e0, e1, e2, R 3 0 [1, 1, 0, 1, 0] .acq "flag", e4, e5, e6],
    [(0, 1), (0, 2), (0, 3), (0, 4), (0, 5), (0, 6), (1, 2), (1, 3), (1, 4), (1, 5), (1, 6),
-    (2, 3), (2, 4), (3, 4), (5, 6)], []⟩
+    (2, 3), (2, 4), (3, 4), (5, 6)], [], [[2, 3, 4, 5, 6], []]⟩
 
 unseal interp in
 theorem denote_prog : denote (fun _ => 0) prog = esA := rfl

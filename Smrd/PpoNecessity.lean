@@ -43,9 +43,10 @@ before the cut to anchored pairs MoRDor's `≼` kept it, and with `CO`
 event of the path lies at or above both ends, the pair is dropped,
 `DP ∪ ≼ ⊆ ⊑` (from the general `dep_po_we`), and the execution is
 `HB_v`-coherent. The initialising write is an ordinary write in lean4-smrd's
-semantics (a sequential prefix of the program). Write Elision's fork
-restriction (`EventStructure.weNoFork`) now refuses this elision
-(`not_weNoFork_WW`), so the results about `xWW` take the fork restriction as
+semantics (a sequential prefix of the program). Write Elision now keeps the
+two writes in one segment (`EventStructure.SameSeg`), which refuses this
+elision (`not_sameSeg_WW`; so did the former fork restriction,
+`not_weNoFork_WW`), so the results about `xWW` take the segment condition as
 a hypothesis `hF` (false, which makes them vacuous) and stand for Write
 Elision under the join condition alone (`weNoJoin_WW`).
 
@@ -206,7 +207,7 @@ def corr : Stmt := .seq (st .rlx "x" 0)
   (.par (st .rlx "x" 1) (.seq (ld .rlx "r1" "x") (ld .rlx "r2" "x")))
 def esCoRR : EventStructure :=
   ⟨[W 0 0 [0] .rlx "x" 0, W 1 0 [1, 0] .rlx "x" 1, R 2 1 [1, 1, 0] .rlx "x",
-    R 3 1 [1, 1, 1] .rlx "x"], [(0, 1), (0, 2), (0, 3), (2, 3)], []⟩
+    R 3 1 [1, 1, 1] .rlx "x"], [(0, 1), (0, 2), (0, 3), (2, 3)], [], [[1, 2, 3], []]⟩
 
 unseal interp in
 theorem denote_corr : denote (fun _ => 0) corr = esCoRR := rfl
@@ -273,7 +274,7 @@ def cowr : Stmt := .seq (st .rlx "x" 0)
   (.par (st .rlx "x" 1) (.seq (st .rlx "x" 2) (ld .rlx "r" "x")))
 def esCoWR : EventStructure :=
   ⟨[W 0 0 [0] .rlx "x" 0, W 1 0 [1, 0] .rlx "x" 1, W 2 1 [1, 1, 0] .rlx "x" 2,
-    R 3 1 [1, 1, 1] .rlx "x"], [(0, 1), (0, 2), (0, 3), (2, 3)], []⟩
+    R 3 1 [1, 1, 1] .rlx "x"], [(0, 1), (0, 2), (0, 3), (2, 3)], [], [[1, 2, 3], []]⟩
 
 unseal interp in
 theorem denote_cowr : denote (fun _ => 0) cowr = esCoWR := rfl
@@ -329,7 +330,7 @@ def mp : Stmt := .seq (st .rlx "x" 0) (.seq (st .rlx "y" 0)
 def esMP : EventStructure :=
   ⟨[W 0 0 [0] .rlx "x" 0, W 1 0 [1, 0] .rlx "y" 0, W 2 0 [1, 1, 0, 0] .rlx "x" 1,
     W 3 0 [1, 1, 0, 1] .rel "y" 1, R 4 1 [1, 1, 1, 0] .acq "y", R 5 1 [1, 1, 1, 1] .rlx "x"],
-   [(0, 1), (0, 2), (0, 3), (0, 4), (0, 5), (1, 2), (1, 3), (1, 4), (1, 5), (2, 3), (4, 5)], []⟩
+   [(0, 1), (0, 2), (0, 3), (0, 4), (0, 5), (1, 2), (1, 3), (1, 4), (1, 5), (2, 3), (4, 5)], [], [[2, 3, 4, 5], []]⟩
 
 unseal interp in
 theorem denote_mp : denote (fun _ => 0) mp = esMP := rfl
@@ -449,7 +450,7 @@ theorem trunc_of_po_rel {es : EventStructure} {x : Execution} {Ω : Pred}
 /-- `x := 0; (x := 1 ∥ x := 2)` -/
 def ww : Stmt := .seq (st .rlx "x" 0) (.par (st .rlx "x" 1) (st .rlx "x" 2))
 def esWW : EventStructure :=
-  ⟨[W 0 0 [0] .rlx "x" 0, W 1 0 [1, 0] .rlx "x" 1, W 2 1 [1, 1] .rlx "x" 2], [(0, 1), (0, 2)], []⟩
+  ⟨[W 0 0 [0] .rlx "x" 0, W 1 0 [1, 0] .rlx "x" 1, W 2 1 [1, 1] .rlx "x" 2], [(0, 1), (0, 2)], [], [[1, 2], []]⟩
 
 unseal interp in
 theorem denote_ww : denote (fun _ => 0) ww = esWW := rfl
@@ -487,14 +488,18 @@ theorem not_weNoFork_WW : ¬ esWW.weNoFork 0 1 := fun h => by
   · exact absurd (show (2, 1) ∈ esWW.po from h) (by decide)
   · exact absurd (show (1, 2) ∈ esWW.po from h) (by decide)
 
+/-- **The segment condition refutes it as well**: `x := 0` is before the
+    fork, `x := 1` in a thread (`SameSeg`, Condition `cond:segment`). -/
+theorem not_sameSeg_WW : ¬ esWW.SameSeg 0 1 := by decide
+
 /-- The join condition holds: `⊑` is a forest. -/
 theorem weNoJoin_WW : esWW.weNoJoin 0 1 :=
   Execution.weNoJoin_of_poForest (poForest_of (by decide)) _ _
 
 /-- `x := 0` is the immediate `≼`-predecessor of `x := 1`, at its location:
     the Write Elision of the paper applies, and so do all of this library's
-    restrictions but the fork restriction (`hF`, false: `not_weNoFork_WW`). -/
-theorem gen_jWE (hF : esWW.weNoFork 0 1) : esWW.Generated (fun _ => True) jWE := by
+    restrictions but the segment condition (`hF`, false: `not_sameSeg_WW`). -/
+theorem gen_jWE (hF : esWW.SameSeg 0 1) : esWW.Generated (fun _ => True) jWE := by
   have hpre := pre_WW (W 1 0 [1, 0] .rlx "x" 1) (by simp [esWW]) rfl
   have hδ0 : ∀ a b, ¬ (pj (W 1 0 [1, 0] .rlx "x" 1)).δ.edge a b := by
     intro a b h; rcases h with h | h <;> cases h
@@ -550,7 +555,7 @@ theorem elided_WW {a : EventId} : xWW.elided a ↔ a = 0 := by
   · intro h; obtain ⟨b, hb⟩ := (xWW.elided_iff a).1 h; exact (edge_WW hb).2
   · rintro rfl; exact ⟨(1, 0), .inr (by rw [δWW]; simp), rfl⟩
 
-theorem isExecution_WW (hF : esWW.weNoFork 0 1) : xWW.IsExecution esWW (fun _ => True) where
+theorem isExecution_WW (hF : esWW.SameSeg 0 1) : xWW.IsExecution esWW (fun _ => True) where
   maximal := ⟨fun _ h => h, fun a b _ _ ⟨ea, eb, ha, hb, hn⟩ =>
       hn ⟨fun _ => .num 0, SWW.holds (ev_inv ha).1 _, SWW.holds (ev_inv hb).1 _⟩,
     fun _ hc hn => absurd hc hn⟩
@@ -649,7 +654,7 @@ theorem poIrr_WW : ∀ a, ¬ esWW.poR a a := poIrr_of (by decide)
 
 /-- `DP ∪ ≼ ⊆ ⊑`, from `dep_po_we`: no forwarding, and the elision of `x := 0`
     into `x := 1` crosses no event. -/
-theorem dep_po_WW (hF : esWW.weNoFork 0 1) {a b : EventId} (h : xWW.dep esWW a b) : xWW.poX esWW a b := by
+theorem dep_po_WW (hF : esWW.SameSeg 0 1) {a b : EventId} (h : xWW.dep esWW a b) : xWW.poX esWW a b := by
   refine dep_po_we (isExecution_WW hF).inX ⟨fun p hp => ?_, fun p hp => ?_⟩
     (isExecution_WW hF).fwdWF.uniq poTrans_WW poIrr_WW (poForest_of (by decide)) ?_ ?_
     (fun _ _ h => (no_dp_WW h).elim) h
@@ -667,15 +672,15 @@ theorem dep_po_WW (hF : esWW.weNoFork 0 1) {a b : EventId} (h : xWW.dep esWW a b
 /-- **(N2) With the anchored cut, write elision without forwarding keeps
     `DP ∪ ≼ ⊆ ⊑`**: the execution of `x := 0; (x := 1 ∥ x := 2)` in which
     `x := 1` elides `x := 0` is an execution with `φ` once the elision is
-    generated, which takes Write Elision without its fork restriction (`hF`
-    is false, `not_weNoFork_WW`; every other condition holds, the join
-    condition included, `weNoJoin_WW`); the pair
+    generated, which takes Write Elision across the fork (`hF` is false,
+    `not_sameSeg_WW`, as is the former fork restriction, `not_weNoFork_WW`;
+    every other condition holds, the join condition included, `weNoJoin_WW`); the pair
     `(x := 0, x := 2)` of `ppo_loc`, remapped to `(x := 1, x := 2)`, is cut,
     as no event of the path lies at or above both; `DP ∪ ≼ ⊆ ⊑`; and under
     `CO = 0 < 2 < 1` it is RC11-coherent, atomic and `HB_v`-coherent. (Before
     the cut `≼` related `x := 1` to `x := 2` and the execution was not
     `HB_v`-coherent.) -/
-theorem ppo_cross_thread (hF : esWW.weNoFork 0 1) :
+theorem ppo_cross_thread (hF : esWW.SameSeg 0 1) :
     xWW.IsExecution esWW (fun _ => True) ∧ xWW.phi esWW ∧ (∀ p ∈ xWW.δ.f, False) ∧
     ¬ xWW.ppo esWW 1 2 ∧ (∀ a b, xWW.dep esWW a b → xWW.poX esWW a b) ∧
     xWW.CoherenceOrder esWW (relL coWW) ∧ xWW.Coherence esWW (relL coWW) ∧
@@ -726,7 +731,7 @@ elided write, and `coherence_of_coherenceV_canon` asks that no event of the
 path is elided. -/
 
 /-- `x := 1; x := 2` -/
-def esC : EventStructure := ⟨[W 0 0 [0] .rlx "x" 1, W 1 0 [1] .rlx "x" 2], [(0, 1)], []⟩
+def esC : EventStructure := ⟨[W 0 0 [0] .rlx "x" 1, W 1 0 [1] .rlx "x" 2], [(0, 1)], [], []⟩
 
 unseal interp in
 theorem denote_coww : denote (fun _ => 0) (.seq (st .rlx "x" 1) (st .rlx "x" 2)) = esC := rfl
@@ -773,7 +778,7 @@ theorem gen_jC : esC.Generated (fun _ => True) jC := by
       _, _, _, _, rfl, rfl, rfl, rfl, fun _ _ _ _ h₁ h₂ => by rw [h₁] at h₂; cases h₂; rfl⟩,
     ⟨_, rfl, rfl⟩, ⟨_, rfl, rfl⟩, fun ⟨e, he, hp⟩ => by cases he; simp [W, Event.isVol] at hp⟩,
     weNoRel_of (by decide) (by decide),
-    weNoFork_of (by decide),
+    (by decide),
     EventStructure.not_rmwAcc_of_nil _ rfl _⟩ ?_ ?_
   · rintro ⟨e'', h₁, h₂⟩
     have m₁ := hppo _ _ h₁

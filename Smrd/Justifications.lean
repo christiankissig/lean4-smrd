@@ -95,28 +95,23 @@ predicate `Generated`, whose derivations are the elements of `⋃ᵢ 𝕁ᵢ`.
   restriction `CoherenceT` admits an outcome RC11 forbids
   (`Smrd.FwdAcrossAcquire`); with it, the remapped `ppo_sync` has no backward
   pair even with forwarding (`Execution.ppoSyncRM_po_T`).
-* Forwarding carries a join restriction (`fwdNoJoin`): `remap_δ` moves the
-  forwarded event onto its source, and the move must keep `⊑`-comparable
-  every event comparable with the moved one where the two have a common upper
-  bound (`NoJoinMove`). Forwarding does not reach across the join of a
-  parallel block, from a thread (or from before the block) into the code after
-  it. Without it `≼` relates `⊑`-incomparable events of two threads below the
-  join (`Smrd.FwdAcrossJoin`). Vacuous where `⊑` is a forest
-  (`Execution.fwdNoJoin_of_poForest`).
-* Write Elision carries MoRDor's fork restriction (`weNoFork`,
-  `ForwardElab.elision_blocked`): no elision past a fork, every event
-  `⊑`-after the elided write is comparable with the eliding one. A fork
-  synchronises like a release; eliding a write into one thread of a parallel
-  block would let a sibling thread read a coherence-earlier write once elided
-  writes are out of coherence (`Smrd.WEPastFork`). Events on another outcome
-  of a branching than the eliding write (`Diverged`) are exempt where they
-  have no common upper bound with it, so a write before an `if` may be elided
-  into one branch (`Smrd.WEIntoBranch`); MoRDor exempts them without the
-  proviso, which differs only for branchings inside a thread of a parallel
-  block followed by code after the join (`weNoFork_iff_conflict`). It implies the join
-  condition `weNoJoin` (`NoJoinMove` of the elided write onto the eliding one,
-  `weNoFork_weNoJoin`), which keeps `≼` within `⊑` (`Smrd.WEAcrossFork`) and
-  through which the proofs about `remap_δ` go.
+* Forwarding and Write Elision stay within one segment (`SameSeg`, Condition
+  `cond:segment`): no fork or join of a parallel composition lies
+  between the two events. This is an assumption of the revised model, and it
+  replaces the fork restriction on Write Elision (`weNoFork`, MoRDor's
+  `ForwardElab.elision_blocked`) and the join restriction on Forwarding
+  (`fwdNoJoin`) that the rules carried before. Segments are recorded
+  syntactically by the interpreter (`EventStructure.blocks`, set by the rule
+  for `∥`), not computed from `⊑`. Each counterexample that motivated the old
+  restrictions is excluded by it (`Smrd.WEPastFork`, `Smrd.WEAcrossFork`,
+  `Smrd.FwdAcrossJoin`); a write before an `if` may still be elided into one
+  branch, as both outcomes share a segment (`Smrd.WEIntoBranch`). The old
+  restrictions are kept as definitions. Unlike `weNoFork`, `SameSeg` does not
+  imply the join condition `weNoJoin` through which the proofs about
+  `remap_δ` go: inside a thread of a parallel block followed by code after
+  the join, two outcomes of a branching meet again below the join. Those
+  proofs take the join conditions as hypotheses, which hold where `⊑` is a
+  forest (`Execution.fwdNoJoin_of_poForest`, `Execution.weNoJoin_of_poForest`).
 -/
 
 /-- A justification `j : (P, D) ⊢^δ w`. -/
@@ -354,6 +349,19 @@ def Diverged (a b : EventId) : Prop :=
 def weNoFork (e₁ e₂ : EventId) : Prop :=
   ∀ c, es.poR e₁ c → c ≠ e₂ → (es.Diverged c e₂ → es.Joinable c e₂) → es.PoCmp c e₂
 
+/-- **One segment** (`σ(e₁) = σ(e₂)`, Condition `cond:segment`):
+    no block of `es` holds one of the events and not the other. In `⟨P⟩_n` the
+    blocks are, for every parallel composition, the events of its threads and
+    those of the code after its join (`EventStructure.join`),
+    so two `⊑`-ordered events lie in one segment exactly when no fork or join
+    lies between them (argued from `EventStructure.join`, not mechanised).
+    Both outcomes of a branching, and all iterations of a loop without a
+    parallel composition, share a segment. -/
+def SameSeg (e₁ e₂ : EventId) : Prop := ∀ B ∈ es.blocks, (e₁ ∈ B ↔ e₂ ∈ B)
+
+instance (e₁ e₂ : EventId) : Decidable (es.SameSeg e₁ e₂) := by
+  unfold SameSeg; infer_instance
+
 /-- `a` lies on the `g`-outcome of `g`'s branching: it carries the guard `g`. -/
 def OnSide (g : Guard) (a : EventId) : Prop := ∃ e, es.ev a = some e ∧ g ∈ e.guards
 
@@ -503,11 +511,11 @@ theorem weNoFork_iff_conflict (hD : es.NoJoinDiverge) {e₁ e₂ : EventId} :
     · exact h c hc hne hd⟩
 
 /-- `e₁ -F_j→ e₂`: Forwarding's conditions (`fwdRelBlind`) under the acquire
-    restriction (`fwdNoAcq`) and the join restriction (`fwdNoJoin`), where the
-    forwarded event `e₂` is not an RMW access (a deviation from the paper,
-    MoRDor E4). -/
+    restriction (`fwdNoAcq`), within one segment (`SameSeg`, Condition
+    `cond:segment`), where the forwarded event `e₂` is not an RMW access (a
+    deviation from the paper, MoRDor E4). -/
 def fwdRel (j : Justification) (e₁ e₂ : EventId) : Prop :=
-  es.fwdRelBlind j e₁ e₂ ∧ es.fwdNoAcq e₁ e₂ ∧ es.fwdNoJoin e₁ e₂ ∧ ¬ es.RMWAcc e₂
+  es.fwdRelBlind j e₁ e₂ ∧ es.fwdNoAcq e₁ e₂ ∧ es.SameSeg e₁ e₂ ∧ ¬ es.RMWAcc e₂
 
 /-- The conditions of Write Elision blind to the memory order:
     `e₁ -F'_j→ e₂` on a pair of writes, where the overwritten write `e₁` is not
@@ -528,16 +536,11 @@ def weNoRel (e₁ e₂ : EventId) : Prop :=
     ∀ c, es.poR e₁ c → es.poR c e₂ → ¬ es.cls Event.publishes c
 
 /-- `e₁ -WE_j→ e₂`: Write Elision's conditions (`weRelBlind`) under the
-    release restriction (`weNoRel`) and the fork restriction (`weNoFork`),
-    where the elided write `e₁` is not an RMW access (a deviation from the
-    paper, MoRDor E4). -/
+    release restriction (`weNoRel`), within one segment (`SameSeg`, Condition
+    `cond:segment`), where the elided write `e₁` is not an RMW access (a
+    deviation from the paper, MoRDor E4). -/
 def weRel (j : Justification) (e₁ e₂ : EventId) : Prop :=
-  es.weRelBlind j e₁ e₂ ∧ es.weNoRel e₁ e₂ ∧ es.weNoFork e₁ e₂ ∧ ¬ es.RMWAcc e₁
-
-/-- Write Elision's conditions give the join condition (`weNoFork_weNoJoin`). -/
-theorem weRel_weNoJoin (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
-    {j : Justification} {e₁ e₂ : EventId} (h : es.weRel j e₁ e₂) : es.weNoJoin e₁ e₂ :=
-  es.weNoFork_weNoJoin hpo_trans h.2.2.1 h.1.1.2.1
+  es.weRelBlind j e₁ e₂ ∧ es.weNoRel e₁ e₂ ∧ es.SameSeg e₁ e₂ ∧ ¬ es.RMWAcc e₁
 
 /-! ## Closed relabel-equivalence (Definition `def:rel-eq`) -/
 

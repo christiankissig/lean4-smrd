@@ -94,7 +94,7 @@ def poL : List (EventId × EventId) :=
    (1, 5), (1, 6), (1, 7), (1, 8), (2, 3), (2, 4), (2, 5), (2, 6), (2, 7), (2, 8), (3, 4),
    (3, 5), (3, 6), (3, 7), (4, 5), (4, 6), (4, 7), (5, 6), (5, 7), (6, 7)]
 
-def esG : EventStructure := ⟨[e0, e1, e2, e3, e4, e5, e6, e7, e8], poL, []⟩
+def esG : EventStructure := ⟨[e0, e1, e2, e3, e4, e5, e6, e7, e8], poL, [], [[3, 4, 5, 6, 7, 8], []]⟩
 
 unseal interp in
 theorem denote_prog : denote (fun _ => 0) prog = esG := rfl
@@ -684,7 +684,7 @@ def poL : List (EventId × EventId) :=
    (1, 5), (1, 6), (1, 7), (1, 8), (2, 3), (2, 4), (2, 5), (2, 6), (2, 7), (3, 4), (3, 5),
    (3, 6), (3, 7), (4, 5), (4, 6), (4, 7), (5, 6), (5, 7), (6, 7)]
 
-def esF : EventStructure := ⟨[e0, e1, e2, e3, e4, e5, e6, e7, e8], poL, []⟩
+def esF : EventStructure := ⟨[e0, e1, e2, e3, e4, e5, e6, e7, e8], poL, [], [[2, 3, 4, 5, 6, 7, 8], []]⟩
 
 unseal interp in
 theorem denote_prog : denote (fun _ => 0) prog = esF := rfl
@@ -1173,7 +1173,7 @@ def esS : EventStructure :=
     (1, 3), (1, 4), (1, 5), (1, 6), (1, 7), (1, 8), (1, 9), (1, 10), (2, 3), (2, 4), (2, 5),
     (2, 6), (2, 7), (2, 8), (2, 9), (2, 10), (3, 4), (3, 5), (3, 6), (3, 7), (3, 8), (3, 9),
     (3, 10), (4, 5), (4, 6), (4, 7), (4, 8), (4, 9), (5, 6), (5, 7), (5, 8), (5, 9), (6, 7),
-    (6, 8), (6, 9), (7, 8), (7, 9), (8, 9)], []⟩
+    (6, 8), (6, 9), (7, 8), (7, 9), (8, 9)], [], [[4, 5, 6, 7, 8, 9, 10], []]⟩
 
 unseal interp in
 theorem denote_prog : denote (fun _ => 0) prog = esS := rfl

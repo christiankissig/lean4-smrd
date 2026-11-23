@@ -397,11 +397,11 @@ theorem noThinAir_iff_trunc_past {Ω : Pred}
 
 /-- `dep_po_T` with `DP ⊆ ⊑` derived, where store-store forwarding stays
     within the justification windows (`FwdWin`; vacuous without forwarding). -/
-theorem dep_po_T_past {Ω : Pred} (hx : x.IsExecution es Ω)
+theorem dep_po_T_past {Ω : Pred} (hx : x.IsExecution es Ω) (hNJ : NoJoinMoves es x)
     (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
     (hirr : ∀ a, ¬ es.poR a a) (hL : NoRevLoc es x) (hT : RMWTightR es x)
     (hwf : es.SymWF) (hFW : ∀ j ∈ x.J, es.FwdWin j) {a b : EventId} (h : x.dep es a b) :
     x.poX es a b :=
-  dep_po_T hx hpo_trans hirr hL hT (dp_po hx hwf hpo_trans hFW) h
+  dep_po_T hx hNJ hpo_trans hirr hL hT (dp_po hx hwf hpo_trans hFW) h
 
 end Execution

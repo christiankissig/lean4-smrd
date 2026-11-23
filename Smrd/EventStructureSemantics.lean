@@ -111,6 +111,36 @@ def Stmt.loops : Stmt → List LoopId
   | .while ℓ _ body => ℓ :: body.loops
   | _ => []
 
+/-- No parallel composition anywhere in the program. -/
+def Stmt.parFree : Stmt → Bool
+  | .par .. => false
+  | .seq s₁ s₂ | .ite _ s₁ s₂ => s₁.parFree && s₂.parFree
+  | .while _ _ body => body.parFree
+  | _ => true
+
+/-- Condition `cond:par-placement`, an assumption of the model: no parallel
+    composition inside the body of a loop or inside either branch of a
+    branching. Parallel composition may still be sequenced with other code,
+    nested in a thread, and followed by code after its join. Every fork and
+    join is then reached at most once in a run, under no guard, and in every
+    unravelling of the loops alike. The semantics does not ask it; results that
+    rely on it take it as a hypothesis. -/
+def Stmt.parPlaced : Stmt → Bool
+  | .seq s₁ s₂ | .par s₁ s₂ => s₁.parPlaced && s₂.parPlaced
+  | .ite _ s₁ s₂ => s₁.parFree && s₂.parFree
+  | .while _ _ body => body.parFree
+  | _ => true
+
+theorem Stmt.parPlaced_of_parFree : ∀ {s : Stmt}, s.parFree = true → s.parPlaced = true
+  | .seq s₁ s₂, h => by
+      simp only [parFree, Bool.and_eq_true] at h
+      simp [parPlaced, parPlaced_of_parFree h.1, parPlaced_of_parFree h.2]
+  | .par .., h => by simp [parFree] at h
+  | .ite .., h | .while .., h => by simpa [parFree, parPlaced] using h
+  | .skip, _ | .assign .., _ | .load .., _ | .store .., _ | .addrOf .., _ | .loadPtr .., _
+  | .storePtr .., _ | .fence .., _ | .fadd .., _ | .cas .., _ | .malloc .., _ | .free .., _ =>
+      rfl
+
 /-! ## Event structure combinators -/
 
 namespace EventStructure
@@ -121,29 +151,50 @@ namespace EventStructure
 def «prefix» (e : Event) (k : EventStructure) : EventStructure :=
   { events := e :: k.events
     po     := k.events.map (fun e' => (e.id, e'.id)) ++ k.po
-    rmw    := k.rmw }
+    rmw    := k.rmw
+    blocks := k.blocks }
 
 /-- The coproduct `𝔼₁ + 𝔼₂`. Disjointness of the events is ensured by the
     fresh-id generator. -/
 def plus (s₁ s₂ : EventStructure) : EventStructure :=
-  ⟨s₁.events ++ s₂.events, s₁.po ++ s₂.po, s₁.rmw ++ s₂.rmw⟩
+  ⟨s₁.events ++ s₂.events, s₁.po ++ s₂.po, s₁.rmw ++ s₂.rmw, s₁.blocks ++ s₂.blocks⟩
 
 /-- The join `𝔼₁ ; 𝔼₂` after a parallel composition: every event of `𝔼₁` is
     ordered before every event of `𝔼₂`, `E₁ × E₂` (MoRDor's
     `EventStructure.seq ~join:true`, whose pairs it also records as its
-    fork-join relation `fj`). -/
+    fork-join relation `fj`). It records two segments (`blocks`): the events
+    of the threads, `E₁`, and those after the join, `E₂`. An event before the
+    block lies in neither, so a `⊑`-ordered pair is separated exactly when a
+    fork or the join lies between them. The two threads need no block of
+    their own: no event of one is `⊑`-ordered with an event of the other. -/
 def join (s₁ s₂ : EventStructure) : EventStructure :=
   { events := s₁.events ++ s₂.events
     po     := s₁.po ++ s₂.po ++ s₁.ids.flatMap (fun a => s₂.ids.map (fun b => (a, b)))
-    rmw    := s₁.rmw ++ s₂.rmw }
+    rmw    := s₁.rmw ++ s₂.rmw
+    blocks := s₁.ids :: s₂.ids :: (s₁.blocks ++ s₂.blocks) }
 
-/-- Joining with nothing after it adds nothing: a parallel composition in
-    tail position generates the coproduct of its sides. -/
-@[simp] theorem join_empty (s : EventStructure) : s.join empty = s := by
-  obtain ⟨evs, po, rmw⟩ := s
+
+/-- Joining with nothing after it adds no events, order or RMWs: a parallel
+    composition in tail position generates the coproduct of its sides, and
+    opens the segment of its threads. -/
+@[simp] theorem join_empty (s : EventStructure) :
+    s.join empty = { s with blocks := s.ids :: [] :: s.blocks } := by
+  obtain ⟨evs, po, rmw, bl⟩ := s
   have h : ∀ l : List EventId, l.flatMap (fun _ => ([] : List (EventId × EventId))) = [] := by
     intro l; induction l <;> simp_all
   simp [join, empty, ids, h]
+
+/-- Joining with nothing after it keeps the events. -/
+@[simp] theorem events_join_empty (s : EventStructure) : (s.join empty).events = s.events := by
+  simp [join, empty]
+
+/-- Joining with nothing after it adds no program order. -/
+@[simp] theorem po_join_empty (s : EventStructure) : (s.join empty).po = s.po := by
+  simp [join_empty]
+
+/-- Joining with nothing after it adds no RMWs. -/
+@[simp] theorem rmw_join_empty (s : EventStructure) : (s.join empty).rmw = s.rmw := by
+  simp [join, empty]
 
 /-- `rmw(𝔼, e_r, e_w, b)` -/
 def addRMW (es : EventStructure) (r : EventId) (b : Expr) (w : EventId) : EventStructure :=

@@ -23,6 +23,12 @@ of coherence (`Execution.CoherenceT`), `r := x` happens after neither remaining
 write of the thread, and could read `x := 0`. The rule matches MoRDor's
 write-elision restriction (`ForwardElab.elision_blocked`), whose litmus test
 `own/we-across-fork.lit` is this program.
+
+**Segments.** Write Elision now asks the two writes to lie in one segment
+(`EventStructure.SameSeg`, Condition `cond:segment`) instead of the fork
+restriction. `x := 5` is before the fork and `x := 1` in a thread, so the
+segment condition refutes the elision as well (`not_sameSeg`), and
+`not_generated` goes through it. The fork restriction is kept as a definition.
 -/
 
 namespace WEPastFork
@@ -41,7 +47,7 @@ def e3 : Event := R 3 1 [1, 1, 1] .rlx "x"
 /-- `⊑`: `x := 0` before `x := 5`, both before the two threads. -/
 def poL : List (EventId × EventId) := [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3)]
 
-def esF : EventStructure := ⟨[e0, e1, e2, e3], poL, []⟩
+def esF : EventStructure := ⟨[e0, e1, e2, e3], poL, [], [[2, 3], []]⟩
 
 unseal interp in
 theorem denote_prog : denote (fun _ => 0) prog = esF := rfl
@@ -91,8 +97,12 @@ theorem not_weNoFork : ¬ esF.weNoFork 1 2 := fun h => by
   · exact not_po_32 h
   · exact not_po_23 h
 
+/-- **The segment condition fails**: `x := 5` is before the fork, `x := 1`
+    in a thread (`SameSeg`, Condition `cond:segment`). -/
+theorem not_sameSeg : ¬ esF.SameSeg 1 2 := by decide
+
 theorem not_weRel (j : Justification) : ¬ esF.weRel j 1 2 :=
-  fun h => not_weNoFork h.2.2.1
+  fun h => not_sameSeg h.2.2.1
 
 /-- **No generated justification elides `x := 5` into `x := 1`.** -/
 theorem not_generated {Ω : Pred} {j : Justification} (h : esF.Generated Ω j) :

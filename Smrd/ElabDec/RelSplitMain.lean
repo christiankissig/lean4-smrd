@@ -6,9 +6,9 @@ import Smrd.ElabDec.Deciders
 The decision procedure (`Smrd.ElabDec.Saturate`) takes the conditions of
 Forwarding and Write Elision that do not depend on the justification as a
 `RelSplit`. This module supplies it for the restrictions of
-`Smrd.Justifications` (the acquire and join restrictions on Forwarding, the
-release and fork restrictions on Write Elision, no RMW access elided), each
-with its quantifiers bounded by the events of `⊑`. It is the only module of
+`Smrd.Justifications` (the acquire restriction on Forwarding, the release
+restriction on Write Elision, both within one segment, no RMW access elided),
+each with its quantifiers bounded by the events of `⊑`. It is the only module of
 `Smrd.ElabDec` that unfolds `fwdRel` and `weRel`; a further restriction on
 the two events is added here.
 -/
@@ -126,16 +126,16 @@ def relSplit : es.RelSplit where
   fwdR a b := decide ((((es.cls Event.isWrite a ∧ es.cls Event.isRlxR b) ∨
       (es.cls Event.isWrite a ∧ es.cls Event.isRlxW b) ∨
       (es.cls Event.isRead a ∧ es.cls Event.isRead b)) ∧ ¬ es.cls Event.isVol b) ∧
-    es.noAcqP a b ∧ es.noJoinP b a ∧ ¬ es.RMWAcc b)
+    es.noAcqP a b ∧ es.SameSeg a b ∧ ¬ es.RMWAcc b)
   weR a b := decide ((es.cls Event.isWrite a ∧ es.cls Event.isWrite b ∧ ¬ es.cls Event.isVol a) ∧
-    es.noRelP a b ∧ es.noForkP a b ∧ ¬ es.RMWAcc a)
+    es.noRelP a b ∧ es.SameSeg a b ∧ ¬ es.RMWAcc a)
   fwd_iff j a b := by
-    simp only [fwdRel, fwdRelBlind, decide_eq_true_eq, fwdNoAcq_iff, fwdNoJoin, noJoinMove_iff]
+    simp only [fwdRel, fwdRelBlind, decide_eq_true_eq, fwdNoAcq_iff]
     constructor
     · rintro ⟨⟨h1, h2, h3⟩, h4, h5, h6⟩; exact ⟨h1, ⟨h2, h3⟩, h4, h5, h6⟩
     · rintro ⟨h1, ⟨h2, h3⟩, h4, h5, h6⟩; exact ⟨⟨h1, h2, h3⟩, h4, h5, h6⟩
   we_iff j a b := by
-    simp only [weRel, weRelBlind, decide_eq_true_eq, weNoRel_iff, weNoFork_iff]
+    simp only [weRel, weRelBlind, decide_eq_true_eq, weNoRel_iff]
     constructor
     · rintro ⟨⟨h1, h2, h3, h4⟩, h5, h6, h7⟩; exact ⟨h1, ⟨h2, h3, h4⟩, h5, h6, h7⟩
     · rintro ⟨h1, ⟨h2, h3, h4⟩, h5, h6, h7⟩; exact ⟨⟨h1, h2, h3, h4⟩, h5, h6, h7⟩

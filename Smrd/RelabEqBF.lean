@@ -197,7 +197,7 @@ def a5 : Event := PpoStability.W 5 0 [3, 1] [] [⟨3, cond, false⟩] .rlx "z" 1
 def esA : EventStructure :=
   ⟨[a0, a1, a2, a3, a4, a5],
     [(0, 1), (0, 2), (0, 3), (0, 4), (0, 5), (1, 2), (1, 3), (1, 4), (1, 5),
-     (2, 3), (2, 4), (2, 5), (3, 4), (3, 5)], []⟩
+     (2, 3), (2, 4), (2, 5), (3, 4), (3, 5)], [], []⟩
 
 theorem nodupA : (esA.events.map (·.id)).Nodup := by decide
 
