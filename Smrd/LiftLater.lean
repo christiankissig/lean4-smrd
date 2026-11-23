@@ -7,7 +7,7 @@ import Smrd.PpoNecessity
 `r1 := a; if r1 = 0 then (y := 1; r4 := z) else (r3 := z; y := r3) ∥ r2 := y; a := r2`,
 all accesses relaxed.
 
-Under sMRD's published Strengthening (`EventStructure.GeneratedStr`):
+Under Strengthening as `Generated` has it (sMRD's Def. 4.11):
 
 1. the `then` arm's `(r1 = 0, ∅) ⊢ y := 1` is strengthened with `r4 = 1`, a
    conjunct on the read `r4 := z` that the arm performs *after* the write
@@ -21,12 +21,12 @@ Under sMRD's published Strengthening (`EventStructure.GeneratedStr`):
    Weakening drops: `(r3 = 1, ∅) ⊢ y := 1` (`gen_jW`). The `else` arm's write
    no longer depends on `r1` (`jW_syms`).
 
-Every lifting condition of the restricted rule holds, Lifting's own
-`⊑`-restriction included (`⟦P₁⟧_Λ`'s symbols `r1`, `r3` lie `⊑`-before the
-`else` arm's write). Only the first step uses the published rule; the
-restricted rule refuses it (`not_gen_j₁`). If the `then` arm reads `z` before
-writing `y`, `r4 := z; y := 1`, the restricted rule derives the same
-justification (not mechanised).
+Every lifting condition holds, Lifting's own `⊑`-restriction included
+(`⟦P₁⟧_Λ`'s symbols `r1`, `r3` lie `⊑`-before the `else` arm's write). Only
+the first step uses an origin `⊑`-after the write; the variant
+`GeneratedPast` (origins `⊑`-before the write) refuses it (`not_gen_j₁`). If
+the `then` arm reads `z` before writing `y`, `r4 := z; y := 1`,
+`GeneratedPast` derives the same justification (not mechanised).
 
 ## The outcome
 
@@ -41,13 +41,14 @@ store moves above `r1 := a`. A fact about a later read is available at the
 write once the read is hoisted above it, and Strengthening's side condition
 `w ⋠ e` is that nothing orders the read after the write.
 
-The restricted rule does not reach this justification: the `then` arm has
+`GeneratedPast` does not reach this justification: the `then` arm has
 no symbol `⊑`-before its write that `Λ` could map to `r3`, so the first
 disjunct of every lift into the `else` arm is over `r1` alone, and the
 disjunction is valid only if the `else` arm's premise is, which it is not
-while it fixes `r3 = 1`. The restriction therefore changes this outcome,
-towards forbidding an outcome that compilers produce (not mechanised: that
-every restricted justification of the `else` arm's write keeps `r1`).
+while it fixes `r3 = 1`. The restriction to origins before the write
+therefore changes this outcome, towards forbidding an outcome that compilers
+produce (not mechanised: that every justification of `GeneratedPast` of the
+`else` arm's write keeps `r1`).
 MoRDor admits the outcome through its strengthening for lifting, which
 strengthens the `then` arm with the `else` arm's `r3 = 1`, a symbol in
 conflict with the write.
@@ -131,7 +132,7 @@ def j₁ : Justification := { j₁₀ with P := esL.strPred j₁₀.P (Q 3) [3] 
 
 theorem j₁_syms : j₁.P.syms = [0, 3, 0] := by decide
 
-theorem gen_j₁ : esL.GeneratedStr (fun _ => True) j₁ := by
+theorem gen_j₁ : esL.Generated (fun _ => True) j₁ := by
   refine .str (Q 3) [3] (.pre (w := e2) (by simp [esL]) rfl ⟨fT, by unfold Expr.holds; decide⟩)
     ?_ ?_ ?_ ⟨fT, by unfold Expr.holds; decide, trivial⟩
   · intro e
@@ -146,9 +147,9 @@ theorem gen_j₁ : esL.GeneratedStr (fun _ => True) j₁ := by
     simp only [List.mem_singleton] at he; subst he
     exact ⟨.inr (show (2, 3) ∈ esL.po by decide), no_ppo⟩
 
-/-- **The restricted rule refuses the strengthening**: `r4 := z` is not
-    `⊑`-before `y := 1` (`Generated.past`). -/
-theorem not_gen_j₁ {Ω : Pred} : ¬ esL.Generated Ω j₁ := fun h => by
+/-- **`GeneratedPast` refuses the strengthening**: `r4 := z` is not
+    `⊑`-before `y := 1` (`GeneratedPast.past`). -/
+theorem not_gen_j₁ {Ω : Pred} : ¬ esL.GeneratedPast Ω j₁ := fun h => by
   have := h.past symWF poTrans
     (fun p hp => by simp [j₁, j₁₀, FwdCtx.empty] at hp) 3 (.inl (by rw [j₁_syms]; simp))
   revert this; show (3, 2) ∉ esL.po; decide
@@ -170,7 +171,7 @@ def j₂ : Justification :=
     δ := j₂₁.δ
     w := w₂ }
 
-theorem gen_j₂₁ : esL.GeneratedStr (fun _ => True) j₂₁ := by
+theorem gen_j₂₁ : esL.Generated (fun _ => True) j₂₁ := by
   refine .str (Q 4) [4] (.pre (w := e5) (by simp [esL]) rfl ⟨fF, by unfold Expr.holds; decide⟩)
     ?_ ?_ ?_ ⟨fF, by unfold Expr.holds; decide, trivial⟩
   · intro e
@@ -185,7 +186,7 @@ theorem gen_j₂₁ : esL.GeneratedStr (fun _ => True) j₂₁ := by
     simp only [List.mem_singleton] at he; subst he
     exact ⟨.inl (show (4, 5) ∈ esL.po by decide), no_ppo⟩
 
-theorem gen_j₂ : esL.GeneratedStr (fun _ => True) j₂ := by
+theorem gen_j₂ : esL.Generated (fun _ => True) j₂ := by
   refine .va (α := 4) (v := .num 1) (o := .rlx) (x := Expr.glob "y") (e := .sym 4) (b := false) gen_j₂₁ rfl ?_
     ⟨fF, by unfold Expr.holds; decide, trivial⟩
   intro f hf v₁ v₂ h₁ h₂
@@ -232,7 +233,7 @@ theorem liftBranch : esL.LiftBranch Λ j₁.w.id j₂.w.id := by
 
 /-- **The lift is generated**, with every lifting condition of the restricted
     rule. -/
-theorem gen_jL : esL.GeneratedStr (fun _ => True) jL := by
+theorem gen_jL : esL.Generated (fun _ => True) jL := by
   refine .lift Λ gen_j₁ gen_j₂ rfl ?_ liftBranch ?_ cre ?_ ?_ ?_ ?_ ?_ ?_ ⟨fF, ?_, trivial⟩
   · intro a b c ha hb
     simp only [Λ] at ha hb
@@ -259,7 +260,7 @@ theorem Pv_valid : Entails (fun _ => True) Pv.holds := by
 
 /-- **The weakened justification is generated**: the `else` arm's write
     depends on `r3` only. -/
-theorem gen_jW : esL.GeneratedStr (fun _ => True) jW :=
+theorem gen_jW : esL.Generated (fun _ => True) jW :=
   .weak (j₁ := jL) (P' := PW) (Pw := Pv) gen_jL (by rw [jL_P]; exact Expr.ConjEq.refl _) Pv_valid
     ⟨fF, by unfold Expr.holds; decide, trivial⟩
 

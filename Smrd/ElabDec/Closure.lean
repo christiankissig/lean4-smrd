@@ -177,7 +177,7 @@ inductive GenR (Ω : Pred) (Qs : List Expr) (wk : Bool) : Justification → Prop
       GenR Ω Qs wk j₁ →
       (∀ e, e ∈ S ↔ e ∈ (strPred es j₁.P Q S).syms ∧ e ∉ j₁.P.syms) →
       (∀ e ∈ S, j₁.δ.Remap e e) →
-      (∀ e ∈ S, es.poR e j₁.w.id ∧ ¬ es.ppo j₁.P.holds j₁.δ j₁.w.id e) →
+      (∀ e ∈ S, (es.poR e j₁.w.id ∨ es.poR j₁.w.id e) ∧ ¬ es.ppo j₁.P.holds j₁.δ j₁.w.id e) →
       Sat (Pred.and (strPred es j₁.P Q S).holds Ω) →
       GenR Ω Qs wk { j₁ with P := strPred es j₁.P Q S }
   | fwd {j₁ : Justification} {o : MemOrd} {x e : Expr} {b : Bool} {e₁ e₂ : EventId}
@@ -405,7 +405,8 @@ def sizeK (Qs : List Expr) : Nat := (es.baseExprs Qs).foldl (fun m e => max m e.
 
 /-- The symbols the closure can mention: those of the base expressions and the
     sources of `⊑`. -/
-def symU (Qs : List Expr) : List Sym := (es.baseExprs Qs).flatMap Expr.syms ++ es.po.map Prod.fst
+def symU (Qs : List Expr) : List Sym :=
+  (es.baseExprs Qs).flatMap Expr.syms ++ (es.po.map Prod.fst ++ es.po.map Prod.snd)
 
 /-- The values of the base expressions. -/
 def valU (Qs : List Expr) : List Val := (es.baseExprs Qs).flatMap Expr.vals
@@ -626,7 +627,7 @@ theorem GenR.atoms_small {Ω : Pred} {Qs : List Expr} {wk : Bool} (hva : es.Vals
         have h0 := ih₁ a₀ ha₀
         rw [hδ] at h0
         refine ⟨by rw [size_rename]; exact h0.1, fun α hα => ?_, fun v hv => ?_⟩
-        · exact List.mem_append_right _ (List.mem_map.2 ⟨_, hpo α (hsyms α hα), rfl⟩)
+        · exact List.mem_append_right _ (List.mem_append_left _ (List.mem_map.2 ⟨_, hpo α (hsyms α hα), rfl⟩))
         · rw [vals_rename] at hv; exact h0.2.2 v hv
       · exact ih₂ a ha
   | weak _ _ hc _ _ ih => exact fun a ha => ih a (atoms_of_conjEq hc a ha)

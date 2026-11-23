@@ -5,36 +5,36 @@ import Smrd.RC11
 /-!
 # Strengthening against a later read: `DP` backwards within a thread
 
-`y :=_rel 1; r := x ∥ (r2 :=_acq y; x := 1 ∥ x := 2)`. sMRD's published
-Strengthening (`EventStructure.GeneratedStr`) strengthens the
-pre-justification `(⊤, ∅) ⊢ y :=_rel 1` with a conjunct `r = v` on the read
-`r := x` that the thread performs *after* the write: the read is
-`⊑`-comparable with the write and not `≼`-after it (a release orders what is
-before it, not what is after). Freezing an execution that takes the
-justification gives the edge `(r := x, y :=_rel 1)` in `DP`, `⊑`-backwards
-and within one thread: `DP ∪ ≼` is thread-internal (`threadInternal_C`), not
-`⊑`-forward (`not_dep_po_C`). The restricted rule (`Generated.str`, origins
-`⊑`-before the write) does not generate the justification (`not_generated`).
+`y :=_rel 1; r := x ∥ (r2 :=_acq y; x := 1 ∥ x := 2)`. Strengthening
+(`Generated.str`, sMRD's Def. 4.11) strengthens the pre-justification
+`(⊤, ∅) ⊢ y :=_rel 1` with a conjunct `r = v` on the read `r := x` that the
+thread performs *after* the write: the read is `⊑`-comparable with the write
+and not `≼`-after it (a release orders what is before it, not what is after;
+`gen_jS`). Freezing an execution that takes the justification gives the edge
+`(r := x, y :=_rel 1)` in `DP`, `⊑`-backwards and within one thread: `DP ∪ ≼`
+is thread-internal (`threadInternal`), not `⊑`-forward (`not_dep_po`). The
+restricted variant `GeneratedPast` (origins `⊑`-before the write) does not
+generate the justification (`not_generatedPast`).
 
-Two executions, each consistent but for the generation of the strengthened
-justification, which the published rule provides (`genStr`):
+Two consistent executions:
 
-* `xC` (`r = 2`, `r2 = 1`, `CO` on `x`: `x := 1` before `x := 2`): RC11's
-  coherence holds, relaxed coherence (`HB_v ≜ (DP ∪ ≼ ∪ SW)⁺`) fails:
+* `xC` (`r = 2`, `r2 = 1`, `CO` on `x`: `x := 1` before `x := 2`;
+  `consistent_C`): RC11's coherence holds, relaxed coherence
+  (`HB_v ≜ (DP ∪ ≼ ∪ SW)⁺`) fails:
   `r →DP y :=_rel 1 →SW r2 →≼ x := 1 →CO x := 2 →rf r`. The step
   `RC11 coherence ⇒ relaxed coherence` (`coherenceV_of_coherence`, and with it
   `coherenceV_iff_coherence`, `coherenceV_of_coherenceT`,
   `Relaxed.consistentV_of_consistent`, …) needs `DP ∪ ≼ ⊆ ⊑`;
   thread-internality does not suffice (`coherenceV_fails`).
-* `xN` (`r = 1`, `r2 = 1`, `r` reads `x := 1`): RC11-consistent (no
-  elaboration moves an event, `⊑ ∪ rf` acyclic), yet `DP ∪ ≼ ∪ rf` has the
-  cycle `r →DP y :=_rel 1 →rf r2 →≼ x := 1 →rf r`, so sMRD's No-Thin-Air fails
-  (`noThinAir_fails`). `consistent_of_consistentRC11` and `consistentRC11_iff`
-  need `DP ∪ ≼ ⊆ ⊑` for the justifications at hand. The justification only
-  forbids an execution: with the pre-justification of `y :=_rel 1` the
-  execution is sMRD-consistent, and RC11's executions remain implementable by
-  justifications with `DP ⊆ ⊑` (`RC11.dep_po_of_noElision`, under the restricted
-  rule).
+* `xN` (`r = 1`, `r2 = 1`, `r` reads `x := 1`; `consistentRC11_N`):
+  RC11-consistent (no elaboration moves an event, `⊑ ∪ rf` acyclic), yet
+  `DP ∪ ≼ ∪ rf` has the cycle `r →DP y :=_rel 1 →rf r2 →≼ x := 1 →rf r`, so
+  sMRD's No-Thin-Air fails (`noThinAir_fails`). `consistent_of_consistentRC11`
+  and `consistentRC11_iff` need `DP ∪ ≼ ⊆ ⊑` for the justifications at hand.
+  The justification only forbids an execution: with the pre-justification of
+  `y :=_rel 1` the execution is sMRD-consistent, and RC11's executions remain
+  implementable by justifications of `GeneratedPast`
+  (`RC11.consistent_of_consistentRC11'`).
 -/
 
 namespace StrBack
@@ -104,12 +104,12 @@ theorem no_ppo_01 {P : Pred} : ¬ esB.ppo P .empty 0 1 := fun h => by
   have := ppo_mem rfl gB noEdge_empty h
   revert this; decide
 
-theorem pre0 {Ω : Pred} : esB.GeneratedStr Ω (PpoNecessity.pj e0) :=
+theorem pre0 {Ω : Pred} : esB.Generated Ω (PpoNecessity.pj e0) :=
   .pre (w := e0) (by simp [esB]) rfl ⟨fv 0, SB.holds (by simp [esB]) _⟩
 
-/-- **The published Strengthening generates `jS v`**: the read `r := x` is
+/-- **Strengthening generates `jS v`**: the read `r := x` is
     `⊑`-after the write and not `≼`-after it. -/
-theorem genStr (v : Nat) : esB.GeneratedStr (fun _ => True) (jS v) := by
+theorem gen_jS (v : Nat) : esB.Generated (fun _ => True) (jS v) := by
   refine .str (Q v) [1] pre0 ?_ ?_ ?_ ⟨fv v, holds_jS v, trivial⟩
   · intro e
     have h : (esB.strPred (PpoNecessity.pj e0).P (Q v) [1]).syms = [1] := syms_jS v
@@ -120,9 +120,9 @@ theorem genStr (v : Nat) : esB.GeneratedStr (fun _ => True) (jS v) := by
     simp only [List.mem_singleton] at he; subst he
     exact ⟨.inr (show (0, 1) ∈ esB.po by decide), no_ppo_01⟩
 
-/-- **The restricted rule does not**: its origins lie `⊑`-before the write
-    (`Generated.past`), and `r := x` does not. -/
-theorem not_generated {Ω : Pred} (v : Nat) : ¬ esB.Generated Ω (jS v) := fun h => by
+/-- **The restricted variant does not**: its origins lie `⊑`-before the write
+    (`GeneratedPast.past`), and `r := x` does not. -/
+theorem not_generatedPast {Ω : Pred} (v : Nat) : ¬ esB.GeneratedPast Ω (jS v) := fun h => by
   have := h.past symWF poTrans
     (fun p hp => by simp [jS, PpoNecessity.pj, FwdCtx.empty] at hp) 1
     (.inl (by rw [syms_jS]; simp))
@@ -177,10 +177,8 @@ theorem δ_J {v : Nat} {rf : List (EventId × EventId)} :
   simp only [xOf, List.mem_cons, List.not_mem_nil, or_false] at hj
   rcases hj with rfl | rfl | rfl <;> rfl
 
-/-- **Were `jS v` generated, `xOf v rf` would be an execution.** Under the
-    published rule it is (`genStr`). -/
-theorem isExecution_of {v : Nat} {rf : List (EventId × EventId)} (hrf : RfOK esB rf)
-    (hg : esB.Generated (fun _ => True) (jS v)) :
+/-- **`xOf v rf` is an execution.** -/
+theorem isExecution_of {v : Nat} {rf : List (EventId × EventId)} (hrf : RfOK esB rf) :
     (xOf v rf).IsExecution esB (fun _ => True) where
   maximal := ⟨fun _ h => h, fun a b _ _ ⟨ea, eb, ha, hb, hn⟩ =>
       hn ⟨fun _ => .num 0, SB.holds (ev_inv ha).1 _, SB.holds (ev_inv hb).1 _⟩,
@@ -188,7 +186,7 @@ theorem isExecution_of {v : Nat} {rf : List (EventId × EventId)} (hrf : RfOK es
   generated j hj := by
     simp only [xOf, List.mem_cons, List.not_mem_nil, or_false] at hj
     rcases hj with rfl | rfl | rfl
-    · exact hg
+    · exact gen_jS v
     · exact .pre (w := e3) (by simp [esB]) rfl ⟨fv 0, SB.holds (by simp [esB]) _⟩
     · exact .pre (w := e4) (by simp [esB]) rfl ⟨fv 0, SB.holds (by simp [esB]) _⟩
   inX j hj := by
@@ -424,11 +422,9 @@ theorem coherent_C : xC.Coherent esB :=
   coherent_of phi_C (.inl rfl) (E := [(4, 1), (0, 2), (3, 4), (3, 1)]) (by decide) (by decide)
     (by decide)
 
-/-- **Consistent but for the generation of `jS 2`**, which the published rule
-    provides (`genStr`). -/
-theorem consistent_C (hg : esB.Generated (fun _ => True) (jS 2)) :
-    xC.Consistent esB (fun _ => True) :=
-  ⟨isExecution_of (by decide) hg, phi_C, noThinAir_C, coherent_C⟩
+/-- **`xC` is consistent.** -/
+theorem consistent_C : xC.Consistent esB (fun _ => True) :=
+  ⟨isExecution_of (by decide), phi_C, noThinAir_C, coherent_C⟩
 
 /-- **Relaxed coherence fails**: `r →DP y :=_rel 1 →SW r2 →≼ x := 1`, and
     `x := 1 →CO x := 2 →rf r`. -/
@@ -485,11 +481,9 @@ theorem noThinAirRC11_N : xN.NoThinAirRC11 esB := by
   exact (show ∀ p ∈ [(0, 1), (2, 3), (3, 1), (0, 2), (0, 3), (2, 1)], p.1 ≠ p.2 by decide)
     _ this rfl
 
-/-- **RC11-consistent but for the generation of `jS 1`**, which the published
-    rule provides (`genStr`). -/
-theorem consistentRC11_N (hg : esB.Generated (fun _ => True) (jS 1)) :
-    Smrd.RC11.ConsistentRC11 esB xN (fun _ => True) :=
-  ⟨isExecution_of (by decide) hg, phi_N, not_elided 1 rfN, noThinAirRC11_N, coherent_N⟩
+/-- **`xN` is RC11-consistent.** -/
+theorem consistentRC11_N : Smrd.RC11.ConsistentRC11 esB xN (fun _ => True) :=
+  ⟨isExecution_of (by decide), phi_N, not_elided 1 rfN, noThinAirRC11_N, coherent_N⟩
 
 /-- **sMRD's No-Thin-Air fails**: `r →DP y :=_rel 1 →rf r2 →≼ x := 1 →rf r`. -/
 theorem noThinAir_fails :
