@@ -155,16 +155,27 @@ theorem not_liftPast : ¬ esC.LiftPast (fun _ => True) := by
   obtain ⟨hδ, hΛ, hrel, hD, -⟩ := lift_conds
   exact guard_sym.2.2 (h j₁ j₂ Λ₀ pre₁ pre₂ hδ hΛ hrel hD 0 guard_sym.1)
 
-/-- Under the restriction of `Generated.lift` the lift is not generated. -/
+/-- Under the restriction of `Generated.lift` the lift is not generated: every
+    origin of a generated justification has a common `⊑`-upper bound with its
+    write (`Generated.joinPast`), and the guard's read has none with the other
+    thread's write. -/
 theorem not_generated {Ω : Pred} : ¬ esC.Generated Ω jL := by
   intro h
   have hpo : ∀ a b c, esC.poR a b → esC.poR b c → esC.poR a c := by
     have : ∀ p ∈ esC.po, ∀ q ∈ esC.po, p.2 = q.1 → (p.1, q.2) ∈ esC.po := by decide
     intro a b c h₁ h₂
     exact this (a, b) h₁ (b, c) h₂ rfl
-  exact guard_sym.2.2
-    (h.past symWF hpo (fun p hp => by simp [jL, j₂, PpoNecessity.pj, FwdCtx.empty] at hp) 0
-      (.inl guard_sym.2.1))
+  obtain ⟨d, h0, h3⟩ := h.joinPast symWF hpo
+    (fun p hp => by simp [jL, j₂, PpoNecessity.pj, FwdCtx.empty] at hp) 0
+    (.inl guard_sym.2.1)
+  have hd : d = 3 := by
+    rcases h3 with h3 | h3
+    · exact h3.symm
+    · revert h3; show (3, d) ∈ esC.po → _; simp [esC]
+  subst hd
+  rcases h0 with h0 | h0
+  · cases h0
+  · exact guard_sym.2.2 h0
 
 /-- **The writes are not in conflict**: thread 1's write has no guard. -/
 theorem not_diverged : ¬ esC.Diverged j₁.w.id j₂.w.id := by

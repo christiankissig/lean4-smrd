@@ -2,15 +2,23 @@ import Smrd.PpoStability
 import Smrd.CoherenceT
 
 /-!
-# Dependencies run along `⊑` (`DP ⊆ ⊑`)
+# Dependencies run along `⊑` (`DP ⊆ ⊑`), and stay joinable with their writes
 
-With Strengthening restricted to origins `⊑`-before the justified write
-(`Generated.str`, sMRD §4.7's prose) and Lifting to relabelled premises
-whose symbols are `⊑`-before the lifted write (`Generated.lift`), every symbol of a generated
-justification's predicate, dependencies and expressions has its origin
-`⊑`-before the justified event (`Generated.past`), and so `DP ⊆ ⊑`
-(`Execution.dp_po`). The hypotheses `DP ⊆ ⊑` of `noThinAir_iff_win`,
-`noThinAir_iff_trunc`, `dep_po_T`, … are derived from it.
+`Generated`'s Strengthening admits origins on either side of the justified
+write (sMRD's Def. 4.11), so `DP` can run against `⊑` within a thread
+(`Smrd.StrBack`). What every generated justification keeps is that each origin
+has a common `⊑`-upper bound with the justified event (`Generated.joinPast`),
+which gives thread-internality where `⊑` is a forest (`Smrd.DepThread`).
+
+The variant `GeneratedPast` restricts Strengthening to origins `⊑`-before the
+justified write (sMRD §4.7's prose). With it, and Lifting's restriction to
+relabelled premises whose symbols are `⊑`-before the lifted write
+(`Generated.lift`), every symbol of a justification's predicate, dependencies
+and expressions has its origin `⊑`-before the justified event
+(`GeneratedPast.past`), and so `DP ⊆ ⊑` (`Execution.dp_po`). The hypotheses
+`DP ⊆ ⊑` of `noThinAir_iff_win`, `noThinAir_iff_trunc`, `dep_po_T`, … are
+derived from it for executions whose justifications are of `GeneratedPast`
+(`*_past`); pre-justifications are.
 
 ## What the invariant needs
 
@@ -26,8 +34,8 @@ justification's predicate, dependencies and expressions has its origin
   in `val(e₁)`'s origins from beyond the write. Store forwarding and load
   forwarding need nothing: they replace the symbol of a read `e₂`, which, if it
   occurs, is an origin and so `⊑`-before the write.
-Value Assignment, Strengthening, Write Elision, Lifting and Weakening preserve
-the invariant without further hypotheses. Lifting does so by its restriction
+Value Assignment, Strengthening (of `GeneratedPast`), Write Elision, Lifting
+and Weakening preserve the invariant without further hypotheses. Lifting does so by its restriction
 that `⟦P₁⟧_Λ`'s symbols have origins `⊑`-before `w₂` (`Generated.lift`).
 Without it the invariant fails, and on executions too: closed
 relabel-equivalence constrains `Λ` on `D₁` only (`D₂ = Λ(D₁)`), and a symbol
@@ -179,6 +187,76 @@ def LiftPast (Ω : Pred) : Prop :=
     (∀ e, e ∈ j₂.D ↔ ∃ α ∈ j₁.D, Λ.app α = e) →
     ∀ α ∈ (j₁.P.rename Λ).syms, es.poR α j₂.w.id
 
+/-- `j ∈ 𝕁` with Strengthening restricted to origins `⊑`-before the justified
+    write, `e ⊑ w` (the reading of sMRD §4.7's prose, "all symbols are visible
+    to the justified write"). Every other rule is that of `Generated`, whose
+    Strengthening admits origins on either side of the write
+    (`GeneratedPast.toGenerated`). Under it every origin of a dependency
+    precedes its write (`GeneratedPast.past`). -/
+inductive GeneratedPast (Ω : Pred) : Justification → Prop
+  | pre {w : Event} {j : Justification} :
+      w ∈ es.events → preJust w = some j → Sat w.valres.holds →
+      GeneratedPast Ω j
+  | va {j₁ : Justification} {o : MemOrd} {x e : Expr} {b : Bool} {α : Sym} {v : Val} :
+      GeneratedPast Ω j₁ →
+      j₁.w.kind = .write o x e b →
+      EquivUnder j₁.P.holds (.sym α) (.val v) →
+      Sat (Pred.and j₁.P.holds Ω) →
+      GeneratedPast Ω
+        { P := j₁.P
+          D := (x.subst α (.val v)).syms ++ (e.subst α (.val v)).syms
+          δ := j₁.δ
+          w := { j₁.w with kind := .write o (x.subst α (.val v)) (e.subst α (.val v)) b } }
+  /-- Strengthening with the new origins `⊑`-before the write. -/
+  | str {j₁ : Justification} (Q : Expr) (S : List EventId) :
+      GeneratedPast Ω j₁ →
+      (∀ e, e ∈ S ↔ e ∈ (strPred es j₁.P Q S).syms ∧ e ∉ j₁.P.syms) →
+      (∀ e ∈ S, j₁.δ.Remap e e) →
+      (∀ e ∈ S, es.poR e j₁.w.id ∧ ¬ es.ppo j₁.P.holds j₁.δ j₁.w.id e) →
+      Sat (Pred.and (strPred es j₁.P Q S).holds Ω) →
+      GeneratedPast Ω { j₁ with P := strPred es j₁.P Q S }
+  | fwd {j₁ : Justification} {o : MemOrd} {x e : Expr} {b : Bool} {e₁ e₂ : EventId}
+      {ev₁ ev₂ : Event} {v₁ v₂ : Expr} :
+      GeneratedPast Ω j₁ →
+      j₁.w.kind = .write o x e b →
+      es.fwdRel j₁ e₁ e₂ →
+      es.ev e₁ = some ev₁ → es.ev e₂ = some ev₂ →
+      ev₁.val = some v₁ → ev₂.val = some v₂ →
+      FwdCtx.WF { j₁.δ with f := j₁.δ.f ++ [(e₁, e₂)] } →
+      Sat (Pred.and (j₁.P.replace v₂ v₁).holds Ω) →
+      GeneratedPast Ω
+        { P := j₁.P.replace v₂ v₁
+          D := (e.replace v₂ v₁).syms ++ (x.replace v₂ v₁).syms
+          δ := { j₁.δ with f := j₁.δ.f ++ [(e₁, e₂)] }
+          w := { j₁.w with kind := .write o (x.replace v₂ v₁) (e.replace v₂ v₁) b } }
+  | we {j₁ : Justification} {e₁ e₂ : EventId} :
+      GeneratedPast Ω j₁ →
+      es.weRel j₁ e₁ e₂ →
+      FwdCtx.WF { j₁.δ with we := j₁.δ.we ++ [(e₂, e₁)] } →
+      Sat (Pred.and j₁.P.holds Ω) →
+      GeneratedPast Ω { j₁ with δ := { j₁.δ with we := j₁.δ.we ++ [(e₂, e₁)] } }
+  | lift {j₁ j₂ : Justification} (Λ : Relabelling) :
+      GeneratedPast Ω j₁ → GeneratedPast Ω j₂ →
+      j₁.δ = j₂.δ →
+      Λ.Injective →
+      es.LiftBranch Λ j₁.w.id j₂.w.id →
+      Λ.InjOn (j₁.P.syms ++ j₁.D) →
+      es.ClosedRelabEq j₁.δ Λ j₁.P j₁.w j₂.P j₂.w →
+      (∀ e, e ∈ j₂.D ↔ ∃ α ∈ j₁.D, Λ.app α = e) →
+      (∀ α ∈ j₁.D, ∃ ev₁ ev₂, es.ev α = some ev₁ ∧ es.ev (Λ.app α) = some ev₂ ∧
+        es.ClosedRelabEq j₁.δ Λ j₁.P ev₁ j₂.P ev₂) →
+      ¬ es.cls Event.isVol j₁.w.id → ¬ es.cls Event.isVol j₂.w.id →
+      (∀ α ∈ j₁.D ++ j₂.D, ¬ es.cls Event.isVol α) →
+      (∀ α ∈ (j₁.P.rename Λ).syms, es.poR α j₂.w.id) →
+      Sat (Pred.and (Expr.liftPred (j₁.P.rename Λ) j₂.P).holds Ω) →
+      GeneratedPast Ω { j₂ with P := Expr.liftPred (j₁.P.rename Λ) j₂.P }
+  | weak {j₁ : Justification} {P' Pw : Expr} :
+      GeneratedPast Ω j₁ →
+      j₁.P.ConjEq (.and P' Pw) →
+      Entails Ω Pw.holds →
+      Sat (Pred.and P'.holds Ω) →
+      GeneratedPast Ω { j₁ with P := P' }
+
 variable {es}
 
 theorem ev_some {a : EventId} {e : Event} (h : es.ev a = some e) : e ∈ es.events ∧ e.id = a := by
@@ -218,9 +296,9 @@ theorem val_src_po (hwf : es.SymWF) (hpo : ∀ a b c, es.poR a b → es.poR b c 
 
 /-- **Every origin of a generated justification is `⊑`-before its event**,
     given `SymWF` and the forwarding window. -/
-theorem Generated.past {Ω : Pred} (hwf : es.SymWF)
+theorem GeneratedPast.past {Ω : Pred} (hwf : es.SymWF)
     (hpo : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
-    {j : Justification} (h : es.Generated Ω j) : es.FwdWin j → es.Past j := by
+    {j : Justification} (h : es.GeneratedPast Ω j) : es.FwdWin j → es.Past j := by
   induction h with
   | @pre w j hw hj _ =>
       intro _ α hα
@@ -331,6 +409,156 @@ theorem Generated.past {Ω : Pred} (hwf : es.SymWF)
         exact .inl h
       · exact ih α (.inr h)
 
+/-- **The restricted rule is an instance of `Generated`.** -/
+theorem GeneratedPast.toGenerated {Ω : Pred} {j : Justification} (h : es.GeneratedPast Ω j) :
+    es.Generated Ω j := by
+  induction h with
+  | pre hw hj hs => exact .pre hw hj hs
+  | va _ hk hv hs ih => exact .va ih hk hv hs
+  | str Q S _ hS hR hord hs ih =>
+      exact .str Q S ih hS hR (fun e he => ⟨.inl (hord e he).1, (hord e he).2⟩) hs
+  | fwd _ hk hf h₁ h₂ hv₁ hv₂ hwf hs ih => exact .fwd ih hk hf h₁ h₂ hv₁ hv₂ hwf hs
+  | we _ hwe hwf hs ih => exact .we ih hwe hwf hs
+  | lift Λ _ _ hδ hi hb hio hc hD hDc hv₁ hv₂ hvD hL hs ih₁ ih₂ =>
+      exact .lift Λ ih₁ ih₂ hδ hi hb hio hc hD hDc hv₁ hv₂ hvD hL hs
+  | weak _ hc he hs ih => exact .weak ih hc he hs
+
+/-- Every symbol of `j`'s predicate, dependencies and expressions has its
+    origin joinable with the justified event: some event lies at or
+    `⊑`-above both. -/
+def JoinPast (j : Justification) : Prop :=
+  ∀ α, (α ∈ j.P.syms ∨ α ∈ j.D ∨ α ∈ j.w.exprSyms) → es.Joinable α j.w.id
+
+theorem joinable_of_po_left (hpo : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
+    {a b c : EventId} (hab : es.poR a b) (h : es.Joinable b c) : es.Joinable a c := by
+  obtain ⟨d, hb, hc⟩ := h
+  refine ⟨d, .inr ?_, hc⟩
+  rcases hb with rfl | hb
+  · exact hab
+  · exact hpo _ _ _ hab hb
+
+theorem joinable_of_po (h : es.poR a b) : es.Joinable a b := ⟨b, .inr h, .inl rfl⟩
+
+theorem joinable_of_po' (h : es.poR b a) : es.Joinable a b := ⟨a, .inl rfl, .inr h⟩
+
+/-- **Every origin of a generated justification is joinable with its
+    event**, given `SymWF` and the forwarding window. No hypothesis on the
+    shape of `⊑`. -/
+theorem Generated.joinPast {Ω : Pred} (hwf : es.SymWF)
+    (hpo : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
+    {j : Justification} (h : es.Generated Ω j) : es.FwdWin j → es.JoinPast j := by
+  induction h with
+  | @pre w j hw hj _ =>
+      intro _ α hα
+      unfold preJust at hj
+      split at hj <;> cases hj
+      all_goals
+        rename_i heq
+        apply joinable_of_po
+        apply hwf.past w hw α
+        simp only [Event.depSyms, Event.exprSyms, List.mem_append] at hα ⊢
+        rcases hα with h | h | h <;> simp_all
+  | @va j₁ o x e b α' v _ hk _ _ ih =>
+      intro hW α hα
+      have hW₁ : es.FwdWin j₁ := hW
+      apply ih hW₁ α
+      simp only [Event.exprSyms, hk, List.mem_append] at hα ⊢
+      rcases hα with h | (h | h) | (h | h)
+      · exact .inl h
+      · exact .inr (.inr (.inl (Expr.mem_syms_subst_val h)))
+      · exact .inr (.inr (.inr (Expr.mem_syms_subst_val h)))
+      · exact .inr (.inr (.inl (Expr.mem_syms_subst_val h)))
+      · exact .inr (.inr (.inr (Expr.mem_syms_subst_val h)))
+  | @str j₁ Q S _ hS _ hord _ ih =>
+      intro hW α hα
+      have ih := ih hW
+      rcases hα with h | h
+      · by_cases hP : α ∈ j₁.P.syms
+        · exact ih α (.inl hP)
+        · rcases (hord α ((hS α).2 ⟨h, hP⟩)).1 with h | h
+          · exact joinable_of_po h
+          · exact joinable_of_po' h
+      · exact ih α (.inr h)
+  | @fwd j₁ o x e b e₁ e₂ ev₁ ev₂ v₁ v₂ _ hk hf h₁ h₂ hv₁ hv₂ _ _ ih =>
+      intro hW α hα
+      have hW₁ : es.FwdWin j₁ := fun p hp => hW p (List.mem_append_left _ hp)
+      have ih := ih hW₁
+      have hwin := hW (e₁, e₂) (List.mem_append_right _ (List.mem_singleton_self _))
+      obtain ⟨⟨⟨-, h12, -⟩, hcls, -⟩, -, -⟩ := hf
+      have hsrc : es.cls Event.isWrite e₁ ∨ es.cls Event.isRead e₁ := by
+        rcases hcls with ⟨h, -⟩ | ⟨h, -⟩ | ⟨h, -⟩
+        · exact .inl h
+        · exact .inl h
+        · exact .inr h
+      have hv := val_src_po hwf hpo h₁ hv₁ hsrc h12
+      have key : ∀ E : Expr, (∀ β ∈ E.syms, es.Joinable β j₁.w.id) →
+          ∀ β ∈ (E.replace v₂ v₁).syms, es.Joinable β j₁.w.id := by
+        intro E hE β hβ
+        have via : es.Joinable e₂ j₁.w.id → es.Joinable β j₁.w.id := by
+          intro h2
+          rcases Expr.mem_syms_replace hβ with hβ | hβ
+          · exact hE β hβ
+          · exact joinable_of_po_left hpo (hv β hβ) h2
+        by_cases hr : es.cls Event.isWrite e₂
+        · exact via (by
+            rcases hwin hr with h | h
+            · exact joinable_of_po h
+            · exact ⟨j₁.w.id, .inl h, .inl rfl⟩)
+        · have hr₂ : es.cls Event.isRead e₂ := by
+            rcases hcls with ⟨-, h⟩ | ⟨-, h⟩ | ⟨-, h⟩
+            · obtain ⟨e', he', h⟩ := h
+              refine ⟨e', he', ?_⟩
+              unfold Event.isRlxR at h; unfold Event.isRead
+              split at h <;> simp_all
+            · obtain ⟨e', he', h⟩ := h
+              refine absurd ⟨e', he', ?_⟩ hr
+              unfold Event.isRlxW at h; unfold Event.isWrite
+              split at h <;> simp_all
+            · exact h
+          obtain ⟨e', he', hrd⟩ := hr₂
+          rw [h₂] at he'; cases he'
+          obtain ⟨hm₂, hid₂⟩ := ev_some h₂
+          unfold Event.isRead at hrd
+          split at hrd
+          · rename_i o' l' γ b' heq
+            simp only [Event.val, heq, Option.some.injEq] at hv₂
+            subst hv₂
+            have hγ : γ = e₂ := by rw [hwf.read_sym ev₂ hm₂ o' l' γ b' heq, hid₂]
+            by_cases hm : γ ∈ E.syms
+            · exact via (hγ ▸ hE γ hm)
+            · rw [Expr.replace_sym_of_not_mem hm] at hβ
+              exact hE β hβ
+          · cases hrd
+      have hP := key j₁.P (fun β h => ih β (.inl h))
+      have hx := key x (fun β h => ih β (.inr (.inr (by simp [Event.exprSyms, hk, h]))))
+      have he := key e (fun β h => ih β (.inr (.inr (by simp [Event.exprSyms, hk, h]))))
+      simp only [Event.exprSyms, List.mem_append] at hα
+      rcases hα with h | (h | h) | (h | h)
+      · exact hP α h
+      · exact he α h
+      · exact hx α h
+      · exact hx α h
+      · exact he α h
+  | @we j₁ e₁ e₂ _ _ _ _ ih =>
+      intro hW
+      exact ih hW
+  | @lift j₁ j₂ Λ _ _ _ _ _ _ _ _ _ _ _ _ hL _ _ ih₂ =>
+      intro hW α hα
+      have ih := ih₂ hW
+      rcases hα with h | h
+      · rcases List.mem_append.1 ((Expr.mem_syms_liftPred_iff _ _ α).1 h) with h | h
+        · exact joinable_of_po (hL α h)
+        · exact ih α (.inl h)
+      · exact ih α (.inr h)
+  | @weak j₁ P' Pw _ hc _ _ ih =>
+      intro hW α hα
+      have ih := ih hW
+      rcases hα with h | h
+      · refine ih α (.inl ((hc.mem_syms_iff α).2 ?_))
+        simp only [Expr.syms, List.mem_append]
+        exact .inl h
+      · exact ih α (.inr h)
+
 end EventStructure
 
 namespace Execution
@@ -339,13 +567,13 @@ open EventStructure
 
 variable {es : EventStructure} {x : Execution}
 
-/-- **`DP ⊆ ⊑`**: every dependency runs `⊑`-forward, given `SymWF`, the
-    forwarding window. -/
-theorem dp_po {Ω : Pred} (hx : x.IsExecution es Ω) (hwf : es.SymWF)
+/-- **`DP ⊆ ⊑`** for justifications of the restricted rule (`GeneratedPast`):
+    every dependency runs `⊑`-forward, given `SymWF` and the forwarding window. -/
+theorem dp_po {Ω : Pred} (hJ : ∀ j ∈ x.J, es.GeneratedPast Ω j) (hwf : es.SymWF)
     (hpo : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
     (hW : ∀ j ∈ x.J, es.FwdWin j) : ∀ a b, x.DP a b → es.poR a b := by
   rintro a b ⟨-, -, j, hj, rfl, hab⟩
-  exact (hx.generated j hj).past hwf hpo (hW j hj) a
+  exact (hJ j hj).past hwf hpo (hW j hj) a
     (by rcases hab with h | h; exact .inl h; exact .inr (.inl h))
 
 /-- Without forwarding the window holds vacuously. -/
@@ -368,40 +596,40 @@ open EventStructure
 
 variable {es : EventStructure} {x : Execution}
 
-theorem dp_po_noFwd {Ω : Pred} (hx : x.IsExecution es Ω) (hwf : es.SymWF)
+theorem dp_po_noFwd {Ω : Pred} (hJ : ∀ j ∈ x.J, es.GeneratedPast Ω j) (hwf : es.SymWF)
     (hpo : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
     (hF : ∀ p ∈ x.δ.f, False) : ∀ a b, x.DP a b → es.poR a b :=
-  dp_po hx hwf hpo (fwdWin_of_noFwd hF)
+  dp_po hJ hwf hpo (fwdWin_of_noFwd hF)
 
-/-- `noThinAir_iff_win_we` with `DP ⊆ ⊑` derived. -/
+/-- `noThinAir_iff_win_we` with `DP ⊆ ⊑` derived for the restricted rule. -/
 theorem noThinAir_iff_win_we_past {Ω : Pred} (hx : x.IsExecution es Ω) (hphi : x.phi es)
     (hW : WEForward es x)
     (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
     (hirr : ∀ a, ¬ es.poR a a) (hF : PoForest es) (hN : NoCross es x) (hT : RMWTightR es x)
-    (hwf : es.SymWF) :
+    (hwf : es.SymWF) (hJ : ∀ j ∈ x.J, es.GeneratedPast Ω j) :
     x.NoThinAir es ↔ Rel.Acyclic ((depWin es x).union x.rf) :=
   noThinAir_iff_win_we hx hphi hW hpo_trans hirr hF hN hT
-    (dp_po_noFwd hx hwf hpo_trans hW.1)
+    (dp_po_noFwd hJ hwf hpo_trans hW.1)
 
-/-- `noThinAir_iff_trunc` with `DP ⊆ ⊑` derived. -/
+/-- `noThinAir_iff_trunc` with `DP ⊆ ⊑` derived for the restricted rule. -/
 theorem noThinAir_iff_trunc_past {Ω : Pred}
     (hx : x.IsExecution es Ω) (hphi : x.phi es)
     (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
     (hirr : ∀ a, ¬ es.poR a a)
     (hnf : ∀ e ∈ es.events, e.isFence = false) (hr : es.rmw = [])
     (hδ : ∀ a b, ¬ x.δ.edge a b) (hm : LocModel es x)
-    (hwf : es.SymWF) :
+    (hwf : es.SymWF) (hJ : ∀ j ∈ x.J, es.GeneratedPast Ω j) :
     x.NoThinAir es ↔ Rel.Acyclic (((x.ppoTrunc es).union x.DP).union x.rf) :=
   PpoStability.noThinAir_iff_trunc hx hphi hpo_trans hirr hnf hr hδ hm
-    (dp_po hx hwf hpo_trans (fwdWin_of_noEdge hδ))
+    (dp_po hJ hwf hpo_trans (fwdWin_of_noEdge hδ))
 
 /-- `dep_po_T` with `DP ⊆ ⊑` derived, where store-store forwarding stays
     within the justification windows (`FwdWin`; vacuous without forwarding). -/
 theorem dep_po_T_past {Ω : Pred} (hx : x.IsExecution es Ω)
     (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
     (hirr : ∀ a, ¬ es.poR a a) (hL : NoRevLoc es x) (hT : RMWTightR es x)
-    (hwf : es.SymWF) (hFW : ∀ j ∈ x.J, es.FwdWin j) {a b : EventId} (h : x.dep es a b) :
-    x.poX es a b :=
-  dep_po_T hx hpo_trans hirr hL hT (dp_po hx hwf hpo_trans hFW) h
+    (hwf : es.SymWF) (hJ : ∀ j ∈ x.J, es.GeneratedPast Ω j) (hFW : ∀ j ∈ x.J, es.FwdWin j)
+    {a b : EventId} (h : x.dep es a b) : x.poX es a b :=
+  dep_po_T hx hpo_trans hirr hL hT (dp_po hJ hwf hpo_trans hFW) h
 
 end Execution

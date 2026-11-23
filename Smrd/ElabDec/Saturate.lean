@@ -68,7 +68,7 @@ def strOK (r : Justification) (Q : Expr) (S : List EventId) : Bool :=
   S.all (fun e => decide (e ∈ (es.strPred r.P Q S).syms) && !decide (e ∈ r.P.syms)) &&
   (es.strPred r.P Q S).syms.all (fun e => decide (e ∈ r.P.syms) || decide (e ∈ S)) &&
   S.all (fun e => r.δ.remapB e == e) &&
-  S.all (fun e => decide (es.poR e r.w.id) && !es.ppoB O r.P r.δ r.w.id e) &&
+  S.all (fun e => (decide (es.poR e r.w.id) || decide (es.poR r.w.id e)) && !es.ppoB O r.P r.δ r.w.id e) &&
   O.satAnd (es.strPred r.P Q S) ΩE
 
 def strOne (r : Justification) (Q : Expr) (S : List EventId) : Option Justification :=
@@ -149,7 +149,7 @@ def step (L : List Justification) : List Justification :=
   es.preC O ++
   L.flatMap (fun r =>
     r.w.effSyms.filterMap (vaOne O ΩE r) ++
-    Qs.flatMap (fun Q => (subs (es.po.map Prod.fst)).filterMap (es.strOne O ΩE r Q)) ++
+    Qs.flatMap (fun Q => (subs (es.po.map Prod.fst ++ es.po.map Prod.snd)).filterMap (es.strOne O ΩE r Q)) ++
     (prodL es.ids es.ids).filterMap (es.fwdOne O ΩE sp r) ++
     (prodL es.ids es.ids).filterMap (es.weOne O ΩE sp r)) ++
   (prodL L L).flatMap (fun p => (es.liftDom p.1 p.2).filterMap (es.liftOne O ΩE p.1 p.2))
@@ -500,7 +500,7 @@ theorem step_complete {L : List Justification} (hL : ∀ r ∈ L, es.GenR ΩE.ho
     fun hk hjk => by obtain ⟨r, hr, h⟩ := hcl _ hk; exact ⟨r, hr, hjk.trans h⟩
   have inPer : ∀ {r k : Justification}, r ∈ L →
       (k ∈ r.w.effSyms.filterMap (vaOne O ΩE r) ∨
-        k ∈ Qs.flatMap (fun Q => (subs (es.po.map Prod.fst)).filterMap (es.strOne O ΩE r Q)) ∨
+        k ∈ Qs.flatMap (fun Q => (subs (es.po.map Prod.fst ++ es.po.map Prod.snd)).filterMap (es.strOne O ΩE r Q)) ∨
         k ∈ (prodL es.ids es.ids).filterMap (es.fwdOne O ΩE sp r) ∨
         k ∈ (prodL es.ids es.ids).filterMap (es.weOne O ΩE sp r)) →
       k ∈ es.step O ΩE Qs sp L := fun hr hk => by
@@ -553,10 +553,13 @@ theorem step_complete {L : List Justification} (hL : ∀ r ∈ L, es.GenR ΩE.ho
       have hh := holds_eq_of_peq hpeq
       have hP := (hL r₁ hr₁).bpred hb
       have hwf := (hL r₁ hr₁).inv.wf
-      let S' := (es.po.map Prod.fst).filter (fun e => decide (e ∈ S))
+      let S' := (es.po.map Prod.fst ++ es.po.map Prod.snd).filter (fun e => decide (e ∈ S))
       have hS' : ∀ e, e ∈ S' ↔ e ∈ S := fun e => by
         simp only [S', List.mem_filter, decide_eq_true_eq]
-        exact ⟨fun h => h.2, fun h => ⟨List.mem_map.2 ⟨(e, j₁.w.id), (hpo e h).1, rfl⟩, h⟩⟩
+        refine ⟨fun h => h.2, fun h => ⟨?_, h⟩⟩
+        rcases (hpo e h).1 with hp | hp
+        · exact List.mem_append_left _ (List.mem_map.2 ⟨(e, j₁.w.id), hp, rfl⟩)
+        · exact List.mem_append_right _ (List.mem_map.2 ⟨(j₁.w.id, e), hp, rfl⟩)
       have hpe : (es.strPred j₁.P Q S).PEq (es.strPred r₁.P Q S') := by
         unfold strPred
         refine PEq.and hpeq (PEq.and (PEq.refl Q) (fun ρ => kval_conj_congr (fun x => ?_) ρ))

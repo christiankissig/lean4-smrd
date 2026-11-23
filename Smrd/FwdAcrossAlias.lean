@@ -237,7 +237,7 @@ theorem gen_jS : esP.Generated (fun _ => True) jS := by
     rw [this]
     by_cases h4 : e = 4 <;> by_cases h5 : e = 5 <;> simp_all
   · simp only [List.mem_cons, List.mem_nil_iff, or_false] at he
-    rcases he with rfl | rfl <;> exact po_of (by decide)
+    rcases he with rfl | rfl <;> exact .inl (po_of (by decide))
   · have := (ppo_empty h).1
     simp only [List.mem_cons, List.mem_nil_iff, or_false] at he
     rcases he with rfl | rfl <;> exact absurd (show (_, _) ∈ poL from this) (by decide)
@@ -250,7 +250,7 @@ theorem gen_jZ : esP.Generated (fun _ => True) jZ := by
     have : (PpoNecessity.pj e10).P.syms = [] := rfl
     rw [this]; simp
   · simp only [List.mem_cons, List.mem_nil_iff, or_false] at he
-    rcases he with rfl | rfl <;> exact po_of (by decide)
+    rcases he with rfl | rfl <;> exact .inl (po_of (by decide))
   · have := (ppo_empty h).1
     simp only [List.mem_cons, List.mem_nil_iff, or_false] at he
     rcases he with rfl | rfl <;> exact absurd (show (_, _) ∈ poL from this) (by decide)

@@ -310,7 +310,7 @@ theorem gen_jZ : esP.Generated (fun _ => True) jZ := by
     rw [this]
     by_cases h5 : e = 5 <;> by_cases h6 : e = 6 <;> simp_all
   · simp only [List.mem_cons, List.mem_nil_iff, or_false] at he
-    rcases he with rfl | rfl <;> exact po_of (by decide)
+    rcases he with rfl | rfl <;> exact .inl (po_of (by decide))
   · have := (ppo_empty h).1
     simp only [List.mem_cons, List.mem_nil_iff, or_false] at he
     rcases he with rfl | rfl <;> exact absurd (show (_, _) ∈ poL from this) (by decide)
@@ -324,7 +324,7 @@ theorem gen_jA1 : esP.Generated (fun _ => True) jA1 := by
     have : (pj e13).P.syms = [] := rfl
     rw [this]; simp
   · simp only [List.mem_cons, List.mem_nil_iff, or_false] at he
-    subst he; exact po_of (by decide)
+    subst he; exact .inl (po_of (by decide))
   · have := (ppo_empty h).1
     simp only [List.mem_cons, List.mem_nil_iff, or_false] at he
     subst he; exact absurd (show (_, _) ∈ poL from this) (by decide)
@@ -373,7 +373,7 @@ theorem gen_jA : esP.Generated (fun _ => True) jA := by
     rcases he with rfl | rfl <;> exact .canon fun a h => by rcases h with h | h <;> simp at h
   · simp only [List.mem_cons, List.mem_nil_iff, or_false] at he
     rw [jA2_eq]
-    rcases he with rfl | rfl <;> exact po_of (by decide)
+    rcases he with rfl | rfl <;> exact .inl (po_of (by decide))
   · simp only [List.mem_cons, List.mem_nil_iff, or_false] at he
     have hw : jA2.w.id = 13 := by rw [jA2_eq]; rfl
     rw [hw] at h
@@ -390,7 +390,7 @@ theorem gen_jB1 : esP.Generated (fun _ => True) jB1 := by
     rw [this]
     by_cases h5 : e = 5 <;> by_cases h6 : e = 6 <;> simp_all
   · simp only [List.mem_cons, List.mem_nil_iff, or_false] at he
-    rcases he with rfl | rfl <;> exact po_of (by decide)
+    rcases he with rfl | rfl <;> exact .inl (po_of (by decide))
   · have := (ppo_empty h).1
     simp only [List.mem_cons, List.mem_nil_iff, or_false] at he
     rcases he with rfl | rfl <;> exact absurd (show (_, _) ∈ poL from this) (by decide)
@@ -443,7 +443,7 @@ theorem gen_jB : esP.Generated (fun _ => True) jB := by
     simp only [List.mem_cons, List.mem_nil_iff, or_false] at he
     subst he; exact .canon fun a h => by rcases h with h | h <;> simp at h
   · simp only [List.mem_cons, List.mem_nil_iff, or_false] at he
-    rw [jB2_eq]; subst he; exact po_of (by decide)
+    rw [jB2_eq]; subst he; exact .inl (po_of (by decide))
   · simp only [List.mem_cons, List.mem_nil_iff, or_false] at he
     subst he
     have hw : jB2.w.id = 14 := by rw [jB2_eq]; rfl

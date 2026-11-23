@@ -809,7 +809,7 @@ theorem gen_jS : esF.Generated (fun _ => True) jS := by
   · intro e _; exact .canon (noEdge_empty · e)
   · intro e he
     simp only [List.mem_cons, List.not_mem_nil, or_false] at he; subst he
-    exact ⟨by show (2, 7) ∈ poL; decide,
+    exact ⟨.inl (by show (2, 7) ∈ poL; decide),
       fun h => absurd (ppo_po_any h) (by show (7, 2) ∉ poL; decide)⟩
 
 theorem cre_2 : esF.ClosedRelabEq .empty Λ jS.P e2 jS.P e2 := by
@@ -1232,7 +1232,7 @@ theorem gen_j₂ : esS.Generated (fun _ => True) j₂ := by
   · intro e _; exact .canon (noEdge_empty · e)
   · intro e he
     simp only [List.mem_cons, List.not_mem_nil, or_false] at he; subst he
-    refine ⟨by show (6, 9) ∈ esS.po; decide, fun h => ?_⟩
+    refine ⟨.inl (by show (6, 9) ∈ esS.po; decide), fun h => ?_⟩
     have hm := ppo_mem rfl gS noEdge_empty h
     revert hm; decide
 

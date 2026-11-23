@@ -49,5 +49,8 @@ import Smrd.ElabDec.Saturate
 import Smrd.ElabDec.RelSplitMain
 import Smrd.RC11
 import Smrd.Relaxed
+import Smrd.DepThread
+import Smrd.StrBack
+import Smrd.LiftLater
 
 def hello := "world"

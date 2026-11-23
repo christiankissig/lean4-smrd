@@ -44,8 +44,13 @@ read over `X` (`Consistent`) or over `X ∖ †` (`ConsistentT`,
   under the same hypothesis RC11-consistency is sMRD-consistency together
   with `† = ∅` and RC11's No-Thin-Air.
 * `dep_po_of_noElision`: `hdep` holds without elision for `RMWTight`
-  executions of `SymWF` event structures with `⊑` transitive, and
-  `consistent_of_consistentRC11'` uses it.
+  executions of `SymWF` event structures with `⊑` transitive whose
+  justifications are of the restricted rule `GeneratedPast` (Strengthening's
+  origins `⊑`-before the write; pre-justifications are), and
+  `consistent_of_consistentRC11'` uses it: RC11 is implementable. With
+  `Generated`'s Strengthening, whose origins may lie `⊑`-after the write, a
+  given `J` can make an RC11-consistent execution sMRD-inconsistent
+  (`StrBack.noThinAir_fails`).
 * `linearisation`: the events of an RC11-consistent execution can be listed
   without repetition so that no `(⊑ ∪ rf)⁺`-edge points backwards: a
   linearisation of `⊑ ∪ rf` (`linearise`, for any acyclic relation on a
@@ -123,21 +128,30 @@ theorem consistentRC11_iff {Ω : Pred} (hdep : ∀ a b, x.dep es a b → es.poR 
    fun ⟨h, hn, hr⟩ => ⟨h.1, h.2.1, hn, hr, h.2.2.2⟩⟩
 
 /-- **`DP ∪ ≼ ⊆ ⊑` without elision**, for `RMWTight` executions of `SymWF`
-    event structures whose `⊑` is transitive (`ppoStep_po`, `dp_po_noFwd`). -/
-theorem dep_po_of_noElision {Ω : Pred} (hx : x.IsExecution es Ω) (h : NoElision x)
+    event structures whose `⊑` is transitive, with justifications of the
+    restricted rule `GeneratedPast` (Strengthening's origins `⊑`-before the
+    write; `ppoStep_po`, `dp_po_noFwd`). `Generated` itself admits origins
+    `⊑`-after the write, and then an RC11-consistent execution need not be
+    sMRD-consistent with the justifications it has (`StrBack.noThinAir_fails`). -/
+theorem dep_po_of_noElision {Ω : Pred} (h : NoElision x)
+    (hJ : ∀ j ∈ x.J, es.GeneratedPast Ω j)
     (hT : RMWTight es x) (hwf : es.SymWF)
     (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c) :
     ∀ a b, x.dep es a b → es.poR a b := by
   have hnoδ := noEdge_of_noElision h
   rintro a b (hp | hd)
   · exact ppo_po hpo_trans (fun _ _ s => ppoStep_po hnoδ hT s) hp
-  · exact dp_po_noFwd hx hwf hpo_trans (fun p hp => hnoδ p.1 p.2 (.inl hp)) a b hd
+  · exact dp_po_noFwd hJ hwf hpo_trans (fun p hp => hnoδ p.1 p.2 (.inl hp)) a b hd
 
-/-- `consistent_of_consistentRC11` with `DP ∪ ≼ ⊆ ⊑` derived. -/
-theorem consistent_of_consistentRC11' {Ω : Pred} (hT : RMWTight es x) (hwf : es.SymWF)
+/-- **RC11 implementability**: an RC11-consistent execution whose
+    justifications are of the restricted rule `GeneratedPast` (for instance
+    the pre-justifications, `GeneratedPast.pre`) is sMRD-consistent.
+    `consistent_of_consistentRC11` with `DP ∪ ≼ ⊆ ⊑` derived. -/
+theorem consistent_of_consistentRC11' {Ω : Pred} (hJ : ∀ j ∈ x.J, es.GeneratedPast Ω j)
+    (hT : RMWTight es x) (hwf : es.SymWF)
     (hpo_trans : ∀ a b c, es.poR a b → es.poR b c → es.poR a c)
     (h : ConsistentRC11 es x Ω) : x.Consistent es Ω :=
-  consistent_of_consistentRC11 (dep_po_of_noElision h.1 h.2.2.1 hT hwf hpo_trans) h
+  consistent_of_consistentRC11 (dep_po_of_noElision h.2.2.1 hJ hT hwf hpo_trans) h
 
 /-! ## Linearisations of `⊑ ∪ rf` -/
 
