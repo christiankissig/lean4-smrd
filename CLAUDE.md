@@ -43,7 +43,7 @@ semantic (`Pred := Valuation → Prop`), and syntactic predicates are `Expr`s de
 ```
 Smrd.Types                        expressions, values, events, event structures (with segments, `blocks`), relations
 ├── Smrd.Conjuncts                `conj(P)`, predicates read up to their conjuncts (par:conj)
-├── Smrd.EventStructureSemantics  program syntax, CPS semantics ⟨P⟩_{n ρ κ φ} (∥ joins: κ runs once, after both threads; `join` records the segments it opens), per-loop step-counters
+├── Smrd.EventStructureSemantics  program syntax, CPS semantics ⟨P⟩_{n ρ κ φ} (∥ joins: κ runs once, after both threads; `join` records the segments it opens), per-loop step-counters; `Stmt.parPlaced` (Condition `cond:par-placement`, an assumption: no ∥ inside a loop body or a branch)
 │     ├── Smrd.Fresh            `denote_ids_nodup`: the events of ⟨P⟩_n have distinct ids; `interp_invR` (invariants with RMW entries added as `RMWShapeR`: read ⊑ write, one location)
 │     └── Smrd.Monotonicity     `denote_mono`: ⟨P⟩_n embeds into ⟨P⟩_{n'} for n ≤ n' (l:es-mono)
 └── Smrd.Forwardingcontext        δ = (F, WE), ψ_δ, remap_δ

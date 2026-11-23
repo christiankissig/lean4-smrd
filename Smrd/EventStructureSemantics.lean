@@ -111,6 +111,36 @@ def Stmt.loops : Stmt → List LoopId
   | .while ℓ _ body => ℓ :: body.loops
   | _ => []
 
+/-- No parallel composition anywhere in the program. -/
+def Stmt.parFree : Stmt → Bool
+  | .par .. => false
+  | .seq s₁ s₂ | .ite _ s₁ s₂ => s₁.parFree && s₂.parFree
+  | .while _ _ body => body.parFree
+  | _ => true
+
+/-- Condition `cond:par-placement`, an assumption of the model: no parallel
+    composition inside the body of a loop or inside either branch of a
+    branching. Parallel composition may still be sequenced with other code,
+    nested in a thread, and followed by code after its join. Every fork and
+    join is then reached at most once in a run, under no guard, and in every
+    unravelling of the loops alike. The semantics does not ask it; results that
+    rely on it take it as a hypothesis. -/
+def Stmt.parPlaced : Stmt → Bool
+  | .seq s₁ s₂ | .par s₁ s₂ => s₁.parPlaced && s₂.parPlaced
+  | .ite _ s₁ s₂ => s₁.parFree && s₂.parFree
+  | .while _ _ body => body.parFree
+  | _ => true
+
+theorem Stmt.parPlaced_of_parFree : ∀ {s : Stmt}, s.parFree = true → s.parPlaced = true
+  | .seq s₁ s₂, h => by
+      simp only [parFree, Bool.and_eq_true] at h
+      simp [parPlaced, parPlaced_of_parFree h.1, parPlaced_of_parFree h.2]
+  | .par .., h => by simp [parFree] at h
+  | .ite .., h | .while .., h => by simpa [parFree, parPlaced] using h
+  | .skip, _ | .assign .., _ | .load .., _ | .store .., _ | .addrOf .., _ | .loadPtr .., _
+  | .storePtr .., _ | .fence .., _ | .fadd .., _ | .cas .., _ | .malloc .., _ | .free .., _ =>
+      rfl
+
 /-! ## Event structure combinators -/
 
 namespace EventStructure
