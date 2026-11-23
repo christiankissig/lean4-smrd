@@ -154,6 +154,18 @@ def join (s₁ s₂ : EventStructure) : EventStructure :=
     intro l; induction l <;> simp_all
   simp [join, empty, ids, h]
 
+/-- Joining with nothing after it keeps the events. -/
+@[simp] theorem events_join_empty (s : EventStructure) : (s.join empty).events = s.events := by
+  simp [join, empty]
+
+/-- Joining with nothing after it adds no program order. -/
+@[simp] theorem po_join_empty (s : EventStructure) : (s.join empty).po = s.po := by
+  simp [join_empty]
+
+/-- Joining with nothing after it adds no RMWs. -/
+@[simp] theorem rmw_join_empty (s : EventStructure) : (s.join empty).rmw = s.rmw := by
+  simp [join, empty]
+
 /-- `rmw(𝔼, e_r, e_w, b)` -/
 def addRMW (es : EventStructure) (r : EventId) (b : Expr) (w : EventId) : EventStructure :=
   { es with rmw := ⟨r, b, w⟩ :: es.rmw }
