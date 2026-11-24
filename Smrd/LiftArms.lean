@@ -117,7 +117,7 @@ theorem cre_35 : esL.ClosedRelabEq .empty Λ j₁.P e3 j₂.P e5 := by
 
 /-- Every condition of the unrestricted Lifting holds. -/
 theorem lift_conds : esL.LiftConds (fun _ => True) Λ j₁ j₂ := by
-  refine ⟨rfl, ?_, cre_35, ?_, ?_, ?_, ?_, ?_, ?_, ⟨f₀, ?_, trivial⟩⟩
+  refine ⟨rfl, ?_, cre_35, ?_, ?_, ?_, ⟨f₀, ?_, trivial⟩⟩
   · intro a b c ha hb
     simp only [Λ] at ha hb
     split at ha <;> split at hb <;> simp_all
@@ -127,11 +127,6 @@ theorem lift_conds : esL.LiftConds (fun _ => True) Λ j₁ j₂ := by
   · intro α h
     simp only [j₁, List.mem_cons, List.not_mem_nil, or_false] at h; subst h
     exact ⟨e2, e4, ev_e e2 (by simp [esL]), ev_e e4 (by simp [esL]), cre_24⟩
-  · intro h; have := cls_clsB.1 h; revert this; decide
-  · intro h; have := cls_clsB.1 h; revert this; decide
-  · intro α h
-    have key : ∀ α ∈ j₁.D ++ j₂.D, clsB esL Event.isVol α = false := by decide
-    intro hv; have := key α h; rw [cls_clsB.1 hv] at this; cases this
   · intro α h
     have key : ∀ α ∈ (j₁.P.rename Λ).syms, (α, 5) ∈ esL.po := by decide
     exact key α h
