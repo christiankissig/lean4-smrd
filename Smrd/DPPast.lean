@@ -314,7 +314,7 @@ theorem Generated.past {Ω : Pred} (hwf : es.SymWF)
   | @we j₁ e₁ e₂ _ _ _ _ ih =>
       intro hW
       exact ih hW
-  | @lift j₁ j₂ Λ _ _ _ _ _ _ _ _ _ _ _ _ hL _ _ ih₂ =>
+  | @lift j₁ j₂ Λ _ _ _ _ _ _ _ _ _ hL _ _ ih₂ =>
       intro hW α hα
       have ih := ih₂ hW
       rcases hα with h | h

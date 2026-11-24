@@ -129,8 +129,6 @@ def liftOK (r₁ r₂ : Justification) (Λ : Relabelling) (dom : List Sym) : Boo
   r₁.D.all (fun α => match es.ev α, es.ev (Λ.app α) with
     | some ev₁, some ev₂ => es.crB O r₁.P r₂.P r₁.δ Λ ev₁ ev₂
     | _, _ => false) &&
-  !decide (es.cls Event.isVol r₁.w.id) && !decide (es.cls Event.isVol r₂.w.id) &&
-  (r₁.D ++ r₂.D).all (fun α => !decide (es.cls Event.isVol α)) &&
   (r₁.P.rename Λ).syms.all (fun α => decide (es.poR α r₂.w.id)) &&
   O.satAnd (Expr.liftPred (r₁.P.rename Λ) r₂.P) ΩE &&
   es.liftBranchB Λ dom r₁.w.id r₂.w.id && injOnB Λ dom
@@ -418,11 +416,11 @@ theorem liftOne_sound {r₁ r₂ j : Justification} {l : List (Sym × Option Sym
     cases h
     simp only [liftOK, Bool.and_eq_true, beq_iff_eq, List.all_eq_true, List.any_eq_true,
       Bool.or_eq_true, Bool.not_eq_true', decide_eq_true_eq, decide_eq_false_iff_not] at hc
-    obtain ⟨hδ, ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨hinj, hcr⟩, hD1⟩, hD2⟩, hDcr⟩, hv1⟩, hv2⟩, hv3⟩, hpo⟩, hs⟩, hlb⟩, hio⟩⟩ := hc
+    obtain ⟨hδ, ⟨⟨⟨⟨⟨⟨⟨⟨hinj, hcr⟩, hD1⟩, hD2⟩, hDcr⟩, hpo⟩, hs⟩, hlb⟩, hio⟩⟩ := hc
     refine .lift (relOf l) hr₁ hr₂ hδ ?_
       ((liftBranchB_iff fun α β h => relOf_dom hl h).1 hlb) (injOnB_iff.1 hio)
       (fun α c hα => List.mem_append.1 (relOf_dom hl hα))
-      ((crB_iff hb hP₁ hP₂ hwf _ (hr₁.wterm hb) (hr₂.wterm hb)).1 hcr) ?_ ?_ hv1 hv2 hv3 hpo
+      ((crB_iff hb hP₁ hP₂ hwf _ (hr₁.wterm hb) (hr₂.wterm hb)).1 hcr) ?_ ?_ hpo
       ((O.satAnd_iff (isBPred_liftPred (by rw [isBPred_rename]; exact hP₁) hP₂) hΩ).1 hs)
     · intro a b c ha hb'
       have hda := relOf_dom hl ha
@@ -628,7 +626,7 @@ theorem step_complete {L : List Justification} (hL : ∀ r ∈ L, es.GenR ΩE.ho
       simp only [Bool.and_eq_true]
       exact ⟨⟨⟨(fwdBaseB_iff hb hP hwf).2 hfb', hfr⟩, FwdCtx.wfB_iff.2 (by rw [← hδ]; exact hwf')⟩,
         (O.satAnd_iff hP hΩ).2 (by rw [← hh]; exact hs)⟩
-  | @lift j₁ j₂ Λ hg₁ hg₂ hδ12 hinj hlb hio hsupp hcr hD12 hDcr hv1 hv2 hv3 hpo hs ih₁ ih₂ =>
+  | @lift j₁ j₂ Λ hg₁ hg₂ hδ12 hinj hlb hio hsupp hcr hD12 hDcr hpo hs ih₁ ih₂ =>
       obtain ⟨r₁, hr₁, hpeq₁, hD₁, hδ₁, hw₁⟩ := ih₁
       obtain ⟨r₂, hr₂, hpeq₂, hD₂, hδ₂, hw₂⟩ := ih₂
       have hh₁ := holds_eq_of_peq hpeq₁
@@ -691,7 +689,7 @@ theorem step_complete {L : List Justification} (hL : ∀ r ∈ L, es.GenR ΩE.ho
       simp only [liftOK, Bool.and_eq_true, beq_iff_eq, List.all_eq_true, List.any_eq_true,
         Bool.or_eq_true, Bool.not_eq_true', decide_eq_true_eq, decide_eq_false_iff_not]
       refine ⟨by rw [← hδ₁, ← hδ₂]; exact hδ12,
-        ⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨⟨?_, ?_⟩, ?_⟩, ?_⟩, ?_⟩, ?_⟩, ?_⟩, ?_⟩, ?_⟩, ?_⟩, ?_⟩, ?_⟩⟩
+        ⟨⟨⟨⟨⟨⟨⟨⟨?_, ?_⟩, ?_⟩, ?_⟩, ?_⟩, ?_⟩, ?_⟩, ?_⟩, ?_⟩⟩
       · intro a ha b hb'
         rw [hagree a ha, hagree b hb']
         cases hΛa : Λ a with
@@ -714,12 +712,6 @@ theorem step_complete {L : List Justification} (hL : ∀ r ∈ L, es.GenR ΩE.ho
         obtain ⟨ev₁, ev₂, he₁, he₂, hc⟩ := hDcr α ((hD₁ α).2 hα)
         simp only [he₁, he₂]
         exact hcr' hc (hb.termEv (mem_events_of_ev he₁)) (hb.termEv (mem_events_of_ev he₂))
-      · rw [← hw₁]; exact hv1
-      · rw [← hw₂]; exact hv2
-      · intro α hα
-        rcases List.mem_append.1 hα with h | h
-        · exact hv3 α (List.mem_append_left _ ((hD₁ α).2 h))
-        · exact hv3 α (List.mem_append_right _ ((hD₂ α).2 h))
       · intro α hα
         rw [hren, hrsy] at hα; rw [← hw₂]; exact hpo α hα
       · rw [O.satAnd_iff (isBPred_liftPred (by rw [isBPred_rename]; exact hP₁) hP₂) hΩ,

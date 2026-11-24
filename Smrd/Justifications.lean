@@ -671,8 +671,9 @@ inductive Generated (Ω : Pred) : Justification → Prop
       factoring the conjuncts `C` shared by `⟦P₁⟧_Λ` and `P₂` out of the
       disjunction (`Expr.liftPred`). The predicate is equivalent to SMRD's
       `⟦P₁⟧_Λ ∨ P₂` (`Expr.liftPred_holds_iff`) and has its symbols
-      (`Expr.mem_syms_liftPred_iff`). Neither justified write, nor the origin
-      of a dependency of either, is a volatile access.
+      (`Expr.mem_syms_liftPred_iff`). Volatile accesses are lifted like any
+      other: Lifting removes no access from any path, so it keeps every
+      volatile access (`cond:volatile`, `r:volatile-lift`).
 
       Every symbol of the relabelled premise `⟦P₁⟧_Λ` has its origin
       `⊑`-before `w₂`; the writes lie on different outcomes of a branching
@@ -690,8 +691,6 @@ inductive Generated (Ω : Pred) : Justification → Prop
       (∀ e, e ∈ j₂.D ↔ ∃ α ∈ j₁.D, Λ.app α = e) →
       (∀ α ∈ j₁.D, ∃ ev₁ ev₂, es.ev α = some ev₁ ∧ es.ev (Λ.app α) = some ev₂ ∧
         es.ClosedRelabEq j₁.δ Λ j₁.P ev₁ j₂.P ev₂) →
-      ¬ es.cls Event.isVol j₁.w.id → ¬ es.cls Event.isVol j₂.w.id →
-      (∀ α ∈ j₁.D ++ j₂.D, ¬ es.cls Event.isVol α) →
       (∀ α ∈ (j₁.P.rename Λ).syms, es.poR α j₂.w.id) →
       Sat (Pred.and (Expr.liftPred (j₁.P.rename Λ) j₂.P).holds Ω) →
       Generated Ω { j₂ with P := Expr.liftPred (j₁.P.rename Λ) j₂.P }
@@ -709,7 +708,7 @@ inductive Generated (Ω : Pred) : Justification → Prop
 /-- The side conditions of Lifting but the branching restriction
     (`LiftBranch`) and the one-to-one renaming (`Relabelling.InjOn`): those
     of sMRD's Def. 4.16 and the paper's `def:elab-lift`, with the library's
-    restrictions that no volatile access is lifted and that every symbol of
+    restriction that every symbol of
     `⟦P₁⟧_Λ` is `⊑`-before `w₂`. The unrestricted rule's derivations of
     `Smrd.LiftCross` and `Smrd.GuardLoss` are stated through it. -/
 structure LiftConds (Ω : Pred) (Λ : Relabelling) (j₁ j₂ : Justification) : Prop where
@@ -719,9 +718,6 @@ structure LiftConds (Ω : Pred) (Λ : Relabelling) (j₁ j₂ : Justification) :
   D : ∀ e, e ∈ j₂.D ↔ ∃ α ∈ j₁.D, Λ.app α = e
   Dcre : ∀ α ∈ j₁.D, ∃ ev₁ ev₂, es.ev α = some ev₁ ∧ es.ev (Λ.app α) = some ev₂ ∧
     es.ClosedRelabEq j₁.δ Λ j₁.P ev₁ j₂.P ev₂
-  vol₁ : ¬ es.cls Event.isVol j₁.w.id
-  vol₂ : ¬ es.cls Event.isVol j₂.w.id
-  volD : ∀ α ∈ j₁.D ++ j₂.D, ¬ es.cls Event.isVol α
   past : ∀ α ∈ (j₁.P.rename Λ).syms, es.poR α j₂.w.id
   sat : Sat (Pred.and (Expr.liftPred (j₁.P.rename Λ) j₂.P).holds Ω)
 
@@ -731,7 +727,7 @@ theorem Generated.lift' {Ω : Pred} {Λ : Relabelling} {j₁ j₂ : Justificatio
     (h₁ : es.Generated Ω j₁) (h₂ : es.Generated Ω j₂) (hc : es.LiftConds Ω Λ j₁ j₂)
     (hb : es.LiftBranch Λ j₁.w.id j₂.w.id) (hi : Λ.InjOn (j₁.P.syms ++ j₁.D)) :
     es.Generated Ω { j₂ with P := Expr.liftPred (j₁.P.rename Λ) j₂.P } :=
-  .lift Λ h₁ h₂ hc.δ hc.inj hb hi hc.cre hc.D hc.Dcre hc.vol₁ hc.vol₂ hc.volD hc.past hc.sat
+  .lift Λ h₁ h₂ hc.δ hc.inj hb hi hc.cre hc.D hc.Dcre hc.past hc.sat
 
 /-- Every generated justification has a predicate consistent with `Ω`, or is
     a pre-justification with a satisfiable value restriction. -/
@@ -743,7 +739,7 @@ theorem Generated.sat {Ω : Pred} {j : Justification} (h : es.Generated Ω j) :
       obtain ⟨f, hP, _⟩ := hs; exact Or.inl ⟨f, hP⟩
   | str _ _ _ _ _ _ hs | weak _ _ _ hs =>
       obtain ⟨f, hP, _⟩ := hs; exact Or.inl ⟨f, hP⟩
-  | lift _ _ _ _ _ _ _ _ _ _ _ _ _ _ hs =>
+  | lift _ _ _ _ _ _ _ _ _ _ _ hs =>
       obtain ⟨f, hP, _⟩ := hs; exact Or.inl ⟨f, hP⟩
 
 theorem δ_of_preJust {w : Event} {j : Justification} (h : preJust w = some j) : j.δ = .empty := by
@@ -773,7 +769,7 @@ theorem Generated.we_mem {Ω : Pred} {j : Justification} (h : es.Generated Ω j)
         subst hp
         obtain ⟨f, hP, -⟩ := hs
         exact ⟨j₁, hwe, ⟨f, hP⟩, fun q hq => hq⟩
-  | lift _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ ih₂ => exact ih₂
+  | lift _ _ _ _ _ _ _ _ _ _ _ _ _ ih₂ => exact ih₂
   | weak _ _ _ _ ih => exact ih
 
 /-- Every forwarding edge `(e₁, e₂)` of a generated justification was added
@@ -792,7 +788,7 @@ theorem Generated.fwd_mem {Ω : Pred} {j : Justification} (h : es.Generated Ω j
         subst hp
         exact ⟨j₁, hf⟩
   | we _ _ _ _ ih => exact ih
-  | lift _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ ih₂ => exact ih₂
+  | lift _ _ _ _ _ _ _ _ _ _ _ _ _ ih₂ => exact ih₂
   | weak _ _ _ _ ih => exact ih
 
 /-- **No RMW access is elided** (`rmw_not_elided`): in every generated

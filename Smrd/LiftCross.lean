@@ -130,17 +130,12 @@ theorem lift_conds :
     (∀ e, e ∈ j₂.D ↔ ∃ α ∈ j₁.D, Λ₀.app α = e) ∧
     (∀ α ∈ j₁.D, ∃ ev₁ ev₂, esC.ev α = some ev₁ ∧ esC.ev (Λ₀.app α) = some ev₂ ∧
       esC.ClosedRelabEq j₁.δ Λ₀ j₁.P ev₁ j₂.P ev₂) ∧
-    ¬ esC.cls Event.isVol j₁.w.id ∧ ¬ esC.cls Event.isVol j₂.w.id ∧
-    (∀ α ∈ j₁.D ++ j₂.D, ¬ esC.cls Event.isVol α) ∧
     Sat (Pred.and (Expr.liftPred (j₁.P.rename Λ₀) j₂.P).holds (fun _ => True)) := by
-  refine ⟨rfl, ?_, relabEq_12, ?_, ?_, ?_, ?_, ?_, f₀, ?_, trivial⟩
+  refine ⟨rfl, ?_, relabEq_12, ?_, ?_, f₀, ?_, trivial⟩
   · intro a b c h; simp [Λ₀] at h
   · intro e
     show e ∈ ([] : List EventId) ↔ ∃ α ∈ ([] : List EventId), Λ₀.app α = e
     simp
-  · intro α h; nomatch h
-  · intro h; have := cls_clsB.1 h; revert this; decide
-  · intro h; have := cls_clsB.1 h; revert this; decide
   · intro α h; nomatch h
   · unfold Expr.holds; decide
 

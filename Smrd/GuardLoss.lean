@@ -17,7 +17,7 @@ Every side condition of sMRD's Def. 4.16 (with the library's `⊑`-restriction) 
 (`lift_conds`, `LiftConds`): the two premises are the same generated justification (`δ`,
 `D = ∅` agree), `y := 1` is closed relabel-equivalent to itself (constant location and value;
 its only immediate `≼`-predecessor under either predicate is `y := 0`, related to itself; branch
-events are never `≼`-predecessors), no volatile access, and the symbol `rb` of `⟦P⟧_Λ` is
+events are never `≼`-predecessors), and the symbol `rb` of `⟦P⟧_Λ` is
 `⊑`-before `y := 1`. `Λ` is `Relabelling.Injective` (one-to-one on its domain `{ra}`), but
 `⟦·⟧_Λ` is not: it sends both `ra` and `rb` to `rb`.
 
@@ -192,13 +192,10 @@ theorem cre_7 : esG.ClosedRelabEq .empty Λ j7.P e7 j7.P e7 := by
   exact cre_2
 
 /-- Every condition of the unrestricted Lifting holds: those of sMRD's Def. 4.16 and the paper's
-    `def:elab-lift`, with the library's `⊑`-restriction and volatile condition. -/
+    `def:elab-lift`, with the library's `⊑`-restriction. -/
 theorem lift_conds : esG.LiftConds (fun _ => True) Λ j7 j7 := by
-  refine ⟨rfl, Λ_inj, cre_7, ?_, ?_, ?_, ?_, ?_, ?_, ⟨f₀, ?_, trivial⟩⟩
+  refine ⟨rfl, Λ_inj, cre_7, ?_, ?_, ?_, ⟨f₀, ?_, trivial⟩⟩
   · intro e; show e ∈ ([] : List EventId) ↔ ∃ α ∈ ([] : List EventId), Λ.app α = e; simp
-  · intro α h; nomatch h
-  · intro h; have := cls_clsB.1 h; revert this; decide
-  · intro h; have := cls_clsB.1 h; revert this; decide
   · intro α h; nomatch h
   · -- `⟦P⟧_Λ` has the symbol `rb` only, `⊑`-before `y := 1`
     intro α h
@@ -835,18 +832,13 @@ theorem cre_7 : esF.ClosedRelabEq .empty Λ jS.P e7 jS.P e7 := by
 
 /-- Every condition of the unrestricted Lifting holds. -/
 theorem lift_conds : esF.LiftConds (fun _ => True) Λ jS jS := by
-  refine ⟨rfl, Λ_inj, cre_7, ?_, ?_, ?_, ?_, ?_, ?_, ⟨f₀, ?_, trivial⟩⟩
+  refine ⟨rfl, Λ_inj, cre_7, ?_, ?_, ?_, ⟨f₀, ?_, trivial⟩⟩
   · intro e
     show e ∈ [2] ↔ ∃ α ∈ [2], Λ.app α = e
     simp [Relabelling.app, Λ, eq_comm]
   · intro α h
     simp only [jS, j7, List.mem_cons, List.not_mem_nil, or_false] at h; subst h
     exact ⟨e2, e2, ev_e e2 (by simp [esF]), ev_e e2 (by simp [esF]), cre_2⟩
-  · intro h; have := cls_clsB.1 h; revert this; decide
-  · intro h; have := cls_clsB.1 h; revert this; decide
-  · intro α h
-    have key : ∀ α ∈ jS.D ++ jS.D, clsB esF Event.isVol α = false := by decide
-    intro hv; have := key α h; rw [cls_clsB.1 hv] at this; cases this
   · intro α h
     have key : ∀ α ∈ (jS.P.rename Λ).syms, (α, 7) ∈ poL := by decide
     exact key α h
@@ -1283,11 +1275,8 @@ theorem cre_9 : esS.ClosedRelabEq .empty Λs j₁.P e9 j₂.P e9 := by
 
 /-- Every condition of the unrestricted Lifting holds. -/
 theorem lift_conds : esS.LiftConds (fun _ => True) Λs j₁ j₂ := by
-  refine ⟨rfl, Λs_inj, cre_9, ?_, ?_, ?_, ?_, ?_, ?_, ⟨f₀, ?_, trivial⟩⟩
+  refine ⟨rfl, Λs_inj, cre_9, ?_, ?_, ?_, ⟨f₀, ?_, trivial⟩⟩
   · intro e; show e ∈ ([] : List EventId) ↔ ∃ α ∈ ([] : List EventId), Λs.app α = e; simp
-  · intro α h; nomatch h
-  · intro h; have := cls_clsB.1 h; revert this; decide
-  · intro h; have := cls_clsB.1 h; revert this; decide
   · intro α h; nomatch h
   · intro α h
     have key : ∀ α ∈ (j₁.P.rename Λs).syms, (α, 9) ∈ esS.po := by decide
