@@ -35,6 +35,7 @@ import Smrd.FwdChain
 import Smrd.FwdEntailsRMW
 import Smrd.RMWCross
 import Smrd.SymWFDenote
+import Smrd.ThreadRegs
 import Smrd.Labels
 import Smrd.RoutineHyps
 import Smrd.RMWWFDenote
