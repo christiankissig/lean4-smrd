@@ -13,12 +13,16 @@ store (`store_mem`), and every execution the read (`read_mem`). The read must th
 `y := 5`, while the store's value restriction asks `r = 0`, and `φ` finds no valuation for both
 (`no_execution`).
 
-Argued, not mechanised:
-* the same holds under sMRD's structural conflict `#`, since no event lies on the `else` outcome
-  to be in `#` with the store: the defect is the empty outcome, not the reading of conflict;
-* a loop that ends a thread and exits before its bound fails the same way, since the exit runs
-  the empty continuation and maximality asks for the next iteration
-  (`y := 5; r := 0; while (r = 0) { r := y }` has an execution at bound 1, none at bound 2).
+A loop that ends a thread and exits before its bound fails the same way: the exit runs the
+empty continuation, and maximality asks for the next iteration. In
+`y := 5; r := 0; while₁ (r = 0) { r := y }` the run that reads `5` and exits is an execution
+satisfying `φ` at bound `1` (`exec_bound₁`), where the second iteration is cut off, and at bound
+`2` the second iteration's read is forced (`read₂_mem`), so there is no execution at all
+(`no_execution_bound₂`). The executions are not monotone in the bound.
+
+Argued, not mechanised: the same holds under sMRD's structural conflict `#`, since no event lies
+on the empty outcome to be in `#` with the forced one. The defect is the empty outcome, not the
+reading of conflict.
 
 MoRDor ends every run with a terminal event and takes executions to be the paths that reach one,
 so its `else` outcome is not empty, and it admits the run (`r = 5`, both programs).
@@ -118,5 +122,133 @@ theorem no_execution (Ω : Pred) (x : Execution) (hx : x.IsExecution esE Ω) (hp
   · cases hW
   · have := (hrf _ _ _ _ hw hew h1e).1 _ _ rfl rfl
     simp [Expr.eval, Expr.glob] at this
+
+/-! ## A loop that ends the thread and exits early -/
+
+/-- `y := 5; r := 0; while₁ (r = 0) { r := y }` -/
+def progL : Stmt :=
+  .seq (.store .rlx "y" (.num 5) false)
+    (.seq (.assign "r" (.num 0))
+      (.while 1 (.eq (.reg "r") (.num 0)) (PpoStability.ld .rlx "r" "y")))
+
+/-- The first head's condition, `0 = 0`, and the second's, `r = 0` on the first read. -/
+def c₀ : Expr := .eq (.val (.num 0)) (.val (.num 0))
+def c₁ : Expr := .eq (.sym 2) (.val (.num 0))
+
+def l0 : Event := ⟨0, .write .rlx (Expr.glob "y") (.val (.num 5)) false, ⟨0, [0], []⟩, []⟩
+def l1 : Event := ⟨1, .branch c₀, ⟨0, [1, 1], [(1, 0)]⟩, []⟩
+def l2 : Event := PpoStability.R 2 0 [1, 1, 0] [(1, 0)] [⟨1, c₀, true⟩] .rlx "y"
+def l3 : Event := ⟨3, .branch c₁, ⟨0, [1, 1], [(1, 1)]⟩, [⟨1, c₀, true⟩]⟩
+def l4 : Event := PpoStability.R 4 0 [1, 1, 0] [(1, 1)] [⟨1, c₀, true⟩, ⟨3, c₁, true⟩] .rlx "y"
+
+/-- `⟨progL⟩_1`: the head and the read of the first iteration; the second iteration is cut off. -/
+def esL₁ : EventStructure := ⟨[l0, l1, l2], [(0, 1), (0, 2), (1, 2)], []⟩
+
+/-- `⟨progL⟩_2`: as `⟨progL⟩_1`, with the second head and the second iteration's read. The exit at
+    either head runs the empty continuation and generates nothing. -/
+def esL₂ : EventStructure :=
+  ⟨[l0, l1, l2, l3, l4], [(0, 1), (0, 2), (0, 3), (0, 4), (1, 2), (1, 3), (1, 4), (2, 3), (2, 4),
+    (3, 4)], []⟩
+
+unseal interp in
+theorem denote_progL₁ : denote (fun _ => 1) progL = esL₁ := rfl
+
+unseal interp in
+theorem denote_progL₂ : denote (fun _ => 2) progL = esL₂ := rfl
+
+theorem SL₁ : Simple esL₁ := ⟨by decide, by decide, rfl⟩
+
+/-- The run, the first read reading `y := 5`. -/
+def xL₁ : Execution := simple esL₁ [(0, 2)]
+
+/-- **At bound `1` the run that reads `5` and exits is an execution**: the read takes `y := 5`, and
+    `φ` holds with the read at `5`. -/
+theorem exec_bound₁ : xL₁.IsExecution esL₁ (fun _ => True) ∧ xL₁.phi esL₁ ∧ xL₁.rf 0 2 :=
+  ⟨isExecution_simple SL₁ (by decide),
+    phi_simple SL₁ (by decide) (by decide) (by decide)
+      (fun α => if α = 2 then .num 5 else .num 0) (by decide), show (0, 2) ∈ [(0, 2)] by decide⟩
+
+theorem nodupL₂ : (esL₂.events.map (·.id)).Nodup := by decide
+
+theorem evL (e : Event) (he : e ∈ esL₂.events) : esL₂.ev e.id = some e :=
+  PpoKit.ev_of_mem nodupL₂ he
+
+/-- The second iteration's read holds exactly where the first read returns `0`. -/
+theorem holds_l4 (f : Valuation) : l4.valres.holds f ↔ f 2 = .num 0 := by
+  rw [Event.valres, Expr.holds_conj]
+  simp only [l4, PpoStability.R, c₀, c₁, List.map, List.mem_cons,
+    List.not_mem_nil, or_false, forall_eq_or_imp, forall_eq, Guard.expr, if_true, Expr.holds,
+    Expr.eval]
+  constructor
+  · intro h; simpa using h.2
+  · intro h; simp [h]
+
+theorem holds_c₀ {e : Event} (h : e.guards = [] ∨ e.guards = [⟨1, c₀, true⟩]) (f : Valuation) :
+    e.valres.holds f := by
+  rw [Event.valres, Expr.holds_conj]
+  rcases h with h | h <;> rw [h]
+  · intro _ h; cases h
+  · intro e he
+    simp only [List.map, List.mem_singleton] at he; subst he
+    simp [Guard.expr, c₀, Expr.holds, Expr.eval]
+
+/-- An event of `X` other than the second read carries at most the first head's guard. -/
+theorem guardsL_of_X {x : Execution} (hmax : esL₂.MaximalConflictFree x.X) {b : EventId}
+    {eb : Event} (hb : x.X b) (heb : esL₂.ev b = some eb) (h4 : b ≠ 4) :
+    eb.guards = [] ∨ eb.guards = [⟨1, c₀, true⟩] := by
+  obtain ⟨hm, rfl⟩ := ev_inv heb
+  simp only [esL₂, List.mem_cons, List.not_mem_nil, or_false] at hm
+  rcases hm with rfl | rfl | rfl | rfl | rfl
+  · exact .inl rfl
+  · exact absurd ⟨l1, heb, rfl⟩ (hmax.1 _ hb).2.1
+  · exact .inr rfl
+  · exact absurd ⟨l3, heb, rfl⟩ (hmax.1 _ hb).2.1
+  · exact absurd rfl h4
+
+/-- **The second iteration's read is in every maximal conflict-free set of `⟨progL⟩_2`**: the
+    exit at the second head generates nothing that could conflict with it. -/
+theorem read₂_mem {x : Execution} (hmax : esL₂.MaximalConflictFree x.X) : x.X 4 := by
+  refine Classical.byContradiction fun hn => ?_
+  have hc : esL₂.Candidate 4 := cand_of_mem nodupL₂ (e := l4) (by decide) rfl rfl
+  obtain ⟨b, hb, e₄, eb, h₄, heb, hns⟩ := hmax.2.2 4 hc hn
+  have hb4 : b ≠ 4 := fun h => hn (h ▸ hb)
+  rw [show (4 : EventId) = l4.id from rfl, evL l4 (by decide)] at h₄; cases h₄
+  exact hns ⟨f₀, (holds_l4 f₀).2 rfl, holds_c₀ (guardsL_of_X hmax hb heb hb4) f₀⟩
+
+/-- The first iteration's read is in every execution of `⟨progL⟩_2`. -/
+theorem read₁_mem {x : Execution} {Ω : Pred} (hx : x.IsExecution esL₂ Ω) : x.X 2 := by
+  refine Classical.byContradiction fun hn => ?_
+  have hc : esL₂.Candidate 2 := cand_of_mem nodupL₂ (e := l2) (by decide) rfl rfl
+  obtain ⟨b, hb, e₂, eb, h₂, heb, hns⟩ := hx.maximal.2.2 2 hc hn
+  rw [show (2 : EventId) = l2.id from rfl, evL l2 (by decide)] at h₂; cases h₂
+  obtain ⟨f, -, hf⟩ := hx.consistent
+  exact hns ⟨f, holds_c₀ (.inr rfl) f, hf b eb hb heb⟩
+
+/-- **At bound `2` no execution has the first read return `5`**, under every `Ω`: the second
+    iteration's read is forced, and its value restriction asks `0`. So the run that reads `5` and
+    exits is an execution at bound `1` (`exec_bound₁`) but not at bound `2`: the executions are not
+    monotone in the bound. -/
+theorem no_exec_bound₂ (Ω : Pred) (x : Execution) (hx : x.IsExecution esL₂ Ω)
+    (hphi : x.phi esL₂) : ¬ x.rf 0 2 := by
+  intro hrf0
+  have h4 := read₂_mem hx.maximal
+  obtain ⟨g, -, ⟨hrf, -⟩, hV⟩ := hphi.2.2
+  have hg : g 2 = .num 0 := (holds_l4 g).1 (hV 4 l4 h4 (evL l4 (by decide)))
+  have := (hrf 0 2 l0 l2 hrf0 (evL l0 (by decide)) (evL l2 (by decide))).2 _ _ rfl rfl
+  simp [Expr.eval, hg] at this
+
+/-- At bound `2` the first read reads `y := 5` in every execution: `y := 5` is the only write. -/
+theorem rf_bound₂ (Ω : Pred) (x : Execution) (hx : x.IsExecution esL₂ Ω) (hphi : x.phi esL₂) :
+    x.rf 0 2 := by
+  obtain ⟨w, hw⟩ := (hphi.2.1 2).2 ⟨read₁_mem hx, ⟨l2, evL l2 (by decide), rfl⟩⟩
+  obtain ⟨⟨ew, hew, hW⟩, -⟩ := hx.rf_wr w 2 hw
+  obtain ⟨hm, rfl⟩ := ev_inv hew
+  simp only [esL₂, List.mem_cons, List.not_mem_nil, or_false] at hm
+  rcases hm with rfl | rfl | rfl | rfl | rfl <;> first | exact hw | cases hW
+
+/-- **`⟨progL⟩_2` has no execution**, under every `Ω`. -/
+theorem no_execution_bound₂ (Ω : Pred) (x : Execution) (hx : x.IsExecution esL₂ Ω)
+    (hphi : x.phi esL₂) : False :=
+  no_exec_bound₂ Ω x hx hphi (rf_bound₂ Ω x hx hphi)
 
 end EmptyOutcome
