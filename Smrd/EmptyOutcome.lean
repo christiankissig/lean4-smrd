@@ -338,8 +338,10 @@ its branchings: the failed `CAS`, and the exit of its head. The exit runs the em
 so where the `CAS` succeeds, nothing in the set excludes the dead iteration, maximality forces its
 read in, and `φ` finds no valuation for its guard. At bound `2` no `#`-maximal set in which the
 `CAS` of the first iteration succeeds satisfies `φ` (`no_cas_success_S`): the run that succeeds at
-once is lost, while the dead read lies outside every set conflict-free under the value
-restrictions (`dead_incompatible`).
+once is lost. Read off the value restrictions, the dead read lies outside every conflict-free
+set (`dead_incompatible`), and the run is an execution satisfying `φ` (`cas_success_exec`): its
+set `{x := 0, the CAS's read, the CAS's write}` is maximal, since every other candidate lies on the
+dead iteration or on the failed `CAS`'s outcome (`maximal_run`).
 -/
 
 def ffP : PExpr := .eq (.num 0) (.num 1)
@@ -446,5 +448,153 @@ theorem no_cas_success_S (x : Execution) (hmax : MaxS esC x.X) (h4 : x.X 4)
     exact hmax.2.1 b 4 hb h4 (div_write l u (hmax.1 b hb).1)
   obtain ⟨g, -, -, hV⟩ := hphi.2.2
   exact dead_unsat g (hV 6 dead h6 (PpoKit.ev_of_mem nodupC dead_mem))
+
+/-! ### The run that succeeds at once is an execution, under the value restrictions -/
+
+def wC0 : Event := wx 0 0 [0] [] []
+def rC2 : Event := PpoStability.R 2 0 [1, 1, 0, 0] it₀ G0 .rlx "x"
+def wC4 : Event := wx 4 1 [1, 1, 0, 2] it₀ GS
+
+def jC0 : Justification := ⟨wC0.valres, [], .empty, wC0⟩
+def jC4 : Justification := ⟨wC4.valres, [], .empty, wC4⟩
+
+/-- The run that succeeds at once: `x := 0`, the `CAS`'s read reading it, and the `CAS`'s
+    write. -/
+def xC : Execution := ⟨fun a => a = 0 ∨ a = 2 ∨ a = 4, [jC0, jC4], fun w r => w = 0 ∧ r = 2⟩
+
+def fC : Valuation := fun _ => .num 0
+
+theorem evC {e : Event} (he : e ∈ esC.events) : esC.ev e.id = some e := PpoKit.ev_of_mem nodupC he
+
+theorem ev0 : esC.ev 0 = some wC0 := evC (e := wC0) (by decide)
+theorem ev2 : esC.ev 2 = some rC2 := evC (e := rC2) (by decide)
+theorem ev4 : esC.ev 4 = some wC4 := evC (e := wC4) (by decide)
+
+/-- The events up to the second head hold where every read returns `0`. -/
+theorem holds_run : ∀ e ∈ esC.events, e.id ≤ 5 → e.valres.holds fC := by
+  unfold Expr.holds; decide
+
+theorem holds_X {a : EventId} {e : Event} (ha : xC.X a) (he : esC.ev a = some e) :
+    e.valres.holds fC := by
+  obtain ⟨hm, rfl⟩ := ev_inv he
+  have h' : e.id = 0 ∨ e.id = 2 ∨ e.id = 4 := ha
+  have h5 : e.id ≤ 5 := by rcases h' with h | h | h <;> rw [h] <;> decide
+  exact holds_run e hm h5
+
+theorem guard_holds {e : Event} {g : Guard} (hg : g ∈ e.guards) {f : Valuation}
+    (h : e.valres.holds f) : g.expr.holds f := by
+  rw [Event.valres, Expr.holds_conj] at h
+  exact h _ (List.mem_map_of_mem hg)
+
+theorem not_holds {c : Expr} {f : Valuation} (h : c.holds f) : ¬ (Expr.not c).holds f := by
+  unfold Expr.holds at h ⊢; simp [Expr.eval, h]
+
+/-- An event of the dead iteration holds under no valuation. -/
+theorem unsat_hT {e : Event} (hg : (⟨5, hT, true⟩ : Guard) ∈ e.guards) (f : Valuation) :
+    ¬ e.valres.holds f := fun h => by
+  have := guard_holds hg h
+  simp [Guard.expr, hT, Expr.holds, Expr.eval] at this
+
+/-- The two outcomes of the first `CAS` are incompatible. -/
+theorem unsat_flip {ea eb : Event} (ha : (⟨3, q 2, false⟩ : Guard) ∈ ea.guards)
+    (hb : (⟨3, q 2, true⟩ : Guard) ∈ eb.guards) (f : Valuation) :
+    ¬ (ea.valres.holds f ∧ eb.valres.holds f) := fun ⟨h₁, h₂⟩ =>
+  not_holds (guard_holds hb h₂) (guard_holds ha h₁)
+
+theorem cand_run (a : EventId) (ha : xC.X a) : esC.Candidate a := by
+  rcases ha with rfl | rfl | rfl
+  · exact cand_of_mem nodupC (e := wC0) (by decide) rfl rfl
+  · exact cand_of_mem nodupC (e := rC2) (by decide) rfl rfl
+  · exact cand_of_mem nodupC (e := wC4) (by decide) rfl rfl
+
+theorem δC : xC.δ = .empty := rfl
+
+/-- Every candidate off the run lies on the dead iteration or on the failed `CAS`'s outcome. -/
+theorem off_run : ∀ e ∈ esC.events, e.isBranch = false → e.id ≠ 0 → e.id ≠ 2 → e.id ≠ 4 →
+    (⟨5, hT, true⟩ : Guard) ∈ e.guards ∨ (⟨3, q 2, false⟩ : Guard) ∈ e.guards := by
+  decide
+
+/-- **Read off the value restrictions, the run is maximal conflict-free.** -/
+theorem maximal_run : esC.MaximalConflictFree xC.X := by
+  refine ⟨cand_run, fun a b ha hb ⟨ea, eb, h₁, h₂, hn⟩ => hn ⟨fC, holds_X ha h₁, holds_X hb h₂⟩,
+    fun a ha hn => ?_⟩
+  obtain ⟨⟨e, hm, rfl⟩, hb, -⟩ := ha
+  have hbr : e.isBranch = false := by
+    cases h : e.isBranch
+    · rfl
+    · exact absurd ⟨e, evC hm, h⟩ hb
+  have hn₀ : ¬ (e.id = 0 ∨ e.id = 2 ∨ e.id = 4) := hn
+  have hn' : e.id ≠ 0 ∧ e.id ≠ 2 ∧ e.id ≠ 4 :=
+    ⟨fun h => hn₀ (.inl h), fun h => hn₀ (.inr (.inl h)), fun h => hn₀ (.inr (.inr h))⟩
+  rcases off_run e hm hbr hn'.1 hn'.2.1 hn'.2.2 with h | h
+  · exact ⟨0, Or.inl rfl, e, wC0, evC hm, ev0, fun ⟨f, h₁, _⟩ => unsat_hT h f h₁⟩
+  · exact ⟨4, Or.inr (Or.inr rfl), e, wC4, evC hm, ev4,
+      fun ⟨f, h₁, h₂⟩ => unsat_flip h (by decide) f ⟨h₁, h₂⟩⟩
+
+theorem mem_JC {j : Justification} (hj : j ∈ xC.J) : j = jC0 ∨ j = jC4 := by
+  simpa [xC] using hj
+
+theorem noEffect₂ : ∀ e ∈ esC.events, e.id = 2 → e.isEffect = false := by decide
+theorem noAlloc : ∀ e ∈ esC.events, e.isAlloc = false := by decide
+theorem readId : ∀ e ∈ esC.events, e.isRead = true → e.id ≠ 0 ∧ e.id ≠ 4 := by decide
+
+/-- **The run in which the first `CAS` succeeds is an execution**, the `CAS` reading `x := 0`,
+    and it satisfies `φ`. -/
+theorem cas_success_exec :
+    xC.IsExecution esC (fun _ => True) ∧ xC.phi esC ∧ xC.X 4 ∧ xC.rf 0 2 := by
+  refine ⟨⟨maximal_run, fun j hj => ?_, fun j hj => ?_, ?_, by rw [δC]; exact FwdCtx.WF.empty,
+    ?_, ?_, ?_, fun j _ => xC.not_elided_of_δ_empty δC _⟩, ⟨fun e _ => xC.not_elided_of_δ_empty δC e,
+    fun r => ⟨?_, ?_⟩, fC, fun j hj => ⟨?_, ?_⟩, ⟨?_, ?_⟩, fun _ _ ha he => holds_X ha he⟩,
+    Or.inr (Or.inr rfl), rfl, rfl⟩
+  · rcases mem_JC hj with rfl | rfl
+    · exact .pre (w := wC0) (by decide) rfl ⟨fC, holds_run _ (by decide) (by decide)⟩
+    · exact .pre (w := wC4) (by decide) rfl ⟨fC, holds_run _ (by decide) (by decide)⟩
+  · rcases mem_JC hj with rfl | rfl
+    · exact Or.inl rfl
+    · exact Or.inr (Or.inr rfl)
+  · refine ⟨fC, fun j hj => ?_, fun _ _ ha he => holds_X ha he⟩
+    rcases mem_JC hj with rfl | rfl
+    · exact holds_run _ (by decide) (by decide)
+    · exact holds_run _ (by decide) (by decide)
+  · rintro w r ⟨rfl, rfl⟩
+    exact ⟨⟨wC0, ev0, rfl⟩, ⟨rC2, ev2, rfl⟩, Or.inl rfl, Or.inr (Or.inl rfl)⟩
+  · rintro w w' r ⟨rfl, rfl⟩ ⟨rfl, -⟩; rfl
+  · rintro w hw ⟨e, he, hp⟩ -
+    rcases hw with rfl | rfl | rfl
+    · refine ⟨jC0, by simp [xC], rfl, fun j' hj' h => ?_⟩
+      rcases mem_JC hj' with rfl | rfl
+      · rfl
+      · exact absurd h (by decide)
+    · obtain ⟨hm, hid⟩ := ev_inv he
+      rw [noEffect₂ e hm hid] at hp; cases hp
+    · refine ⟨jC4, by simp [xC], rfl, fun j' hj' h => ?_⟩
+      rcases mem_JC hj' with rfl | rfl
+      · exact absurd h (by decide)
+      · rfl
+  · rintro ⟨w, -, rfl⟩
+    exact ⟨Or.inr (Or.inl rfl), rC2, ev2, rfl⟩
+  · rintro ⟨hX, e, he, hp⟩
+    obtain ⟨hm, rfl⟩ := ev_inv he
+    have := readId e hm hp
+    rcases hX with h | h | h
+    · exact absurd h this.1
+    · exact ⟨0, rfl, h⟩
+    · exact absurd h this.2
+  · rcases mem_JC hj with rfl | rfl
+    · exact holds_run _ (by decide) (by decide)
+    · exact holds_run _ (by decide) (by decide)
+  · rcases mem_JC hj with rfl | rfl <;> exact fun p hp => nomatch hp
+  · rintro w r ew er ⟨rfl, rfl⟩ hw hr
+    rw [ev0] at hw; rw [ev2] at hr; cases hw; cases hr
+    refine ⟨fun lw lr h₁ h₂ => ?_, fun vw vr h₁ h₂ => ?_⟩
+    · cases h₁; cases h₂; rfl
+    · cases h₁; cases h₂; rfl
+  · refine ⟨fun a e α sz _ he hk => ?_, fun _ => none,
+      ⟨fun _ _ h => (nomatch h), fun _ _ _ h => (nomatch h), fun _ _ h => (nomatch h)⟩, ?_⟩
+    · have := noAlloc e (ev_inv he).1
+      simp [Event.isAlloc, hk] at this
+    · intro a₁ a₂ e₁ e₂ α₁ α₂ s₁ s₂ _ _ _ he₁ _ hk₁
+      have := noAlloc e₁ (ev_inv he₁).1
+      simp [Event.isAlloc, hk₁] at this
 
 end EmptyOutcome
