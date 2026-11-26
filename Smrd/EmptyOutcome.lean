@@ -328,4 +328,123 @@ theorem no_execution_bound₂_S (x : Execution) (hmax : MaxS esL₂ x.X)
     simp [Expr.eval, hg] at this
   all_goals cases hW
 
+/-! ## Under `#`, the dead iteration after a successful `CAS`
+
+`x := 0; rb := (0 = 1); while₁ (¬ rb) { rb := CAS(x, 0, 1) }`: a thread that ends with a `CAS`
+loop. After a successful `CAS` the register holds `⊤`, so the next iteration is entered under
+the closed guard `¬⊤`, which no valuation satisfies: a dead copy. Read off the value
+restrictions, it conflicts with everything. Under `#` it conflicts only with the other outcomes of
+its branchings: the failed `CAS`, and the exit of its head. The exit runs the empty continuation,
+so where the `CAS` succeeds, nothing in the set excludes the dead iteration, maximality forces its
+read in, and `φ` finds no valuation for its guard. At bound `2` no `#`-maximal set in which the
+`CAS` of the first iteration succeeds satisfies `φ` (`no_cas_success_S`): the run that succeeds at
+once is lost, while the dead read lies outside every set conflict-free under the value
+restrictions (`dead_incompatible`).
+-/
+
+def ffP : PExpr := .eq (.num 0) (.num 1)
+
+/-- `x := 0; rb := (0 = 1); while₁ (¬ rb) { rb := CAS(x, 0, 1) }` -/
+def progC : Stmt :=
+  .seq (.store .rlx "x" (.num 0) false)
+    (.seq (.assign "rb" ffP)
+      (.while 1 (.not (.reg "rb")) (.cas .rlx .rlx "rb" "x" (.num 0) (.num 1))))
+
+/-- The first head's condition `¬(0 = 1)`, the `CAS` comparisons, and the second heads'
+    conditions after success, `¬⊤`, and after failure, `¬⊥`. -/
+def h₀ : Expr := .not (.eq (.val (.num 0)) (.val (.num 1)))
+def q (a : EventId) : Expr := .eq (.sym a) (.val (.num 0))
+def hT : Expr := .not (.val (.bool true))
+def hF : Expr := .not (.val (.bool false))
+
+def wx (i : EventId) (v : Nat) (pc : List Nat) (it : List (LoopId × Nat)) (gs : List Guard) : Event :=
+  ⟨i, .write .rlx (Expr.glob "x") (.val (.num v)) false, ⟨0, pc, it⟩, gs⟩
+def br (i : EventId) (c : Expr) (pc : List Nat) (it : List (LoopId × Nat)) (gs : List Guard) :
+    Event := ⟨i, .branch c, ⟨0, pc, it⟩, gs⟩
+
+def G0 : List Guard := [⟨1, h₀, true⟩]
+def GS : List Guard := G0 ++ [⟨3, q 2, true⟩]
+def GF : List Guard := G0 ++ [⟨3, q 2, false⟩]
+def GD : List Guard := GS ++ [⟨5, hT, true⟩]
+def GL : List Guard := GF ++ [⟨9, hF, true⟩]
+
+def it₀ : List (LoopId × Nat) := [(1, 0)]
+def it₁ : List (LoopId × Nat) := [(1, 1)]
+
+def esC : EventStructure :=
+  ⟨[wx 0 0 [0] [] [],
+    br 1 h₀ [1, 1] it₀ [],
+    PpoStability.R 2 0 [1, 1, 0, 0] it₀ G0 .rlx "x",
+    br 3 (q 2) [1, 1, 0, 1] it₀ G0,
+    wx 4 1 [1, 1, 0, 2] it₀ GS,
+    br 5 hT [1, 1] it₁ GS,
+    PpoStability.R 6 0 [1, 1, 0, 0] it₁ GD .rlx "x",
+    br 7 (q 6) [1, 1, 0, 1] it₁ GD,
+    wx 8 1 [1, 1, 0, 2] it₁ (GD ++ [⟨7, q 6, true⟩]),
+    br 9 hF [1, 1] it₁ GF,
+    PpoStability.R 10 0 [1, 1, 0, 0] it₁ GL .rlx "x",
+    br 11 (q 10) [1, 1, 0, 1] it₁ GL,
+    wx 12 1 [1, 1, 0, 2] it₁ (GL ++ [⟨11, q 10, true⟩])],
+   [(0, 1), (0, 2), (0, 3), (0, 4), (0, 5), (0, 6), (0, 7), (0, 8), (0, 9), (0, 10), (0, 11),
+    (0, 12), (1, 2), (1, 3), (1, 4), (1, 5), (1, 6), (1, 7), (1, 8), (1, 9), (1, 10), (1, 11),
+    (1, 12), (2, 3), (2, 4), (2, 5), (2, 6), (2, 7), (2, 8), (2, 9), (2, 10), (2, 11), (2, 12),
+    (3, 4), (3, 5), (3, 6), (3, 7), (3, 8), (3, 9), (3, 10), (3, 11), (3, 12), (4, 5), (4, 6),
+    (4, 7), (4, 8), (5, 6), (5, 7), (5, 8), (6, 7), (6, 8), (7, 8), (9, 10), (9, 11), (9, 12),
+    (10, 11), (10, 12), (11, 12)],
+   [⟨2, q 2, 4⟩, ⟨6, q 6, 8⟩, ⟨10, q 10, 12⟩]⟩
+
+unseal interp in
+theorem denote_progC : denote (fun _ => 2) progC = esC := rfl
+
+theorem nodupC : (esC.events.map (·.id)).Nodup := by decide
+
+/-- The dead read: the first read of the iteration after the `CAS` succeeds. -/
+def dead : Event := PpoStability.R 6 0 [1, 1, 0, 0] it₁ GD .rlx "x"
+
+theorem dead_mem : dead ∈ esC.events := by decide
+
+/-- No valuation satisfies the dead read's guards. -/
+theorem dead_unsat (f : Valuation) : ¬ dead.valres.holds f := by
+  intro h
+  rw [Event.valres, Expr.holds_conj] at h
+  have := h _ (List.mem_map_of_mem (f := Guard.expr) (show ⟨5, hT, true⟩ ∈ dead.guards by decide))
+  simp [Guard.expr, hT, Expr.holds, Expr.eval] at this
+
+/-- Read off the value restrictions, the dead read conflicts with every event. -/
+theorem dead_incompatible (b : EventId) (eb : Event) (hb : esC.ev b = some eb) :
+    esC.Conflict 6 b :=
+  ⟨dead, eb, PpoKit.ev_of_mem nodupC dead_mem, hb, fun ⟨f, h, _⟩ => dead_unsat f h⟩
+
+/-- The guards of the dead read, flipped, are carried only by the failed `CAS`'s outcome. -/
+theorem div_dead {b : EventId} (h : esC.Diverged 6 b) : b ≥ 9 ∧ b ≤ 12 := by
+  obtain ⟨ea, eb, ha, hb, g₁, hg₁, g₂, hg₂, hbr, hc, hp⟩ := h
+  rw [show (6 : EventId) = dead.id from rfl, PpoKit.ev_of_mem nodupC dead_mem] at ha; cases ha
+  obtain ⟨hm, rfl⟩ := ev_inv hb
+  have key : ∀ e ∈ esC.events, (∃ g₁ ∈ dead.guards, ∃ g₂ ∈ e.guards,
+      g₁.branch = g₂.branch ∧ g₁.cond = g₂.cond ∧ g₁.pos ≠ g₂.pos) → e.id ≥ 9 ∧ e.id ≤ 12 := by
+    decide
+  exact key eb hm ⟨g₁, hg₁, g₂, hg₂, hbr, hc, hp⟩
+
+/-- The failed `CAS`'s outcome conflicts under `#` with the successful `CAS`'s write. -/
+theorem div_write {b : EventId} (h₁ : b ≥ 9) (h₂ : b ≤ 12) (hb : esC.inE b) : esC.Diverged b 4 := by
+  obtain ⟨eb, hm, rfl⟩ := hb
+  have key : ∀ e ∈ esC.events, e.id ≥ 9 → e.id ≤ 12 → (⟨3, q 2, false⟩ : Guard) ∈ e.guards := by
+    decide
+  exact ⟨eb, wx 4 1 [1, 1, 0, 2] it₀ GS, PpoKit.ev_of_mem nodupC hm,
+    PpoKit.ev_of_mem nodupC (e := wx 4 1 [1, 1, 0, 2] it₀ GS) (by decide), ⟨3, q 2, false⟩,
+    key eb hm h₁ h₂, ⟨3, q 2, true⟩,
+    by decide, rfl, rfl, by decide⟩
+
+/-- **Under `#`, no `#`-maximal set in which the first `CAS` succeeds satisfies `φ`**, at bound
+    `2`: the dead read is in it, and its guard `¬⊤` holds under no valuation. -/
+theorem no_cas_success_S (x : Execution) (hmax : MaxS esC x.X) (h4 : x.X 4)
+    (hphi : x.phi esC) : False := by
+  have h6 : x.X 6 := by
+    refine Classical.byContradiction fun hn => ?_
+    obtain ⟨b, hb, hd⟩ := hmax.2.2 6 (cand_of_mem nodupC (e := dead) dead_mem rfl rfl) hn
+    obtain ⟨l, u⟩ := div_dead hd
+    exact hmax.2.1 b 4 hb h4 (div_write l u (hmax.1 b hb).1)
+  obtain ⟨g, -, -, hV⟩ := hphi.2.2
+  exact dead_unsat g (hV 6 dead h6 (PpoKit.ev_of_mem nodupC dead_mem))
+
 end EmptyOutcome
