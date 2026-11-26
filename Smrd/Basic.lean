@@ -45,6 +45,7 @@ import Smrd.WEAcrossFork
 import Smrd.WEPastFork
 import Smrd.WEIntoBranch
 import Smrd.CasFailElision
+import Smrd.EmptyOutcome
 import Smrd.ElabDec.Saturate
 import Smrd.ElabDec.RelSplitMain
 import Smrd.RC11
