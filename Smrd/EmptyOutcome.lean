@@ -20,9 +20,10 @@ satisfying `φ` at bound `1` (`exec_bound₁`), where the second iteration is cu
 `2` the second iteration's read is forced (`read₂_mem`), so there is no execution at all
 (`no_execution_bound₂`). The executions are not monotone in the bound.
 
-Argued, not mechanised: the same holds under sMRD's structural conflict `#`, since no event lies
-on the empty outcome to be in `#` with the forced one. The defect is the empty outcome, not the
-reading of conflict.
+The same holds under sMRD's structural conflict `#` (`MaxS`, maximality under `Diverged`): no
+event lies on the empty outcome to be in `#` with the forced one (`no_execution_S`,
+`maxS_bound₁`, `no_execution_bound₂_S`). The defect is the empty outcome, not the reading of
+conflict.
 
 MoRDor ends every run with a terminal event and takes executions to be the paths that reach one,
 so its `else` outcome is not empty, and it admits the run (`r = 5`, both programs).
@@ -250,5 +251,81 @@ theorem rf_bound₂ (Ω : Pred) (x : Execution) (hx : x.IsExecution esL₂ Ω) (
 theorem no_execution_bound₂ (Ω : Pred) (x : Execution) (hx : x.IsExecution esL₂ Ω)
     (hphi : x.phi esL₂) : False :=
   no_exec_bound₂ Ω x hx hphi (rf_bound₂ Ω x hx hphi)
+
+/-! ## Under sMRD's structural conflict `#`
+
+The published structure carries a conflict relation `#`, which the coproduct of a branching's two
+outcomes extends by all pairs across them (Richards et al., Definitions 4.2 and 4.4): events on
+different outcomes of one branching, `Diverged`. Maximality under `#` (`MaxS`) fails the same way.
+In the three structures above every guard is a `true` outcome, as nothing lies on the empty
+outcomes, so nothing is in `#` (`not_diverged`) and the only `#`-maximal set is every candidate
+(`maxS_all`).
+-/
+
+/-- A maximal set conflict-free under `#`. -/
+def MaxS (es : EventStructure) (X : EvSet) : Prop :=
+  (∀ a, X a → es.Candidate a) ∧ (∀ a b, X a → X b → ¬ es.Diverged a b) ∧
+  (∀ a, es.Candidate a → ¬ X a → ∃ b, X b ∧ es.Diverged a b)
+
+/-- Where every guard is a `true` outcome, nothing is in `#`. -/
+theorem not_diverged {es : EventStructure} (h : ∀ e ∈ es.events, ∀ g ∈ e.guards, g.pos = true)
+    {a b : EventId} : ¬ es.Diverged a b := by
+  rintro ⟨ea, eb, ha, hb, g₁, hg₁, g₂, hg₂, -, -, hp⟩
+  exact hp ((h ea (ev_inv ha).1 g₁ hg₁).trans (h eb (ev_inv hb).1 g₂ hg₂).symm)
+
+/-- Then the only `#`-maximal set is every candidate. -/
+theorem maxS_all {es : EventStructure} (h : ∀ e ∈ es.events, ∀ g ∈ e.guards, g.pos = true)
+    {X : EvSet} (hX : MaxS es X) {a : EventId} (ha : es.Candidate a) : X a :=
+  Classical.byContradiction fun hn => by
+    obtain ⟨b, -, hd⟩ := hX.2.2 a ha hn
+    exact not_diverged h hd
+
+theorem pos_E : ∀ e ∈ esE.events, ∀ g ∈ e.guards, g.pos = true := by decide
+theorem pos_L₁ : ∀ e ∈ esL₁.events, ∀ g ∈ e.guards, g.pos = true := by decide
+theorem pos_L₂ : ∀ e ∈ esL₂.events, ∀ g ∈ e.guards, g.pos = true := by decide
+
+/-- **Under `#`, `y := 5; r := y; if (r = 0) { x := 1 } else { skip }` has no execution**: every
+    `#`-maximal set holds the store and the read, and `φ` fails as before. Only maximality, `rf`'s
+    sources being writes, and `φ` are used. -/
+theorem no_execution_S (x : Execution) (hmax : MaxS esE x.X)
+    (hrfw : ∀ w r, x.rf w r → esE.cls Event.isWrite w) (hphi : x.phi esE) : False := by
+  have h3 := maxS_all pos_E hmax (cand_of_mem nodupE (e := e3) (by decide) rfl rfl)
+  have h1 := maxS_all pos_E hmax (cand_of_mem nodupE (e := e1) (by decide) rfl rfl)
+  obtain ⟨w, hw⟩ := (hphi.2.1 1).2 ⟨h1, ⟨e1, ev_e e1 (by decide), rfl⟩⟩
+  obtain ⟨ew, hew, hW⟩ := hrfw w 1 hw
+  obtain ⟨g, -, ⟨hrf, -⟩, hV⟩ := hphi.2.2
+  have hg : g 1 = .num 0 := (holds_e3 g).1 (hV 3 e3 h3 (ev_e e3 (by decide)))
+  obtain ⟨hm, rfl⟩ := ev_inv hew
+  have h1e := ev_e e1 (by decide)
+  simp only [esE, List.mem_cons, List.not_mem_nil, or_false] at hm
+  rcases hm with rfl | rfl | rfl | rfl
+  · have := (hrf _ _ _ _ hw hew h1e).2 _ _ rfl rfl
+    simp [Expr.eval, hg] at this
+  · cases hW
+  · cases hW
+  · have := (hrf _ _ _ _ hw hew h1e).1 _ _ rfl rfl
+    simp [Expr.eval, Expr.glob] at this
+
+/-- **Under `#`, the loop's run reading `5` is an execution at bound `1`**: its events, every
+    candidate, are `#`-maximal. -/
+theorem maxS_bound₁ : MaxS esL₁ xL₁.X :=
+  ⟨fun _ h => h, fun _ _ _ _ => not_diverged pos_L₁, fun _ hc hn => absurd hc hn⟩
+
+/-- **Under `#`, the loop has no execution at bound `2`**: every `#`-maximal set holds both reads,
+    the first reads `y := 5`, and the second's value restriction asks `0`. -/
+theorem no_execution_bound₂_S (x : Execution) (hmax : MaxS esL₂ x.X)
+    (hrfw : ∀ w r, x.rf w r → esL₂.cls Event.isWrite w) (hphi : x.phi esL₂) : False := by
+  have h4 := maxS_all pos_L₂ hmax (cand_of_mem nodupL₂ (e := l4) (by decide) rfl rfl)
+  have h2 := maxS_all pos_L₂ hmax (cand_of_mem nodupL₂ (e := l2) (by decide) rfl rfl)
+  obtain ⟨w, hw⟩ := (hphi.2.1 2).2 ⟨h2, ⟨l2, evL l2 (by decide), rfl⟩⟩
+  obtain ⟨ew, hew, hW⟩ := hrfw w 2 hw
+  obtain ⟨g, -, ⟨hrf, -⟩, hV⟩ := hphi.2.2
+  have hg : g 2 = .num 0 := (holds_l4 g).1 (hV 4 l4 h4 (evL l4 (by decide)))
+  obtain ⟨hm, rfl⟩ := ev_inv hew
+  simp only [esL₂, List.mem_cons, List.not_mem_nil, or_false] at hm
+  rcases hm with rfl | rfl | rfl | rfl | rfl
+  · have := (hrf _ _ _ _ hw (evL l0 (by decide)) (evL l2 (by decide))).2 _ _ rfl rfl
+    simp [Expr.eval, hg] at this
+  all_goals cases hW
 
 end EmptyOutcome
