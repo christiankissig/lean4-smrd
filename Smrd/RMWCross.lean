@@ -238,8 +238,9 @@ theorem dp_X {a b : EventId} (h : xX.DP a b) : a = 2 ∧ b = 3 := by
 theorem rfOK_X : RfOK esX rfX := by decide
 
 theorem isExecution_X : xX.IsExecution esX (fun _ => True) where
-  maximal := ⟨fun _ h => h, fun a b _ _ ⟨ea, eb, ha, hb, hn⟩ =>
-      hn ⟨fun _ => .num 0, holdsX (ev_inv ha).1 _, holdsX (ev_inv hb).1 _⟩,
+  maximal := ⟨fun _ h => h, fun a b _ _ hcx => by
+      obtain ⟨ea, eb, ha, hb, hn⟩ := hcx.incompatible
+      exact hn ⟨fun _ => .num 0, holdsX (ev_inv ha).1 _, holdsX (ev_inv hb).1 _⟩,
     fun _ hc hn => absurd hc hn⟩
   generated j hj := by
     rcases mem_JX hj with rfl | rfl | rfl

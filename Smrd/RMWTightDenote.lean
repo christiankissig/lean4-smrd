@@ -543,9 +543,9 @@ theorem denote_rmwTight {n : Bounds} {P : Stmt} {x : Execution}
     · exact absurd hb (not_XwF_of_isBr hmax h)
     · -- `e_w` and `b` diverge: they are in conflict, and not both in `X ∪ X_F`
       have hc : (denote n P).Conflict ent.w eb.id :=
-        ⟨ew, eb, hwid ▸ denote_ev n P hew, denote_ev n P heb, hd.not_sat⟩
+        ⟨ew, eb, hwid ▸ denote_ev n P hew, denote_ev n P heb, hd⟩
       have hc' : (denote n P).Conflict eb.id ent.w :=
-        ⟨eb, ew, denote_ev n P heb, hwid ▸ denote_ev n P hew, hd.symm.not_sat⟩
+        ⟨eb, ew, denote_ev n P heb, hwid ▸ denote_ev n P hew, hd.symm⟩
       -- the write of an RMW has a location, so it is no fence
       have hwX : x.X ent.w := by
         rcases hw with hw | hw

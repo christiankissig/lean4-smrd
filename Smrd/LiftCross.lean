@@ -207,8 +207,9 @@ theorem X_C {a : EventId} : xC.X a ↔ a = 0 ∨ a = 2 ∨ a = 3 := by
     condition of `IsExecution` holds. -/
 theorem isExecution_C (hg : esC.Generated (fun _ => True) jL) :
     xC.IsExecution esC (fun _ => True) where
-  maximal := ⟨fun _ h => h, fun a b _ _ ⟨ea, eb, ha, hb, hn⟩ =>
-      hn ⟨f₀, holdsC (ev_inv ha).1, holdsC (ev_inv hb).1⟩,
+  maximal := ⟨fun _ h => h, fun a b _ _ hcx => by
+      obtain ⟨ea, eb, ha, hb, hn⟩ := hcx.incompatible
+      exact hn ⟨f₀, holdsC (ev_inv ha).1, holdsC (ev_inv hb).1⟩,
     fun _ hc hn => absurd hc hn⟩
   generated j hj := by
     simp only [xC, List.mem_cons, List.not_mem_nil, or_false] at hj

@@ -189,8 +189,9 @@ theorem wr_nb (e : Event) (h : e.isWrite = true ∨ e.isRead = true) :
 
 theorem isExecution_simple {es : EventStructure} (S : Simple es) {rf : List (EventId × EventId)}
     (hrf : RfOK es rf) : (simple es rf).IsExecution es (fun _ => True) where
-  maximal := ⟨fun _ h => h, fun a b _ _ ⟨ea, eb, ha, hb, hn⟩ =>
-      hn ⟨fun _ => .num 0, S.holds (ev_inv ha).1 _, S.holds (ev_inv hb).1 _⟩,
+  maximal := ⟨fun _ h => h, fun a b _ _ hc => by
+      obtain ⟨ea, eb, ha, hb, hn⟩ := hc.incompatible
+      exact hn ⟨fun _ => .num 0, S.holds (ev_inv ha).1 _, S.holds (ev_inv hb).1 _⟩,
     fun _ hc hn => absurd hc hn⟩
   generated j hj := by
     obtain ⟨w, hw, hj'⟩ := mem_preJs.1 hj
@@ -561,7 +562,8 @@ theorem all_in_X {es : EventStructure} {x : Execution} {Ω : Pred} (hX : x.IsExe
     (S : Simple es) {a : EventId} (hc : es.Candidate a) : x.X a := by
   apply Classical.byContradiction
   intro hn
-  obtain ⟨b, -, ea, eb, ha, hb, hns⟩ := hX.maximal.2.2 a hc hn
+  obtain ⟨b, -, hcb⟩ := hX.maximal.2.2 a hc hn
+  obtain ⟨ea, eb, ha, hb, hns⟩ := hcb.incompatible
   exact hns ⟨fun _ => .num 0, S.holds (ev_inv ha).1 _, S.holds (ev_inv hb).1 _⟩
 
 theorem noEdge_of_noElided {x : Execution} (h : ∀ a, ¬ x.elided a) : ∀ a b, ¬ x.δ.edge a b :=

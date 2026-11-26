@@ -180,8 +180,9 @@ theorem not_dep_po : ¬ ∀ a b, xQ.dep esQ a b → xQ.poX esQ a b :=
     `we_01_blind`. -/
 theorem isExecution_Q (gen_jWE : esQ.Generated (fun _ => True) jWE) :
     xQ.IsExecution esQ (fun _ => True) where
-  maximal := ⟨fun _ h => h, fun a b _ _ ⟨ea, eb, ha, hb, hn⟩ =>
-      hn ⟨fun _ => .num 0, SQ.holds (ev_inv ha).1 _, SQ.holds (ev_inv hb).1 _⟩,
+  maximal := ⟨fun _ h => h, fun a b _ _ hcx => by
+      obtain ⟨ea, eb, ha, hb, hn⟩ := hcx.incompatible
+      exact hn ⟨fun _ => .num 0, SQ.holds (ev_inv ha).1 _, SQ.holds (ev_inv hb).1 _⟩,
     fun _ hc hn => absurd hc hn⟩
   generated j hj := by
     simp only [xQ, JQ, List.mem_cons, List.mem_nil_iff, or_false] at hj

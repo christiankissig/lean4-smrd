@@ -75,8 +75,9 @@ theorem X_mpf : ∀ e ∈ esMPF.events, e.isFence = false → xMPF.X e.id :=
 /-- The fences lie on the path, in `X_F`. -/
 theorem XF_mpf {e : Event} (he : e ∈ esMPF.events) (hf : e.isFence = true) :
     xMPF.XF esMPF e.id :=
-  ⟨⟨e, he, rfl⟩, ⟨e, PpoKit.ev_of_mem SMPF.nodup he, hf⟩, fun _ _ ⟨ea, eb, ha, hb, hn⟩ =>
-    hn ⟨fun _ => .num 0, SMPF.holds (ev_inv ha).1 _, SMPF.holds (ev_inv hb).1 _⟩⟩
+  ⟨⟨e, he, rfl⟩, ⟨e, PpoKit.ev_of_mem SMPF.nodup he, hf⟩, fun _ _ hcx => by
+    obtain ⟨ea, eb, ha, hb, hn⟩ := hcx.incompatible
+    exact hn ⟨fun _ => .num 0, SMPF.holds (ev_inv ha).1 _, SMPF.holds (ev_inv hb).1 _⟩⟩
 
 theorem X0 : xMPF.X 0 := X_mpf (W 0 0 [0] .rlx "x" 0) (by simp [esMPF]) rfl
 theorem X2 : xMPF.X 2 := X_mpf (W 2 0 [1, 1, 0, 0] .rlx "x" 1) (by simp [esMPF]) rfl

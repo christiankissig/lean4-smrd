@@ -275,8 +275,9 @@ theorem rfOK_F : RfOK esA rfA := by decide
     were `jF` generated. -/
 theorem isExecution_F (hg : esA.Generated (fun _ => True) jF) :
     xF.IsExecution esA (fun _ => True) where
-  maximal := ⟨fun _ h => h, fun a b _ _ ⟨ea, eb, ha, hb, hn⟩ =>
-      hn ⟨fun _ => .num 0, SA.holds (ev_inv ha).1 _, SA.holds (ev_inv hb).1 _⟩,
+  maximal := ⟨fun _ h => h, fun a b _ _ hcx => by
+      obtain ⟨ea, eb, ha, hb, hn⟩ := hcx.incompatible
+      exact hn ⟨fun _ => .num 0, SA.holds (ev_inv ha).1 _, SA.holds (ev_inv hb).1 _⟩,
     fun _ hc hn => absurd hc hn⟩
   generated j hj := by
     rcases mem_JF hj with rfl | rfl | rfl | rfl | rfl

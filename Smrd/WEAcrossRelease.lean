@@ -305,8 +305,9 @@ theorem rfOK_B : RfOK esR rfR := by decide
     condition of `IsExecution` holds. -/
 theorem isExecution_B (hg : esR.Generated (fun _ => True) jWE) :
     xB.IsExecution esR (fun _ => True) where
-  maximal := ⟨fun _ h => h, fun a b _ _ ⟨ea, eb, ha, hb, hn⟩ =>
-      hn ⟨fun _ => .num 0, SR.holds (ev_inv ha).1 _, SR.holds (ev_inv hb).1 _⟩,
+  maximal := ⟨fun _ h => h, fun a b _ _ hcx => by
+      obtain ⟨ea, eb, ha, hb, hn⟩ := hcx.incompatible
+      exact hn ⟨fun _ => .num 0, SR.holds (ev_inv ha).1 _, SR.holds (ev_inv hb).1 _⟩,
     fun _ hc hn => absurd hc hn⟩
   generated j hj := by
     rcases mem_JB hj with rfl | rfl | rfl | rfl

@@ -71,9 +71,20 @@ theorem Diverge.not_sat {e₁ e₂ : Event} (h : Diverge e₁ e₂) :
 /-- Events on different outcomes of one branching (`EventStructure.Diverged`,
     the exemption of Write Elision's fork restriction) are in conflict. -/
 theorem diverged_conflict {es : EventStructure} {a b : EventId} (h : es.Diverged a b) :
-    es.Conflict a b := by
-  obtain ⟨ea, eb, ha, hb, hd⟩ := h
-  exact ⟨ea, eb, ha, hb, Diverge.not_sat hd⟩
+    es.Conflict a b := h
+
+/-- **Conflicting events are incompatible**: their value restrictions are jointly
+    unsatisfiable. -/
+theorem conflict_incompatible {es : EventStructure} {a b : EventId} (h : es.Conflict a b) :
+    es.Incompatible a b := h.incompatible
+
+/-- Events whose value restrictions one valuation satisfies are not in conflict. -/
+theorem not_conflict_of_holds {es : EventStructure} {a b : EventId} {f : Valuation}
+    (ha : ∀ e, es.ev a = some e → e.valres.holds f)
+    (hb : ∀ e, es.ev b = some e → e.valres.holds f) : ¬ es.Conflict a b := by
+  intro h
+  obtain ⟨ea, eb, h₁, h₂, hn⟩ := conflict_incompatible h
+  exact hn ⟨f, ha ea h₁, hb eb h₂⟩
 
 /-- Two events with the same program counter and iterations are one event, or
     diverge. -/
@@ -767,7 +778,7 @@ theorem labels_unique (n : Bounds) (P : Stmt) (hP : P.loops.Nodup) {e₁ e₂ : 
     (h₁ : e₁ ∈ (denote n P).events) (h₂ : e₂ ∈ (denote n P).events)
     (hl : e₁.label = e₂.label) (hne : e₁ ≠ e₂) : (denote n P).Conflict e₁.id e₂.id :=
   ⟨e₁, e₂, denote_ev n P h₁, denote_ev n P h₂,
-    (denote_diverge n P hP h₁ h₂ (by rw [hl]) (by rw [hl]) hne).not_sat⟩
+    denote_diverge n P hP h₁ h₂ (by rw [hl]) (by rw [hl]) hne⟩
 
 /-- **A conflict-free set contains at most one event per label** (Appendix A,
     the sentence before Definition `def:justs`). -/

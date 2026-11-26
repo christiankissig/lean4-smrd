@@ -24,6 +24,9 @@ for every coherence order (`psc_of_noSC`, under `SCFree`).
   the execution (as use-after-free does, under `φ`), where the paper's `⊑|loc`
   takes `≡_P`; and it compares them as partial values, so that it is
   transitive and contains `rf` without further hypotheses.
+* **Conflict** is sMRD's structural `#` (Definitions 4.2 and 4.4), read off the guards
+  (`Conflict`, `Diverged`): events on different outcomes of one branching. The report's
+  `def:event-structures` reads conflict off the value restrictions instead (`Incompatible`).
 * **SC axiom.** The paper's axioms are No-Thin-Air, Coherence and
   Atomicity; `Coherent` also asks for RC11's SC axiom (`PSC`), which forbids
   store buffering over `sc` accesses and over `sc` fences. It is vacuous for
@@ -45,10 +48,33 @@ variable (es : EventStructure)
 
 /-! ## Executions (Definition `def:executions`) -/
 
-/-- Events are in conflict if their value restrictions are incompatible. -/
-def Conflict (a b : EventId) : Prop :=
+/-- Conflict `#` (sMRD, Definitions 4.2 and 4.4): events on different outcomes of one
+    branching, which the coproduct `+` of the two outcomes puts in conflict whatever their
+    values. Read off the guards (`Diverged`): an event's guards record the outcomes on its path.
+    It implies `Incompatible` (`Labels.conflict_incompatible`), not conversely: an event whose
+    guards are unsatisfiable conflicts only with the events of the other outcomes of its
+    branchings. -/
+def Conflict (a b : EventId) : Prop := es.Diverged a b
+
+/-- Events whose value restrictions are jointly unsatisfiable: the conflict of the report's
+    `def:event-structures`, which this library used before adopting sMRD's `#`. -/
+def Incompatible (a b : EventId) : Prop :=
   ∃ ea eb, es.ev a = some ea ∧ es.ev b = some eb ∧
     ¬ Sat (Pred.and ea.valres.holds eb.valres.holds)
+
+/-- **Conflicting events are incompatible**: a guard and its flip do not both hold. -/
+theorem Conflict.incompatible {a b : EventId} (h : es.Conflict a b) : es.Incompatible a b := by
+  obtain ⟨ea, eb, ha, hb, g₁, hg₁, g₂, hg₂, -, hc, hp⟩ := h
+  refine ⟨ea, eb, ha, hb, ?_⟩
+  rintro ⟨f, h₁, h₂⟩
+  have a₁ := (Expr.holds_conj _ f).1 h₁ _ (List.mem_map_of_mem hg₁)
+  have a₂ := (Expr.holds_conj _ f).1 h₂ _ (List.mem_map_of_mem hg₂)
+  unfold Guard.expr Expr.holds at a₁ a₂
+  rcases g₁ with ⟨b₁, c₁, p₁⟩
+  rcases g₂ with ⟨b₂, c₂, p₂⟩
+  simp only at hc hp a₁ a₂
+  subst hc
+  cases p₁ <;> cases p₂ <;> simp_all [Expr.eval]
 
 /-- The events an execution may contain: `E ∖ (B ∪ F)`. -/
 def Candidate : EvSet := fun a =>

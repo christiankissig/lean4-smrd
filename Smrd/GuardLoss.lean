@@ -305,8 +305,9 @@ theorem rf_wr_x :
 /-- **Were the lift generated, `x` would be an execution.** -/
 theorem isExecution_x (hL : esG.Generated (fun _ => True) jL) :
     x.IsExecution esG (fun _ => True) where
-  maximal := ⟨fun _ h => h, fun a b _ _ ⟨ea, eb, ha, hb, hn⟩ =>
-      hn ⟨f₀, holds₀ (ev_inv ha).1, holds₀ (ev_inv hb).1⟩,
+  maximal := ⟨fun _ h => h, fun a b _ _ hcx => by
+      obtain ⟨ea, eb, ha, hb, hn⟩ := hcx.incompatible
+      exact hn ⟨f₀, holds₀ (ev_inv ha).1, holds₀ (ev_inv hb).1⟩,
     fun _ hc hn => absurd hc hn⟩
   generated := gen_Jx hL
   inX j hj := by
@@ -924,8 +925,9 @@ theorem rf_wr_x :
 
 theorem isExecution_x (hL : esF.Generated (fun _ => True) jL) :
     x.IsExecution esF (fun _ => True) where
-  maximal := ⟨fun _ h => h, fun a b _ _ ⟨ea, eb, ha, hb, hn⟩ =>
-      hn ⟨f₀, holds₀ (ev_inv ha).1, holds₀ (ev_inv hb).1⟩,
+  maximal := ⟨fun _ h => h, fun a b _ _ hcx => by
+      obtain ⟨ea, eb, ha, hb, hn⟩ := hcx.incompatible
+      exact hn ⟨f₀, holds₀ (ev_inv ha).1, holds₀ (ev_inv hb).1⟩,
     fun _ hc hn => absurd hc hn⟩
   generated := gen_Jx hL
   inX j hj := by

@@ -556,8 +556,9 @@ theorem elided_WW {a : EventId} : xWW.elided a ↔ a = 0 := by
   · rintro rfl; exact ⟨(1, 0), .inr (by rw [δWW]; simp), rfl⟩
 
 theorem isExecution_WW (hF : esWW.SameSeg 0 1) : xWW.IsExecution esWW (fun _ => True) where
-  maximal := ⟨fun _ h => h, fun a b _ _ ⟨ea, eb, ha, hb, hn⟩ =>
-      hn ⟨fun _ => .num 0, SWW.holds (ev_inv ha).1 _, SWW.holds (ev_inv hb).1 _⟩,
+  maximal := ⟨fun _ h => h, fun a b _ _ hc => by
+      obtain ⟨ea, eb, ha, hb, hn⟩ := hc.incompatible
+      exact hn ⟨fun _ => .num 0, SWW.holds (ev_inv ha).1 _, SWW.holds (ev_inv hb).1 _⟩,
     fun _ hc hn => absurd hc hn⟩
   generated j hj := by
     simp only [xWW, JWW, List.mem_cons, List.mem_nil_iff, or_false] at hj
@@ -819,8 +820,9 @@ theorem elided_C {a : EventId} : xC.elided a ↔ a = 0 := by
   · rintro rfl; exact ⟨(1, 0), .inr (by rw [δC]; simp), rfl⟩
 
 theorem isExecution_C : xC.IsExecution esC (fun _ => True) where
-  maximal := ⟨fun _ h => h, fun a b _ _ ⟨ea, eb, ha, hb, hn⟩ =>
-      hn ⟨fun _ => .num 0, SC.holds (ev_inv ha).1 _, SC.holds (ev_inv hb).1 _⟩,
+  maximal := ⟨fun _ h => h, fun a b _ _ hc => by
+      obtain ⟨ea, eb, ha, hb, hn⟩ := hc.incompatible
+      exact hn ⟨fun _ => .num 0, SC.holds (ev_inv ha).1 _, SC.holds (ev_inv hb).1 _⟩,
     fun _ hc hn => absurd hc hn⟩
   generated j hj := by
     simp only [xC, List.mem_cons, List.mem_nil_iff, or_false] at hj

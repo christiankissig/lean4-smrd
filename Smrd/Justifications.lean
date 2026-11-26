@@ -315,10 +315,9 @@ def weNoJoin (e₁ e₂ : EventId) : Prop := es.NoJoinMove e₁ e₂
 
 /-- `a` and `b` lie on different outcomes of one branching: their guards hold
     a branching condition and its negation (`Labels.Diverge` on the events).
-    Syntactic, the conflict of MoRDor's choice; it implies `Conflict`
-    (`Labels.diverged_conflict`). `Conflict` itself is semantic: not
-    decidable, and an event with unsatisfiable guards conflicts with every
-    event. -/
+    Syntactic, the conflict of MoRDor's choice and sMRD's `#`: it is
+    `EventStructure.Conflict`. It implies `Incompatible`, the semantic conflict
+    (`Labels.conflict_incompatible`). -/
 def Diverged (a b : EventId) : Prop :=
   ∃ ea eb, es.ev a = some ea ∧ es.ev b = some eb ∧
     ∃ g₁ ∈ ea.guards, ∃ g₂ ∈ eb.guards, g₁.branch = g₂.branch ∧ g₁.cond = g₂.cond ∧ g₁.pos ≠ g₂.pos

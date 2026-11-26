@@ -372,8 +372,9 @@ theorem psi_P (f : Valuation) (h : f 6 = f 8) : xP.δ.psi esP f := by
   simp [Expr.holds, Expr.eval, h]
 
 theorem isExecution_P : xP.IsExecution esP (fun _ => True) where
-  maximal := ⟨fun _ h => h, fun a b _ _ ⟨ea, eb, ha, hb, hn⟩ =>
-      hn ⟨fOut, SP.holds (ev_inv ha).1 _, SP.holds (ev_inv hb).1 _⟩,
+  maximal := ⟨fun _ h => h, fun a b _ _ hcx => by
+      obtain ⟨ea, eb, ha, hb, hn⟩ := hcx.incompatible
+      exact hn ⟨fOut, SP.holds (ev_inv ha).1 _, SP.holds (ev_inv hb).1 _⟩,
     fun _ hc hn => absurd hc hn⟩
   generated j hj := by
     rcases mem_JP hj with rfl | rfl | rfl | rfl | rfl | rfl

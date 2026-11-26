@@ -87,8 +87,9 @@ theorem all_in_X_L {x : Execution} {Ω : Pred} (hX : x.IsExecution esL Ω) {e : 
   have nf : ∀ e ∈ esL.events, e.isFence = false := by decide
   apply Classical.byContradiction
   intro hn
-  obtain ⟨b, -, ea, eb, ha, hb, hns⟩ :=
+  obtain ⟨b, -, hcb⟩ :=
     hX.maximal.2.2 e.id (cand_of_mem nodupL he (nb e he) (nf e he)) hn
+  obtain ⟨ea, eb, ha, hb, hns⟩ := hcb.incompatible
   exact hns ⟨fun _ => .num 0, holdsL (ev_inv ha).1 _, holdsL (ev_inv hb).1 _⟩
 
 theorem rmwRel_of {x : Execution} {ent : RMWEntry} (hm : ent ∈ esL.rmw)
@@ -340,8 +341,9 @@ theorem rfOK_B : RfOK esL rfB := by decide
     condition of `IsExecution` holds. -/
 theorem isExecution_B (hg : esL.Generated (fun _ => True) jWE) :
     xB.IsExecution esL (fun _ => True) where
-  maximal := ⟨fun _ h => h, fun a b _ _ ⟨ea, eb, ha, hb, hn⟩ =>
-      hn ⟨fun _ => .num 0, holdsL (ev_inv ha).1 _, holdsL (ev_inv hb).1 _⟩,
+  maximal := ⟨fun _ h => h, fun a b _ _ hcx => by
+      obtain ⟨ea, eb, ha, hb, hn⟩ := hcx.incompatible
+      exact hn ⟨fun _ => .num 0, holdsL (ev_inv ha).1 _, holdsL (ev_inv hb).1 _⟩,
     fun _ hc hn => absurd hc hn⟩
   generated j hj := by
     rcases mem_JB hj with rfl | rfl | rfl

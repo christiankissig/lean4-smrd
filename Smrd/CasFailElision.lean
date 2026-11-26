@@ -253,22 +253,23 @@ theorem rfOK_C : RfOK esC rfC := by decide
 
 theorem isExecution_C : xC.IsExecution esC (fun _ => True) where
   maximal := by
-    refine ⟨fun a ha => ?_, fun a b ha hb ⟨ea, eb, h₁, h₂, hn⟩ =>
-      hn ⟨fOut, holdsC ha h₁, holdsC hb h₂⟩, fun a hc hn => ?_⟩
+    refine ⟨fun a ha => ?_, fun a b ha hb hcf => ?_, fun a hc hn => ?_⟩
     · have k : ∀ a ∈ XL, ∀ e ∈ esC.events, e.id = a → e.isBranch = false ∧ e.isFence = false :=
         by decide
       obtain ⟨e, he, rfl⟩ : ∃ e ∈ esC.events, e.id = a := by
         have : ∀ a ∈ XL, ∃ e ∈ esC.events, e.id = a := by decide
         exact this a ha
       exact cand_of_mem nodupC he (k _ ha e he rfl).1 (k _ ha e he rfl).2
+    · obtain ⟨ea, eb, h₁, h₂, hn⟩ := hcf.incompatible
+      exact hn ⟨fOut, holdsC ha h₁, holdsC hb h₂⟩
     · obtain ⟨⟨e, he, rfl⟩, hb, -⟩ := hc
       simp only [esC, List.mem_cons, List.mem_nil_iff, or_false] at he
       have c46 : ∀ e, e = e4 ∨ e = e5 → esC.Conflict e.id 6 := by
         rintro e (rfl | rfl)
-        · exact ⟨e4, e6, rfl, rfl, Labels.Diverge.not_sat ⟨gT, by simp [e4, W], gF,
-            by simp [e6, W], rfl, rfl, by decide⟩⟩
-        · exact ⟨e5, e6, rfl, rfl, Labels.Diverge.not_sat ⟨gT, by simp [e5, W], gF,
-            by simp [e6, W], rfl, rfl, by decide⟩⟩
+        · exact ⟨e4, e6, rfl, rfl, gT, by simp [e4, W], gF, by simp [e6, W], rfl, rfl,
+            by decide⟩
+        · exact ⟨e5, e6, rfl, rfl, gT, by simp [e5, W], gF, by simp [e6, W], rfl, rfl,
+            by decide⟩
       rcases he with rfl | rfl | rfl | rfl | rfl | rfl | rfl
       · exact absurd (by decide) hn
       · exact absurd (by decide) hn

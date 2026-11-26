@@ -209,8 +209,9 @@ theorem sbSC_summary :
 
 theorem XF_of {es : EventStructure} {rf : List (EventId × EventId)} (S : Simple es) {e : Event}
     (he : e ∈ es.events) (hf : e.isFence = true) : (simple es rf).XF es e.id :=
-  ⟨⟨e, he, rfl⟩, ⟨e, PpoKit.ev_of_mem S.nodup he, hf⟩, fun _ _ ⟨_, _, ha, hb, hn⟩ =>
-    hn ⟨fun _ => .num 0, S.holds (ev_inv ha).1 _, S.holds (ev_inv hb).1 _⟩⟩
+  ⟨⟨e, he, rfl⟩, ⟨e, PpoKit.ev_of_mem S.nodup he, hf⟩, fun _ _ hcx => by
+    obtain ⟨_, _, ha, hb, hn⟩ := hcx.incompatible
+    exact hn ⟨fun _ => .num 0, S.holds (ev_inv ha).1 _, S.holds (ev_inv hb).1 _⟩⟩
 
 /-- `x := 0; y := 0; (x := 1; fence(sc); r1 := y ∥ y := 1; fence(sc); r2 := x)` -/
 def sbF : Stmt := .seq (st .rlx "x" 0) (.seq (st .rlx "y" 0)
